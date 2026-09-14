@@ -16,7 +16,7 @@ dev = [
 package = false
 
 [tool.uv.workspace]
-members = ["packages/common"]
+members = ["packages/common", "apps/server"]
 
 [tool.pytest.ini_options]
 addopts = "-ra"
@@ -32,3 +32,4 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 [tool.mypy]
 python_version = "3.13"
 strict = true
+mypy_path = ["packages/common/src"]
