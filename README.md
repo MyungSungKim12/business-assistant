@@ -2,7 +2,25 @@
 
 업종에 관계없이 사용할 수 있는 **구독형 Python 데스크톱 업무 관리 프로그램**입니다. 공통 업무 기능을 먼저 제공하고, 이후 학원·미용실·부동산 등 업종별 기능을 모듈 형태로 확장합니다.
 
-> 현재 상태: 설계 단계 — Python 프로젝트 초기 설정 전
+> 현재 상태: 초기 골격 구현 완료
+
+## 빠른 시작
+
+PowerShell에서 저장소 루트로 이동한 뒤 아래 명령을 실행하세요.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/bootstrap.ps1
+powershell -ExecutionPolicy Bypass -File scripts/check.ps1
+```
+
+서버와 데스크톱 앱은 각각 별도 PowerShell 창에서 시작합니다.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/run-server.ps1
+powershell -ExecutionPolicy Bypass -File scripts/run-desktop.ps1
+```
+
+처음 개발하는 경우에는 [개발 환경 안내](docs/05-development-guide.md)를 먼저 읽으세요.
 
 ## 프로젝트 목표
 
@@ -205,11 +223,18 @@ business-assistant/
 
 ## 개발 상태
 
-현재는 제품과 기술 설계가 완료되어 검토 중입니다. 설계 승인 후 실행 가능한 데스크톱·서버 골격과 개발 문서를 추가합니다. Supabase 자격 증명이 없어도 기본 프로그램과 테스트를 실행할 수 있게 구성할 예정입니다.
+초기 골격 구현이 완료되었습니다. Supabase 자격 증명이 없어도 기본 프로그램과 테스트를 실행할 수 있습니다. 다음 단계에서는 인증·조직, 구독·권한, 범용 업무 기능을 순서대로 구현합니다.
 
 ## 문서
 
 - [상세 설계서](docs/superpowers/specs/2026-09-14-business-assistant-design.md)
+- [01. 제품 개요](docs/01-product-overview.md)
+- [02. 아키텍처](docs/02-architecture.md)
+- [03. 메뉴와 모듈](docs/03-menu-modules.md)
+- [04. 구독과 기능 권한 설계](docs/04-subscription-design.md)
+- [05. 개발 환경 안내](docs/05-development-guide.md)
+- [06. 구현 로드맵](docs/06-implementation-roadmap.md)
+- [07. Git 사용 안내](docs/07-git-guide.md)
 
 ## 라이선스
 
