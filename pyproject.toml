@@ -9,6 +9,7 @@ dev = [
   "httpx>=0.28,<1",
   "mypy>=1.15,<2",
   "pytest>=8.3,<9",
+  "pytest-qt>=4.4,<5",
   "ruff>=0.11,<1",
 ]
 
@@ -16,7 +17,7 @@ dev = [
 package = false
 
 [tool.uv.workspace]
-members = ["packages/common", "apps/server"]
+members = ["packages/common", "apps/server", "apps/desktop"]
 
 [tool.pytest.ini_options]
 addopts = "-ra"

@@ -1,0 +1,1 @@
+"""Business Assistant desktop package."""
