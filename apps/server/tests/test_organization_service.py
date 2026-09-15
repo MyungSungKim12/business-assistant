@@ -35,6 +35,9 @@ class FakeRepository:
     async def get_organization(self, organization_id: UUID) -> object | None:
         return next((item for item in self.organizations if item.id == organization_id), None)
 
+    async def organization_exists(self, organization_id: UUID) -> bool:
+        return await self.get_organization(organization_id) is not None
+
     async def get_membership(self, user_id: UUID, organization_id: UUID) -> str | None:
         return self.memberships.get((user_id, organization_id))
 

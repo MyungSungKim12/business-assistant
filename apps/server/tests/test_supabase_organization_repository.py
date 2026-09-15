@@ -103,6 +103,8 @@ def test_repository_creates_organizations_and_calculates_active_subscription_fea
     assert subscription_request.url.path == "/rest/v1/subscriptions"
     assert subscription_request.url.params["organization_id"] == f"eq.{ORGANIZATION_ID}"
     assert subscription_request.url.params["status"] == "in.(trialing,active)"
+    assert subscription_request.url.params["order"] == "starts_at.desc"
+    assert subscription_request.url.params["limit"] == "1"
 
 
 def test_repository_converts_postgrest_failures_without_provider_details() -> None:
@@ -137,3 +139,23 @@ def test_repository_dependency_builds_a_user_token_scoped_supabase_adapter() -> 
     )
 
     assert isinstance(repository, SupabaseOrganizationRepository)
+
+
+def test_repository_uses_existence_only_rpc_for_nonmember_safe_lookup() -> None:
+    requests: list[httpx.Request] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json=True)
+
+    async def run() -> None:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+            repository = SupabaseOrganizationRepository(
+                "https://project.supabase.co", "publishable-key", "user-access-token", client
+            )
+            assert await repository.organization_exists(ORGANIZATION_ID) is True
+
+    asyncio.run(run())
+
+    assert requests[0].url.path == "/rest/v1/rpc/organization_exists"
+    assert json.loads(requests[0].content) == {"target_organization_id": str(ORGANIZATION_ID)}

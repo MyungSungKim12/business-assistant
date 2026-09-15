@@ -6,6 +6,8 @@
 1. `001_auth_entitlements.sql`로 테이블, 인덱스, RLS 정책을 적용합니다.
 2. `002_seed_entitlements.sql`로 BASIC, STANDARD, PRO 상품과 기본 기능 코드를
    멱등하게 등록합니다.
+3. `003_subscription_and_organization_hardening.sql`로 활성 구독 중복을 막고,
+   사용자 JWT만으로 조직 존재 여부를 확인하는 제한된 RPC를 추가합니다.
 
 적용 전에는 대상 Supabase 프로젝트의 마이그레이션 환경에서 실행하는지 확인합니다.
 연결 문자열과 서버 전용 비밀값은 로컬 `.env`에만 보관하고, 데스크톱 앱이나 Git에

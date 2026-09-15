@@ -49,8 +49,7 @@ class EntitlementService:
         )
 
     async def _require_membership(self, user_id: UUID, organization_id: UUID) -> None:
-        organization = await self._repository.get_organization(organization_id)
-        if organization is None:
+        if not await self._repository.organization_exists(organization_id):
             raise LookupError("Organization not found")
         if await self._repository.get_membership(user_id, organization_id) is None:
             raise PermissionError("Organization membership required")

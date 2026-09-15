@@ -117,6 +117,14 @@ class SupabaseOrganizationRepository:
         organization = self._parse_one(rows, _OrganizationRow)
         return OrganizationSummary(organization.id, organization.name, organization.slug, "member")
 
+    async def organization_exists(self, organization_id: UUID) -> bool:
+        payload = await self._request_value(
+            "POST", "rpc/organization_exists", json={"target_organization_id": str(organization_id)}
+        )
+        if not isinstance(payload, bool):
+            raise RepositoryUnavailableError()
+        return payload
+
     async def get_membership(self, user_id: UUID, organization_id: UUID) -> str | None:
         rows = await self._request_rows(
             "GET",
@@ -150,6 +158,8 @@ class SupabaseOrganizationRepository:
                 "organization_id": f"eq.{organization_id}",
                 "status": "in.(trialing,active)",
                 "or": f"(ends_at.is.null,ends_at.gt.{now.isoformat()})",
+                "order": "starts_at.desc",
+                "limit": "1",
             },
         )
         if not rows:
@@ -204,6 +214,28 @@ class SupabaseOrganizationRepository:
         if not isinstance(payload, list) or not all(isinstance(item, dict) for item in payload):
             raise RepositoryUnavailableError()
         return payload
+
+    async def _request_value(
+        self, method: str, resource: str, *, json: dict[str, str]
+    ) -> object:
+        request_headers = {
+            "apikey": self._publishable_key,
+            "Authorization": f"Bearer {self._access_token}",
+        }
+        try:
+            if self._client is not None:
+                response = await self._client.request(
+                    method, f"{self._rest_url}/{resource}", json=json, headers=request_headers
+                )
+            else:
+                async with httpx.AsyncClient() as client:
+                    response = await client.request(
+                        method, f"{self._rest_url}/{resource}", json=json, headers=request_headers
+                    )
+            response.raise_for_status()
+            return response.json()
+        except (httpx.HTTPError, ValueError) as error:
+            raise RepositoryUnavailableError() from error
 
     @staticmethod
     def _parse_rows(rows: list[dict[str, Any]], model: type[ModelT]) -> list[ModelT]:

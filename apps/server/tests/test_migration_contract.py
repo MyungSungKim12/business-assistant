@@ -4,6 +4,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 SCHEMA_PATH = PROJECT_ROOT / "migrations" / "001_auth_entitlements.sql"
 SEED_PATH = PROJECT_ROOT / "migrations" / "002_seed_entitlements.sql"
+HARDENING_PATH = PROJECT_ROOT / "migrations" / "003_subscription_and_organization_hardening.sql"
 _SUBSCRIPTION_POLICY_STATEMENT_PATTERN = re.compile(
     r"\bcreate\s+policy\b(?:(?!;)[\s\S])*?\bon\s+public\.subscriptions\b"
     r"(?:(?!;)[\s\S])*?;",
@@ -24,6 +25,10 @@ def _read_schema() -> str:
 
 def _read_seed() -> str:
     return SEED_PATH.read_text(encoding="utf-8").lower()
+
+
+def _read_hardening() -> str:
+    return HARDENING_PATH.read_text(encoding="utf-8").lower()
 
 
 def _subscription_policy_statements(schema: str) -> list[str]:
@@ -153,3 +158,24 @@ def test_seed_defines_required_plans_and_feature_codes() -> None:
         "ai.summary",
     ):
         assert f"'{feature_code}'" in seed
+
+
+def test_hardening_enforces_one_active_subscription_per_organization() -> None:
+    hardening = _read_hardening()
+
+    assert "create unique index idx_subscriptions_one_active_per_organization" in hardening
+    assert "on public.subscriptions (organization_id)" in hardening
+    assert "where status in ('trialing', 'active')" in hardening
+
+
+def test_hardening_exposes_only_authenticated_existence_rpc_with_auth_guard() -> None:
+    hardening = _read_hardening()
+
+    assert "create function public.organization_exists(target_organization_id uuid)" in hardening
+    assert "security definer" in hardening
+    assert "set search_path = ''" in hardening
+    assert "if (select auth.uid()) is null then" in hardening
+    assert "revoke all on function public.organization_exists(uuid) from public" in hardening
+    assert (
+        "grant execute on function public.organization_exists(uuid) to authenticated" in hardening
+    )
