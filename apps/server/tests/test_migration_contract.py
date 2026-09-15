@@ -4,15 +4,17 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 SCHEMA_PATH = PROJECT_ROOT / "migrations" / "001_auth_entitlements.sql"
 SEED_PATH = PROJECT_ROOT / "migrations" / "002_seed_entitlements.sql"
-_SUBSCRIPTION_POLICY_PATTERN = re.compile(
-    r'create\s+policy\s+(?:"(?P<quoted_name>(?:[^"]|"")+)"|'
-    r"(?P<unquoted_name>[a-z_][a-z0-9_$]*))\s+"
-    r"on\s+public\.subscriptions\s+"
-    r"(?:as\s+(?:permissive|restrictive)\s+)?"
-    r"(?:for\s+(?P<action>all|select|insert|update|delete)\s+)?"
-    r"(?:to\s+(?P<role>[\s\S]+?)\s+)?"
-    r"(?=using\b|with\s+check\b|;)",
-    re.IGNORECASE | re.DOTALL,
+_SUBSCRIPTION_POLICY_STATEMENT_PATTERN = re.compile(
+    r"\bcreate\s+policy\b(?:(?!;)[\s\S])*?\bon\s+public\.subscriptions\b"
+    r"(?:(?!;)[\s\S])*?;",
+    re.IGNORECASE,
+)
+_INTENDED_SUBSCRIPTION_POLICY_PATTERN = re.compile(
+    r'create policy (?:"subscriptions_select_member"|subscriptions_select_member) '
+    r"on public\.subscriptions (?:as permissive )?for select to authenticated "
+    r"using \(\(select private\.has_organization_role\(organization_id, "
+    r"array\['owner', 'admin', 'member'\]::text\[\]\)\)\);",
+    re.IGNORECASE,
 )
 
 
@@ -24,14 +26,10 @@ def _read_seed() -> str:
     return SEED_PATH.read_text(encoding="utf-8").lower()
 
 
-def _subscription_policy_declarations(schema: str) -> list[tuple[str, str, str]]:
+def _subscription_policy_statements(schema: str) -> list[str]:
     return [
-        (
-            match.group("quoted_name") or match.group("unquoted_name"),
-            match.group("action") or "all",
-            re.sub(r"\s+", " ", match.group("role").strip()) if match.group("role") else "public",
-        )
-        for match in _SUBSCRIPTION_POLICY_PATTERN.finditer(schema)
+        re.sub(r"\s+", " ", match.group()).strip()
+        for match in _SUBSCRIPTION_POLICY_STATEMENT_PATTERN.finditer(schema)
     ]
 
 
@@ -112,9 +110,10 @@ def test_schema_reserves_subscription_mutation_for_the_trusted_server_path() -> 
 
 def test_schema_rejects_all_subscription_policy_mutation_variants() -> None:
     schema = _read_schema()
-    expected_policy = [("subscriptions_select_member", "select", "authenticated")]
+    policy_statements = _subscription_policy_statements(schema)
 
-    assert _subscription_policy_declarations(schema) == expected_policy
+    assert len(policy_statements) == 1
+    assert _INTENDED_SUBSCRIPTION_POLICY_PATTERN.fullmatch(policy_statements[0])
 
     for forbidden_policy in (
         (
@@ -133,8 +132,10 @@ def test_schema_rejects_all_subscription_policy_mutation_variants() -> None:
             "create policy subscriptions_all on public.subscriptions "
             "as permissive for all to authenticated using (true);"
         ),
+        "create policy subscriptions_all on public.subscriptions;",
+        "create policy subscriptions_all on public.subscriptions for all to public;",
     ):
-        assert _subscription_policy_declarations(f"{schema}\n{forbidden_policy}") != expected_policy
+        assert len(_subscription_policy_statements(f"{schema}\n{forbidden_policy}")) == 2
 
 
 def test_seed_defines_required_plans_and_feature_codes() -> None:
