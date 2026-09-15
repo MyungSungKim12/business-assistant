@@ -94,6 +94,31 @@ $$;
 revoke all on function private.has_organization_role(uuid, text[]) from public;
 grant execute on function private.has_organization_role(uuid, text[]) to authenticated;
 
+create function private.bootstrap_organization_owner()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+    if (select auth.uid()) is null then
+        raise exception 'organization creator must be authenticated';
+    end if;
+
+    insert into public.memberships (organization_id, user_id, role)
+    values (new.id, (select auth.uid()), 'owner');
+
+    return new;
+end;
+$$;
+
+revoke all on function private.bootstrap_organization_owner() from public;
+
+create trigger organizations_create_owner_membership
+after insert on public.organizations
+for each row
+execute function private.bootstrap_organization_owner();
+
 alter table public.profiles enable row level security;
 alter table public.organizations enable row level security;
 alter table public.memberships enable row level security;

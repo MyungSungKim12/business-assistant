@@ -71,6 +71,15 @@ def test_schema_enables_rls_and_uses_membership_based_policies() -> None:
     assert "'owner', 'admin'" in schema
 
 
+def test_schema_bootstraps_the_creator_as_the_first_organization_owner() -> None:
+    schema = _read_schema()
+
+    assert "create function private.bootstrap_organization_owner" in schema
+    assert "after insert on public.organizations" in schema
+    assert "execute function private.bootstrap_organization_owner()" in schema
+    assert "values (new.id, (select auth.uid()), 'owner')" in schema
+
+
 def test_seed_defines_required_plans_and_feature_codes() -> None:
     seed = _read_seed()
 
