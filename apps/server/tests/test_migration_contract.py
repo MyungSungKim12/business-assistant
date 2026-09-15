@@ -1,0 +1,88 @@
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+SCHEMA_PATH = PROJECT_ROOT / "migrations" / "001_auth_entitlements.sql"
+SEED_PATH = PROJECT_ROOT / "migrations" / "002_seed_entitlements.sql"
+
+
+def _read_schema() -> str:
+    return SCHEMA_PATH.read_text(encoding="utf-8").lower()
+
+
+def _read_seed() -> str:
+    return SEED_PATH.read_text(encoding="utf-8").lower()
+
+
+def test_schema_defines_auth_and_entitlement_tables_with_foreign_keys() -> None:
+    schema = _read_schema()
+
+    for table_name in (
+        "profiles",
+        "organizations",
+        "memberships",
+        "features",
+        "plans",
+        "plan_features",
+        "subscriptions",
+    ):
+        assert f"create table public.{table_name}" in schema
+
+    for foreign_key in (
+        "references auth.users(id)",
+        "references public.organizations(id)",
+        "references public.plans(id)",
+        "references public.features(code)",
+    ):
+        assert foreign_key in schema
+
+
+def test_schema_enforces_membership_uniqueness_and_indexes_foreign_keys() -> None:
+    schema = _read_schema()
+
+    assert "unique (organization_id, user_id)" in schema
+    for index_name in (
+        "idx_memberships_organization_id",
+        "idx_memberships_user_id",
+        "idx_plan_features_plan_id",
+        "idx_plan_features_feature_code",
+        "idx_subscriptions_organization_id",
+        "idx_subscriptions_plan_id",
+        "idx_subscriptions_active_lookup",
+    ):
+        assert f"create index {index_name}" in schema
+
+
+def test_schema_enables_rls_and_uses_membership_based_policies() -> None:
+    schema = _read_schema()
+
+    for table_name in (
+        "profiles",
+        "organizations",
+        "memberships",
+        "features",
+        "plans",
+        "plan_features",
+        "subscriptions",
+    ):
+        assert f"alter table public.{table_name} enable row level security" in schema
+
+    assert "to authenticated" in schema
+    assert "(select auth.uid())" in schema
+    assert "'owner', 'admin'" in schema
+
+
+def test_seed_defines_required_plans_and_feature_codes() -> None:
+    seed = _read_seed()
+
+    for plan_code in ("basic", "standard", "pro"):
+        assert f"'{plan_code}'" in seed
+    for feature_code in (
+        "dashboard.basic",
+        "crm.basic",
+        "document.template",
+        "data.basic",
+        "reports.basic",
+        "automation.custom",
+        "ai.summary",
+    ):
+        assert f"'{feature_code}'" in seed
