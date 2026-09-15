@@ -5,11 +5,14 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 SCHEMA_PATH = PROJECT_ROOT / "migrations" / "001_auth_entitlements.sql"
 SEED_PATH = PROJECT_ROOT / "migrations" / "002_seed_entitlements.sql"
 _SUBSCRIPTION_POLICY_PATTERN = re.compile(
-    r'create\s+policy\s+"(?P<name>[^"]+)"\s+'
+    r'create\s+policy\s+(?:"(?P<quoted_name>(?:[^"]|"")+)"|'
+    r"(?P<unquoted_name>[a-z_][a-z0-9_$]*))\s+"
     r"on\s+public\.subscriptions\s+"
+    r"(?:as\s+(?:permissive|restrictive)\s+)?"
     r"(?:for\s+(?P<action>all|select|insert|update|delete)\s+)?"
-    r"(?:to\s+(?P<role>[a-z_]+)\s+)?",
-    re.IGNORECASE,
+    r"(?:to\s+(?P<role>[\s\S]+?)\s+)?"
+    r"(?=using\b|with\s+check\b|;)",
+    re.IGNORECASE | re.DOTALL,
 )
 
 
@@ -24,9 +27,9 @@ def _read_seed() -> str:
 def _subscription_policy_declarations(schema: str) -> list[tuple[str, str, str]]:
     return [
         (
-            match.group("name"),
+            match.group("quoted_name") or match.group("unquoted_name"),
             match.group("action") or "all",
-            match.group("role") or "public",
+            re.sub(r"\s+", " ", match.group("role").strip()) if match.group("role") else "public",
         )
         for match in _SUBSCRIPTION_POLICY_PATTERN.finditer(schema)
     ]
@@ -125,6 +128,10 @@ def test_schema_rejects_all_subscription_policy_mutation_variants() -> None:
         (
             'create policy "subscriptions_public" on public.subscriptions '
             "for select to public using (true);"
+        ),
+        (
+            "create policy subscriptions_all on public.subscriptions "
+            "as permissive for all to authenticated using (true);"
         ),
     ):
         assert _subscription_policy_declarations(f"{schema}\n{forbidden_policy}") != expected_policy
