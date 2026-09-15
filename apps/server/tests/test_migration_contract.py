@@ -80,6 +80,14 @@ def test_schema_bootstraps_the_creator_as_the_first_organization_owner() -> None
     assert "values (new.id, (select auth.uid()), 'owner')" in schema
 
 
+def test_schema_reserves_subscription_mutation_for_the_trusted_server_path() -> None:
+    schema = _read_schema()
+
+    for action in ("insert", "update", "delete"):
+        assert f"on public.subscriptions\nfor {action}\nto authenticated" not in schema
+    assert "subscription mutations are reserved for the trusted server/platform path" in schema
+
+
 def test_seed_defines_required_plans_and_feature_codes() -> None:
     seed = _read_seed()
 

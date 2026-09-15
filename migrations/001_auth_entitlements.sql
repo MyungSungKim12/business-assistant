@@ -247,23 +247,6 @@ for select
 to authenticated
 using ((select private.has_organization_role(organization_id, array['owner', 'admin', 'member']::text[])));
 
-create policy "subscriptions_insert_manager"
-on public.subscriptions
-for insert
-to authenticated
-with check ((select private.has_organization_role(organization_id, array['owner', 'admin']::text[])));
-
-create policy "subscriptions_update_manager"
-on public.subscriptions
-for update
-to authenticated
-using ((select private.has_organization_role(organization_id, array['owner', 'admin']::text[])))
-with check ((select private.has_organization_role(organization_id, array['owner', 'admin']::text[])));
-
-create policy "subscriptions_delete_owner"
-on public.subscriptions
-for delete
-to authenticated
-using ((select private.has_organization_role(organization_id, array['owner']::text[])));
+-- Subscription mutations are reserved for the trusted server/platform path.
 
 commit;
