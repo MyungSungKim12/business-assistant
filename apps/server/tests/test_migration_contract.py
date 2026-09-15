@@ -1,8 +1,16 @@
+import re
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 SCHEMA_PATH = PROJECT_ROOT / "migrations" / "001_auth_entitlements.sql"
 SEED_PATH = PROJECT_ROOT / "migrations" / "002_seed_entitlements.sql"
+_SUBSCRIPTION_POLICY_PATTERN = re.compile(
+    r'create\s+policy\s+"(?P<name>[^"]+)"\s+'
+    r"on\s+public\.subscriptions\s+"
+    r"(?:for\s+(?P<action>all|select|insert|update|delete)\s+)?"
+    r"(?:to\s+(?P<role>[a-z_]+)\s+)?",
+    re.IGNORECASE,
+)
 
 
 def _read_schema() -> str:
@@ -11,6 +19,17 @@ def _read_schema() -> str:
 
 def _read_seed() -> str:
     return SEED_PATH.read_text(encoding="utf-8").lower()
+
+
+def _subscription_policy_declarations(schema: str) -> list[tuple[str, str, str]]:
+    return [
+        (
+            match.group("name"),
+            match.group("action") or "all",
+            match.group("role") or "public",
+        )
+        for match in _SUBSCRIPTION_POLICY_PATTERN.finditer(schema)
+    ]
 
 
 def test_schema_defines_auth_and_entitlement_tables_with_foreign_keys() -> None:
@@ -86,6 +105,29 @@ def test_schema_reserves_subscription_mutation_for_the_trusted_server_path() -> 
     for action in ("insert", "update", "delete"):
         assert f"on public.subscriptions\nfor {action}\nto authenticated" not in schema
     assert "subscription mutations are reserved for the trusted server/platform path" in schema
+
+
+def test_schema_rejects_all_subscription_policy_mutation_variants() -> None:
+    schema = _read_schema()
+    expected_policy = [("subscriptions_select_member", "select", "authenticated")]
+
+    assert _subscription_policy_declarations(schema) == expected_policy
+
+    for forbidden_policy in (
+        (
+            'create policy "subscriptions_all" on public.subscriptions '
+            "for all to authenticated using (true);"
+        ),
+        (
+            'create policy "subscriptions_insert" on public.subscriptions '
+            "for insert to authenticated with check (true);"
+        ),
+        (
+            'create policy "subscriptions_public" on public.subscriptions '
+            "for select to public using (true);"
+        ),
+    ):
+        assert _subscription_policy_declarations(f"{schema}\n{forbidden_policy}") != expected_policy
 
 
 def test_seed_defines_required_plans_and_feature_codes() -> None:
