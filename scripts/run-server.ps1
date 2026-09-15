@@ -16,7 +16,7 @@ if ($null -ne $uvCommand) {
     throw "uv를 찾을 수 없습니다. C:\\Users\\<사용자>\\.local\\bin\\uv.exe에 설치했는지 확인하거나 https://docs.astral.sh/uv/getting-started/installation/ 안내를 따르세요."
 }
 
-& $uv run python -m business_assistant_server
+& $uv run --all-packages python -m business_assistant_server
 if ($LASTEXITCODE -ne 0) {
     throw "서버 실행에 실패했습니다."
 }
