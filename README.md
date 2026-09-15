@@ -118,18 +118,16 @@ ai.summary
 BASIC
 ├─ dashboard.basic
 ├─ crm.basic
-└─ task.personal
+└─ document.template
 
 STANDARD
 ├─ BASIC의 모든 기능
-├─ document.basic
-├─ data.import
-└─ finance.basic
+├─ data.basic
+└─ reports.basic
 
 PRO
 ├─ STANDARD의 모든 기능
-├─ report.custom
-├─ automation.basic
+├─ automation.custom
 └─ ai.summary
 ```
 
@@ -174,12 +172,12 @@ business-assistant/
 
 ### 1단계 — 프로젝트 기반
 
-- [ ] uv와 Python 3.13 개발환경
-- [ ] 모노레포 및 공통 설정
-- [ ] PySide6 최소 실행 화면
-- [ ] FastAPI 상태 확인 API
-- [ ] 테스트, 린트, 타입 검사
-- [ ] 개발 및 Git 문서
+- [x] uv와 Python 3.13 개발환경
+- [x] 모노레포 및 공통 설정
+- [x] PySide6 최소 실행 화면
+- [x] FastAPI 상태 확인 API
+- [x] 테스트, 린트, 타입 검사
+- [x] 개발 및 Git 문서
 
 ### 2단계 — 사용자와 조직
 
