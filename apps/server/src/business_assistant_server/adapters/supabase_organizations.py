@@ -74,7 +74,8 @@ class SupabaseOrganizationRepository:
         self._client = client
 
     async def create_organization(
-        self, user_id: UUID,
+        self,
+        user_id: UUID,
         name: str,
         slug: str,
     ) -> OrganizationSummary:
@@ -215,9 +216,7 @@ class SupabaseOrganizationRepository:
             raise RepositoryUnavailableError()
         return payload
 
-    async def _request_value(
-        self, method: str, resource: str, *, json: dict[str, str]
-    ) -> object:
+    async def _request_value(self, method: str, resource: str, *, json: dict[str, str]) -> object:
         request_headers = {
             "apikey": self._publishable_key,
             "Authorization": f"Bearer {self._access_token}",
