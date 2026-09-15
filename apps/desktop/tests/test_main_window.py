@@ -1,4 +1,5 @@
 from business_assistant_common.entitlements import EntitlementSet
+from business_assistant_desktop.app import create_main_window
 from business_assistant_desktop.main_window import MainWindow
 from PySide6.QtCore import Qt
 
@@ -31,4 +32,13 @@ def test_main_window_enables_entitled_protected_menu_without_prepared_suffix(qtb
     crm_item = window.navigation_menu.item(1)
 
     assert crm_item.text() == "고객·거래처"
+    assert crm_item.flags() & Qt.ItemFlag.ItemIsEnabled
+
+
+def test_application_window_factory_accepts_server_entitlements(qtbot) -> None:  # type: ignore[no-untyped-def]
+    window = create_main_window(EntitlementSet(frozenset({"crm.basic"})))
+    qtbot.addWidget(window)
+
+    crm_item = window.navigation_menu.item(1)
+
     assert crm_item.flags() & Qt.ItemFlag.ItemIsEnabled
