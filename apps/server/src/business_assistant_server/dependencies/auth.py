@@ -23,6 +23,7 @@ class AuthAdapter(AuthPort, Protocol):
 
     async def refresh(self, refresh_token: str) -> AuthSession: ...
 
+
 bearer_scheme = HTTPBearer(auto_error=False)
 
 
