@@ -27,6 +27,6 @@ function Invoke-Uv {
 
 Invoke-Uv run ruff check .
 Invoke-Uv run ruff format --check .
-Invoke-Uv run mypy apps/server/src apps/desktop/src packages/common/src
+Invoke-Uv run python -m mypy apps/server/src apps/desktop/src packages/common/src
 $env:QT_QPA_PLATFORM = "offscreen"
-Invoke-Uv run pytest
+Invoke-Uv run python -m pytest
