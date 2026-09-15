@@ -47,6 +47,9 @@ Copy-Item .env.example .env
 ```
 
 `APP_ENVIRONMENT`와 `APP_API_BASE_URL`은 로컬 예시 값입니다.
+데스크톱은 시작할 때 `.env`를 명시적으로 읽되 현재 셸에 설정된 값을 덮어쓰지 않으며,
+`APP_API_BASE_URL`만 FastAPI 연결 주소로 사용합니다. 이전 `BUSINESS_ASSISTANT_API_URL`은
+호환성용 대체값일 뿐 `APP_API_BASE_URL`이 항상 우선합니다. 데스크톱은 `.env`의 Supabase·서비스 키·데이터베이스 값을 읽거나 출력하지 않습니다.
 `APP_SUPABASE_URL`과 `APP_SUPABASE_PUBLISHABLE_KEY`는 Supabase Auth 클라이언트가
 사용하는 설정입니다. publishable key는 공개 클라이언트 흐름에만 사용할 수 있고 서비스 키를
 대신할 수 없습니다. `APP_SUPABASE_SERVICE_KEY`와 `APP_DATABASE_URL`은 서버 전용

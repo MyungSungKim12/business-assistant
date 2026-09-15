@@ -5,6 +5,7 @@ from collections.abc import Sequence
 
 import httpx
 from business_assistant_common.entitlements import EntitlementSet
+from dotenv import load_dotenv
 from PySide6.QtWidgets import QApplication
 
 from business_assistant_desktop.api_client import ApiClient
@@ -45,9 +46,10 @@ class DesktopShell:
 
 def create_desktop_shell_from_environment() -> DesktopShell:
     """Create the login shell from the FastAPI URL supplied by the environment."""
-    api_url = os.environ.get("BUSINESS_ASSISTANT_API_URL")
+    load_dotenv(override=False)
+    api_url = os.environ.get("APP_API_BASE_URL") or os.environ.get("BUSINESS_ASSISTANT_API_URL")
     if not api_url:
         raise RuntimeError(
-            "BUSINESS_ASSISTANT_API_URL is required; set it to the Business Assistant API URL."
+            "APP_API_BASE_URL is required; set it to the Business Assistant API URL."
         )
     return DesktopShell(ApiClient(api_url, httpx.Client(timeout=10.0)))

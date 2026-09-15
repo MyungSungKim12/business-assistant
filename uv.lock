@@ -74,6 +74,7 @@ dependencies = [
     { name = "business-assistant-common" },
     { name = "httpx" },
     { name = "pyside6" },
+    { name = "python-dotenv" },
 ]
 
 [package.metadata]
@@ -81,6 +82,7 @@ requires-dist = [
     { name = "business-assistant-common", editable = "packages/common" },
     { name = "httpx", specifier = ">=0.28,<1" },
     { name = "pyside6", specifier = ">=6.8,<7" },
+    { name = "python-dotenv", specifier = ">=1.0,<2" },
 ]
 
 [[package]]
