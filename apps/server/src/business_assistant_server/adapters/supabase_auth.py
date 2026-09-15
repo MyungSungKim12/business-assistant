@@ -63,7 +63,7 @@ class SupabaseAuthAdapter:
         if self._settings.supabase_url is None or self._settings.supabase_publishable_key is None:
             raise AuthenticationConfigurationError()
         try:
-            from supabase import create_client  # type: ignore[import-not-found]
+            from supabase import create_client
         except ImportError as error:
             raise AuthenticationConfigurationError() from error
         self._client = create_client(
