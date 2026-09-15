@@ -4,6 +4,13 @@ from typing import Protocol, runtime_checkable
 from uuid import UUID
 
 
+class RepositoryUnavailableError(Exception):
+    """The organization repository cannot safely complete a request."""
+
+    def __init__(self) -> None:
+        super().__init__("Organization service unavailable")
+
+
 @dataclass(frozen=True, slots=True)
 class OrganizationSummary:
     id: UUID

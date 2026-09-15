@@ -11,6 +11,7 @@ from business_assistant_server.domain.organizations import OrganizationService
 from business_assistant_server.ports.repositories import (
     OrganizationRepository,
     OrganizationSummary,
+    RepositoryUnavailableError,
 )
 
 router = APIRouter()
@@ -47,9 +48,15 @@ async def create_organization(
     current_user: Annotated[AuthUser, Depends(get_current_user)],
     repository: Annotated[OrganizationRepository, Depends(get_organization_repository)],
 ) -> OrganizationResponseModel:
-    organization = await OrganizationService(repository).create_organization(
-        current_user.user_id, request.name, request.slug
-    )
+    try:
+        organization = await OrganizationService(repository).create_organization(
+            current_user.user_id, request.name, request.slug
+        )
+    except RepositoryUnavailableError:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Organization service unavailable",
+        ) from None
     return _organization_response(organization)
 
 
@@ -58,7 +65,13 @@ async def list_organizations(
     current_user: Annotated[AuthUser, Depends(get_current_user)],
     repository: Annotated[OrganizationRepository, Depends(get_organization_repository)],
 ) -> list[OrganizationResponseModel]:
-    organizations = await OrganizationService(repository).list_for_user(current_user.user_id)
+    try:
+        organizations = await OrganizationService(repository).list_for_user(current_user.user_id)
+    except RepositoryUnavailableError:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Organization service unavailable",
+        ) from None
     return [_organization_response(organization) for organization in organizations]
 
 
@@ -76,4 +89,9 @@ async def list_members(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error)) from None
     except PermissionError as error:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(error)) from None
+    except RepositoryUnavailableError:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Organization service unavailable",
+        ) from None
     return [MemberResponseModel(user_id=member.user_id, role=member.role) for member in members]
