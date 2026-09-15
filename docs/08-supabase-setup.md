@@ -86,3 +86,22 @@ powershell -ExecutionPolicy Bypass -File scripts/run-desktop.ps1
 
 `APP_SUPABASE_URL` 또는 `APP_SUPABASE_PUBLISHABLE_KEY`가 비어 있으면 인증 API는
 설정 오류를 반환합니다. 기본 테스트는 외부 Supabase 자격 증명 없이도 실행할 수 있습니다.
+
+## 5 이메일 확인 회원가입 흐름
+
+호스팅된 Supabase 프로젝트는 일반적으로 **Confirm email**을 기본으로 켭니다. 이 설정에서
+`POST /api/v1/auth/signup`이 성공하면 서버는 access token이나 refresh token 없이 다음 응답을
+반환합니다.
+
+```json
+{"email_confirmation_required": true}
+```
+
+데스크톱 앱은 사용자가 가입할 때 쓴 메일함에서 Supabase 확인 링크를 열도록 안내해야 합니다.
+확인 전에는 로그인 세션이 발급되지 않으므로 보호된 API를 호출하지 않습니다. 확인을 마친 뒤
+일반 로그인 API를 호출하면 세션 응답을 받습니다. Confirm email을 끈 개발 환경에서는 회원가입
+응답에 `email_confirmation_required: false`와 세션 토큰, 사용자 요약이 함께 옵니다.
+
+Supabase Dashboard의 Auth Providers에서 Confirm email 설정과 `SITE_URL` 및 허용된 redirect URL을
+개발·운영 환경별로 확인하세요. 확인 메일 발송에는 SMTP 구성이 필요하며, 운영 환경에는 신뢰할 수
+있는 SMTP 공급자를 사용합니다. 확인 링크·토큰·서비스 키를 로그나 오류 화면에 표시하지 마세요.

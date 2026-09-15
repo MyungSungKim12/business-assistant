@@ -1,6 +1,6 @@
 from typing import Annotated, Protocol
 
-from business_assistant_common.auth import AuthSession, AuthUser
+from business_assistant_common.auth import AuthSession, AuthSignUpResult, AuthUser
 from fastapi import Depends, HTTPException, Security, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
@@ -17,7 +17,7 @@ class AuthenticationConfigurationError(Exception):
 
 
 class AuthAdapter(AuthPort, Protocol):
-    async def sign_up(self, email: str, password: str, display_name: str) -> AuthSession: ...
+    async def sign_up(self, email: str, password: str, display_name: str) -> AuthSignUpResult: ...
 
     async def sign_in(self, email: str, password: str) -> AuthSession: ...
 

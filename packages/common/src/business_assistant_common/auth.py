@@ -14,3 +14,11 @@ class AuthSession:
     user: AuthUser
     access_token: str
     refresh_token: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class AuthSignUpResult:
+    """The result of a signup, with or without an immediately usable session."""
+
+    session: AuthSession | None
+    email_confirmation_required: bool

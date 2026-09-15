@@ -2,7 +2,7 @@ import asyncio
 from typing import Any
 from uuid import UUID
 
-from business_assistant_common.auth import AuthSession, AuthUser
+from business_assistant_common.auth import AuthSession, AuthSignUpResult, AuthUser
 
 from business_assistant_server.config import Settings
 from business_assistant_server.dependencies.auth import (
@@ -18,7 +18,7 @@ class SupabaseAuthAdapter:
         self._settings = settings
         self._client: Any | None = None
 
-    async def sign_up(self, email: str, password: str, display_name: str) -> AuthSession:
+    async def sign_up(self, email: str, password: str, display_name: str) -> AuthSignUpResult:
         response = await self._call_auth(
             "sign_up",
             {
@@ -27,7 +27,7 @@ class SupabaseAuthAdapter:
                 "options": {"data": {"display_name": display_name}},
             },
         )
-        return self._to_session(response)
+        return self._to_sign_up_result(response)
 
     async def sign_in(self, email: str, password: str) -> AuthSession:
         response = await self._call_auth(
@@ -70,6 +70,18 @@ class SupabaseAuthAdapter:
             str(self._settings.supabase_url), self._settings.supabase_publishable_key
         )
         return self._client
+
+    @staticmethod
+    def _to_sign_up_result(response: object) -> AuthSignUpResult:
+        session = getattr(response, "session", None)
+        if session is None:
+            if getattr(response, "user", None) is None:
+                raise AuthenticationError()
+            return AuthSignUpResult(session=None, email_confirmation_required=True)
+        return AuthSignUpResult(
+            session=SupabaseAuthAdapter._to_session(response),
+            email_confirmation_required=False,
+        )
 
     @staticmethod
     def _to_session(response: object) -> AuthSession:

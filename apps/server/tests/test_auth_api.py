@@ -1,8 +1,10 @@
 import asyncio
+from types import SimpleNamespace
 from uuid import UUID
 
 import httpx
-from business_assistant_common.auth import AuthSession, AuthUser
+from business_assistant_common.auth import AuthSession, AuthSignUpResult, AuthUser
+from business_assistant_server.adapters.supabase_auth import SupabaseAuthAdapter
 from business_assistant_server.dependencies.auth import AuthenticationError, get_auth_adapter
 from business_assistant_server.main import create_app
 
@@ -11,11 +13,16 @@ SESSION = AuthSession(USER, "access-token", "refresh-token")
 
 
 class FakeAuthAdapter:
-    def __init__(self, *, reject_sign_in: bool = False) -> None:
+    def __init__(
+        self, *, reject_sign_in: bool = False, email_confirmation_required: bool = False
+    ) -> None:
         self.reject_sign_in = reject_sign_in
+        self.email_confirmation_required = email_confirmation_required
 
-    async def sign_up(self, email: str, password: str, display_name: str) -> AuthSession:
-        return SESSION
+    async def sign_up(self, email: str, password: str, display_name: str) -> AuthSignUpResult:
+        if self.email_confirmation_required:
+            return AuthSignUpResult(session=None, email_confirmation_required=True)
+        return AuthSignUpResult(session=SESSION, email_confirmation_required=False)
 
     async def sign_in(self, email: str, password: str) -> AuthSession:
         if self.reject_sign_in:
@@ -91,6 +98,29 @@ def test_signup_returns_session_from_auth_adapter() -> None:
 
     assert response.status_code == 200
     assert response.json()["access_token"] == "access-token"
+    assert response.json()["email_confirmation_required"] is False
+
+
+def test_signup_returns_email_confirmation_requirement_without_tokens() -> None:
+    response = _request(
+        "POST",
+        "/api/v1/auth/signup",
+        adapter=FakeAuthAdapter(email_confirmation_required=True),
+        json={"email": "hana@example.com", "password": "correct-password", "display_name": "Hana"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"email_confirmation_required": True}
+
+
+def test_supabase_adapter_maps_sessionless_signup_to_email_confirmation() -> None:
+    response = SimpleNamespace(
+        user=SimpleNamespace(id=str(USER.user_id), email=USER.email), session=None
+    )
+
+    result = SupabaseAuthAdapter._to_sign_up_result(response)
+
+    assert result == AuthSignUpResult(session=None, email_confirmation_required=True)
 
 
 def test_refresh_returns_replaced_session_from_auth_adapter() -> None:
