@@ -12,4 +12,5 @@ class Settings(BaseSettings):
 
     environment: str = "development"
     supabase_url: AnyHttpUrl | None = None
+    supabase_publishable_key: str | None = None
     supabase_service_key: str | None = None

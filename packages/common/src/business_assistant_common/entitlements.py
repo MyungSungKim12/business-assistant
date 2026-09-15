@@ -10,3 +10,6 @@ class EntitlementSet:
 
     def has(self, feature_code: str) -> bool:
         return feature_code in self.features
+
+    def serialize(self) -> list[str]:
+        return sorted(self.features)

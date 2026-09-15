@@ -46,7 +46,17 @@ powershell -ExecutionPolicy Bypass -File scripts/run-desktop.ps1
 Copy-Item .env.example .env
 ```
 
-`APP_ENVIRONMENT`와 `APP_API_BASE_URL`은 로컬 예시 값입니다. `APP_SUPABASE_URL`과 `APP_SUPABASE_PUBLISHABLE_KEY`는 나중에 공개 클라이언트 흐름이 필요할 때만 사용합니다. `APP_SUPABASE_SERVICE_KEY`와 `APP_DATABASE_URL`은 서버 전용 비밀값으로, 데스크톱 또는 Git에 넣지 마세요. `.env`는 이미 Git에서 제외됩니다.
+`APP_ENVIRONMENT`와 `APP_API_BASE_URL`은 로컬 예시 값입니다.
+`APP_SUPABASE_URL`과 `APP_SUPABASE_PUBLISHABLE_KEY`는 Supabase Auth 클라이언트가
+사용하는 설정입니다. publishable key는 공개 클라이언트 흐름에만 사용할 수 있고 서비스 키를
+대신할 수 없습니다. `APP_SUPABASE_SERVICE_KEY`와 `APP_DATABASE_URL`은 서버 전용
+비밀값으로, 데스크톱 앱, 배포 파일, 로그 또는 Git에 넣지 마세요. `.env`는 이미 Git에서
+제외되며, `.env 파일을 Git에 추가하지 마세요.`
+
+Supabase 프로젝트 생성, 키 확인, 마이그레이션 적용, 인증·권한 테스트 순서는
+[Supabase 인증·권한 설정](08-supabase-setup.md)을 따릅니다. RLS는 클라이언트 접근의
+조직 경계를 보조하므로, 서버 API도 모든 보호된 요청에서 토큰·조직 멤버십·기능 권한을
+검사해야 합니다.
 
 ## 자주 만나는 문제
 
