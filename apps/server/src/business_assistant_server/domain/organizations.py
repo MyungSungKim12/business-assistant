@@ -19,8 +19,7 @@ class OrganizationService:
         return await self._repository.list_organizations_for_user(user_id)
 
     async def list_members(self, user_id: UUID, organization_id: UUID) -> list[MemberSummary]:
-        organization = await self._repository.get_organization(organization_id)
-        if organization is None:
+        if not await self._repository.organization_exists(organization_id):
             raise LookupError("Organization not found")
         role = await self._repository.get_membership(user_id, organization_id)
         if role not in {"owner", "admin"}:

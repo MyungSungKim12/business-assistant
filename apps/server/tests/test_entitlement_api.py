@@ -73,6 +73,14 @@ class FakeRepository:
         return self.subscription
 
 
+class RlsFilteredRepository(FakeRepository):
+    async def get_organization(self, organization_id: UUID) -> OrganizationSummary | None:
+        return None
+
+    async def organization_exists(self, organization_id: UUID) -> bool:
+        return organization_id == self.organization.id
+
+
 def _request(
     method: str,
     path: str,
@@ -127,6 +135,18 @@ def test_non_member_cannot_view_entitlements() -> None:
 
     assert response.status_code == 403
     assert response.json() == {"detail": "Organization membership required"}
+
+
+def test_non_member_gets_403_for_members_of_existing_rls_hidden_organization() -> None:
+    response = _request(
+        "GET",
+        f"/api/v1/organizations/{ORGANIZATION_ID}/members",
+        repository=RlsFilteredRepository(),
+        token="member-token",
+    )
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": "Organization management permission required"}
 
 
 def test_entitlements_return_404_for_a_nonexistent_organization() -> None:

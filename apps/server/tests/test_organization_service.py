@@ -96,6 +96,20 @@ def test_entitlements_reject_a_user_who_is_not_an_organization_member() -> None:
         )
 
 
+def test_list_members_returns_403_for_an_existing_organization_hidden_by_member_rls() -> None:
+    class RlsFilteredRepository(FakeRepository):
+        async def get_organization(self, organization_id: UUID) -> object | None:
+            return None
+
+        async def organization_exists(self, organization_id: UUID) -> bool:
+            return True
+
+    repository = RlsFilteredRepository([], {}, {})
+
+    with pytest.raises(PermissionError, match="Organization management permission required"):
+        asyncio.run(OrganizationService(repository).list_members(OUTSIDER_ID, uuid4()))
+
+
 def test_entitlements_are_empty_when_the_organization_has_no_subscription() -> None:
     repository = FakeRepository([], {}, {})
     organization = asyncio.run(
