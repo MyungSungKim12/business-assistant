@@ -25,6 +25,14 @@ function Invoke-Uv {
     }
 }
 
+$trackedEnvironmentFile = & git ls-files -- .env
+if ($LASTEXITCODE -ne 0) {
+    throw "Git에서 .env 추적 여부를 확인할 수 없습니다."
+}
+if ($trackedEnvironmentFile) {
+    throw ".env는 비밀값을 포함할 수 있으므로 Git에 추가하면 안 됩니다. Git 인덱스에서 제거하세요."
+}
+
 Invoke-Uv run ruff check .
 Invoke-Uv run ruff format --check .
 Invoke-Uv run python -m mypy apps/server/src apps/desktop/src packages/common/src

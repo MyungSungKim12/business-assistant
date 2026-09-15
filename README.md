@@ -2,7 +2,7 @@
 
 업종에 관계없이 사용할 수 있는 **구독형 Python 데스크톱 업무 관리 프로그램**입니다. 공통 업무 기능을 먼저 제공하고, 이후 학원·미용실·부동산 등 업종별 기능을 모듈 형태로 확장합니다.
 
-> 현재 상태: 초기 골격 구현 완료
+> 현재 상태: Supabase Auth, 조직 역할, 구독 기능 권한의 기본 계약 구현 완료
 
 ## 빠른 시작
 
@@ -12,6 +12,10 @@ PowerShell에서 저장소 루트로 이동한 뒤 아래 명령을 실행하세
 powershell -ExecutionPolicy Bypass -File scripts/bootstrap.ps1
 powershell -ExecutionPolicy Bypass -File scripts/check.ps1
 ```
+
+Supabase 인증과 조직별 권한 API를 실행하려면 `.env.example`을 `.env`로 복사해
+프로젝트 URL과 publishable key를 입력한 뒤 마이그레이션을 적용하세요. 실제 키를 Git에
+추가하지 마세요. 전체 순서는 [Supabase 설정 안내](docs/08-supabase-setup.md)를 따릅니다.
 
 서버와 데스크톱 앱은 각각 별도 PowerShell 창에서 시작합니다.
 
@@ -181,17 +185,15 @@ business-assistant/
 
 ### 2단계 — 사용자와 조직
 
-- [ ] Supabase Auth 연결
-- [ ] 회원가입, 로그인, 세션 갱신
-- [ ] 사용자 프로필
-- [ ] 조직과 직원 역할
+- [x] Supabase Auth 연결
+- [x] 회원가입, 로그인, 세션 갱신 API
+- [x] 사용자 프로필·조직·직원 역할 스키마
 
 ### 3단계 — 구독과 권한
 
-- [ ] 상품 및 기능 데이터 모델
-- [ ] 구독 상태 관리
-- [ ] 기능 권한 계산 API
-- [ ] 권한에 따른 메뉴 활성화
+- [x] 상품 및 기능 데이터 모델
+- [x] 구독 상태와 기능 권한 계산 API
+- [x] 권한에 따른 메뉴 활성화
 - [ ] 등록 기기 제한
 
 ### 4단계 — 범용 업무 기능
@@ -221,7 +223,9 @@ business-assistant/
 
 ## 개발 상태
 
-초기 골격 구현이 완료되었습니다. Supabase 자격 증명이 없어도 기본 프로그램과 테스트를 실행할 수 있습니다. 다음 단계에서는 인증·조직, 구독·권한, 범용 업무 기능을 순서대로 구현합니다.
+Supabase 자격 증명이 없어도 기본 프로그램과 테스트를 실행할 수 있습니다. Supabase가
+설정되면 인증·조직·구독 권한 API를 함께 확인할 수 있습니다. 다음 단계에서는 등록 기기와
+범용 업무 기능을 순서대로 구현합니다.
 
 ## 문서
 
@@ -233,6 +237,7 @@ business-assistant/
 - [05. 개발 환경 안내](docs/05-development-guide.md)
 - [06. 구현 로드맵](docs/06-implementation-roadmap.md)
 - [07. Git 사용 안내](docs/07-git-guide.md)
+- [08. Supabase 인증·권한 설정](docs/08-supabase-setup.md)
 
 ## 라이선스
 
