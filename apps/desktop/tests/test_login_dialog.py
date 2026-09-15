@@ -75,6 +75,37 @@ def test_login_network_work_runs_off_the_ui_thread_and_restores_buttons(qtbot) -
     assert shell.login_dialog.signup_button.isEnabled()
 
 
+def test_close_is_ignored_until_an_inflight_worker_finishes(qtbot) -> None:  # type: ignore[no-untyped-def]
+    class BlockingApiClient(SuccessfulApiClient):
+        def __init__(self) -> None:
+            self.started = Event()
+            self.release = Event()
+
+        def login(self, email: str, password: str) -> Session:
+            self.started.set()
+            self.release.wait(timeout=1)
+            return SESSION
+
+    client = BlockingApiClient()
+    shell = DesktopShell(client)
+    qtbot.addWidget(shell.login_dialog)
+    shell.login_dialog.show()
+    shell.login_dialog.email_input.setText("hana@example.com")
+    shell.login_dialog.password_input.setText("correct-password")
+
+    qtbot.mouseClick(shell.login_dialog.login_button, Qt.MouseButton.LeftButton)
+    qtbot.waitUntil(client.started.is_set)
+    shell.login_dialog.close()
+
+    assert shell.login_dialog.isVisible()
+    assert not shell.login_dialog.login_button.isEnabled()
+
+    client.release.set()
+    qtbot.waitUntil(lambda: shell.login_dialog._thread is None)
+
+    assert shell.login_dialog.login_button.isEnabled()
+
+
 def test_signup_shows_explicit_email_confirmation_message(qtbot) -> None:  # type: ignore[no-untyped-def]
     class ConfirmationRequiredApiClient(SuccessfulApiClient):
         def sign_up(self, email: str, password: str, display_name: str) -> SignUpResult:

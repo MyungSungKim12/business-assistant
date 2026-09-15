@@ -7,6 +7,7 @@ from uuid import UUID
 import httpx
 from business_assistant_common.entitlements import EntitlementSet
 from PySide6.QtCore import QObject, QThread, Signal, Slot
+from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import (
     QDialog,
     QFormLayout,
@@ -102,6 +103,7 @@ class LoginDialog(QDialog):
         self._on_authenticated = on_authenticated
         self._thread: QThread | None = None
         self._worker: AuthenticationWorker | None = None
+        self._authentication_succeeded = False
         self.setWindowTitle("Business Assistant 로그인")
 
         self.email_input = QLineEdit()
@@ -155,14 +157,13 @@ class LoginDialog(QDialog):
         worker.failed.connect(self._show_request_error)
         worker.finished.connect(thread.quit)
         worker.finished.connect(worker.deleteLater)
-        thread.finished.connect(self._end_request)
-        thread.finished.connect(self._clear_worker)
+        thread.finished.connect(self._finish_request)
         thread.finished.connect(thread.deleteLater)
         thread.start()
 
     def _complete_authentication(self, entitlements: EntitlementSet) -> None:
         self._on_authenticated(entitlements)
-        self.accept()
+        self._authentication_succeeded = True
 
     def _show_confirmation_required(self) -> None:
         self.error_label.setText("이메일을 확인한 뒤 로그인해 주세요.")
@@ -179,11 +180,19 @@ class LoginDialog(QDialog):
         self.login_button.setEnabled(False)
         self.signup_button.setEnabled(False)
 
-    def _end_request(self) -> None:
+    def _finish_request(self) -> None:
         self.loading_label.clear()
         self.login_button.setEnabled(True)
         self.signup_button.setEnabled(True)
-
-    def _clear_worker(self) -> None:
         self._thread = None
         self._worker = None
+        if self._authentication_succeeded:
+            self._authentication_succeeded = False
+            self.accept()
+
+    def closeEvent(self, event: QCloseEvent) -> None:
+        """Keep the dialog alive until its worker has stopped."""
+        if self._thread is not None and self._thread.isRunning():
+            event.ignore()
+            return
+        super().closeEvent(event)
