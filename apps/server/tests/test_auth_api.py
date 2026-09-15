@@ -5,7 +5,12 @@ from uuid import UUID
 import httpx
 from business_assistant_common.auth import AuthSession, AuthSignUpResult, AuthUser
 from business_assistant_server.adapters.supabase_auth import SupabaseAuthAdapter
-from business_assistant_server.dependencies.auth import AuthenticationError, get_auth_adapter
+from business_assistant_server.config import Settings
+from business_assistant_server.dependencies.auth import (
+    AuthenticationError,
+    get_auth_adapter,
+    get_settings,
+)
 from business_assistant_server.main import create_app
 
 USER = AuthUser(UUID("12345678-1234-5678-1234-567812345678"), "hana@example.com", "Hana")
@@ -142,9 +147,18 @@ def test_me_requires_a_bearer_token() -> None:
     assert response.json() == {"detail": "Not authenticated"}
 
 
-def test_me_returns_503_when_supabase_is_not_configured() -> None:
+def test_me_returns_503_when_supabase_is_not_configured(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("APP_SUPABASE_URL", "https://example.supabase.co")
+    monkeypatch.setenv("APP_SUPABASE_PUBLISHABLE_KEY", "local-publishable-key")
+
     async def send() -> httpx.Response:
-        transport = httpx.ASGITransport(app=create_app(), raise_app_exceptions=False)
+        app = create_app()
+        app.dependency_overrides[get_settings] = lambda: Settings(
+            _env_file=None,
+            supabase_url=None,
+            supabase_publishable_key=None,
+        )
+        transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
         async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
             return await client.get("/api/v1/me", headers={"Authorization": "Bearer access-token"})
 
