@@ -5,6 +5,7 @@ from fastapi import Depends, HTTPException, Security, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from business_assistant_server.config import Settings
+from business_assistant_server.ports.auth import AuthPort
 
 
 class AuthenticationError(Exception):
@@ -15,15 +16,12 @@ class AuthenticationConfigurationError(Exception):
     """The server does not have the required provider configuration."""
 
 
-class AuthAdapter(Protocol):
+class AuthAdapter(AuthPort, Protocol):
     async def sign_up(self, email: str, password: str, display_name: str) -> AuthSession: ...
 
     async def sign_in(self, email: str, password: str) -> AuthSession: ...
 
     async def refresh(self, refresh_token: str) -> AuthSession: ...
-
-    async def verify_access_token(self, access_token: str) -> AuthUser: ...
-
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -50,6 +48,11 @@ async def get_current_user(
         )
     try:
         return await auth_adapter.verify_access_token(authorization.credentials)
+    except AuthenticationConfigurationError:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Authentication unavailable",
+        ) from None
     except AuthenticationError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

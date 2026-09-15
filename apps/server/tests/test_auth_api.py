@@ -112,6 +112,18 @@ def test_me_requires_a_bearer_token() -> None:
     assert response.json() == {"detail": "Not authenticated"}
 
 
+def test_me_returns_503_when_supabase_is_not_configured() -> None:
+    async def send() -> httpx.Response:
+        transport = httpx.ASGITransport(app=create_app(), raise_app_exceptions=False)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+            return await client.get("/api/v1/me", headers={"Authorization": "Bearer access-token"})
+
+    response = asyncio.run(send())
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "Authentication unavailable"}
+
+
 def test_me_returns_the_user_verified_by_the_fake_adapter() -> None:
     response = _request(
         "GET",
