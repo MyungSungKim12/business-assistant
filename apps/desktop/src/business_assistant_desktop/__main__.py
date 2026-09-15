@@ -2,16 +2,17 @@
 
 import sys
 
-from business_assistant_common.entitlements import EntitlementSet
-
-from business_assistant_desktop.app import create_application, create_main_window
+from business_assistant_desktop.app import create_application, create_desktop_shell_from_environment
 
 
 def main() -> None:
-    """Run the desktop shell with no protected features enabled."""
+    """Run the configured login shell."""
     application = create_application(sys.argv)
-    window = create_main_window(EntitlementSet(frozenset()))
-    window.show()
+    try:
+        shell = create_desktop_shell_from_environment()
+    except RuntimeError as error:
+        raise SystemExit(str(error)) from None
+    shell.login_dialog.show()
     sys.exit(application.exec())
 
 

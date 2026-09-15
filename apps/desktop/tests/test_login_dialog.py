@@ -1,3 +1,4 @@
+from threading import Event
 from uuid import UUID
 
 import httpx
@@ -5,7 +6,7 @@ from business_assistant_common.entitlements import EntitlementSet
 from business_assistant_desktop.api_client import Organization, SignUpResult
 from business_assistant_desktop.app import DesktopShell
 from business_assistant_desktop.session import Session
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QThread
 
 USER_ID = UUID("12345678-1234-5678-1234-567812345678")
 ORGANIZATION_ID = UUID("11111111-1111-1111-1111-111111111111")
@@ -35,9 +36,43 @@ def test_successful_login_transitions_to_an_entitled_main_window(qtbot) -> None:
 
     qtbot.mouseClick(shell.login_dialog.login_button, Qt.MouseButton.LeftButton)
 
+    qtbot.waitUntil(lambda: shell.main_window is not None)
+
     assert shell.main_window is not None
     assert shell.main_window.navigation_menu.item(1).flags() & Qt.ItemFlag.ItemIsEnabled
     assert not shell.login_dialog.isVisible()
+
+
+def test_login_network_work_runs_off_the_ui_thread_and_restores_buttons(qtbot) -> None:  # type: ignore[no-untyped-def]
+    class BlockingApiClient(SuccessfulApiClient):
+        def __init__(self) -> None:
+            self.started = Event()
+            self.release = Event()
+            self.login_thread: QThread | None = None
+
+        def login(self, email: str, password: str) -> Session:
+            self.login_thread = QThread.currentThread()
+            self.started.set()
+            self.release.wait(timeout=1)
+            return SESSION
+
+    client = BlockingApiClient()
+    shell = DesktopShell(client)
+    qtbot.addWidget(shell.login_dialog)
+    shell.login_dialog.email_input.setText("hana@example.com")
+    shell.login_dialog.password_input.setText("correct-password")
+
+    qtbot.mouseClick(shell.login_dialog.login_button, Qt.MouseButton.LeftButton)
+    qtbot.waitUntil(client.started.is_set)
+
+    assert not shell.login_dialog.login_button.isEnabled()
+    assert client.login_thread != shell.login_dialog.thread()
+
+    client.release.set()
+    qtbot.waitUntil(lambda: shell.main_window is not None)
+
+    assert shell.login_dialog.login_button.isEnabled()
+    assert shell.login_dialog.signup_button.isEnabled()
 
 
 def test_signup_shows_explicit_email_confirmation_message(qtbot) -> None:  # type: ignore[no-untyped-def]
@@ -51,6 +86,8 @@ def test_signup_shows_explicit_email_confirmation_message(qtbot) -> None:  # typ
     shell.login_dialog.password_input.setText("correct-password")
 
     qtbot.mouseClick(shell.login_dialog.signup_button, Qt.MouseButton.LeftButton)
+
+    qtbot.waitUntil(lambda: shell.login_dialog.error_label.text() != "")
 
     assert shell.login_dialog.error_label.text() == "이메일을 확인한 뒤 로그인해 주세요."
     assert shell.main_window is None
@@ -70,6 +107,8 @@ def test_login_shows_a_clear_server_error_without_transition(qtbot) -> None:  # 
 
     qtbot.mouseClick(shell.login_dialog.login_button, Qt.MouseButton.LeftButton)
 
+    qtbot.waitUntil(lambda: shell.login_dialog.error_label.text() != "")
+
     assert shell.login_dialog.error_label.text() == "서버 요청에 실패했습니다. 다시 시도해 주세요."
     assert shell.main_window is None
 
@@ -85,6 +124,8 @@ def test_login_without_an_organization_shows_a_next_step_message(qtbot) -> None:
     shell.login_dialog.password_input.setText("correct-password")
 
     qtbot.mouseClick(shell.login_dialog.login_button, Qt.MouseButton.LeftButton)
+
+    qtbot.waitUntil(lambda: shell.login_dialog.error_label.text() != "")
 
     assert (
         shell.login_dialog.error_label.text()

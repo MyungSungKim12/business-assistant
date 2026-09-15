@@ -1,10 +1,13 @@
 """Qt application creation helpers."""
 
+import os
 from collections.abc import Sequence
 
+import httpx
 from business_assistant_common.entitlements import EntitlementSet
 from PySide6.QtWidgets import QApplication
 
+from business_assistant_desktop.api_client import ApiClient
 from business_assistant_desktop.login_dialog import AuthenticationClient, LoginDialog
 from business_assistant_desktop.main_window import MainWindow
 
@@ -38,3 +41,13 @@ class DesktopShell:
     def _show_main_window(self, entitlements: EntitlementSet) -> None:
         self.main_window = create_main_window(entitlements)
         self.main_window.show()
+
+
+def create_desktop_shell_from_environment() -> DesktopShell:
+    """Create the login shell from the FastAPI URL supplied by the environment."""
+    api_url = os.environ.get("BUSINESS_ASSISTANT_API_URL")
+    if not api_url:
+        raise RuntimeError(
+            "BUSINESS_ASSISTANT_API_URL is required; set it to the Business Assistant API URL."
+        )
+    return DesktopShell(ApiClient(api_url, httpx.Client(timeout=10.0)))
