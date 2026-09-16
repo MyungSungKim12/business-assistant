@@ -7,6 +7,7 @@ SEED_PATH = PROJECT_ROOT / "migrations" / "002_seed_entitlements.sql"
 HARDENING_PATH = PROJECT_ROOT / "migrations" / "003_subscription_and_organization_hardening.sql"
 ADMIN_PATH = PROJECT_ROOT / "migrations" / "004_admin_subscription_rpc.sql"
 CRM_PATH = PROJECT_ROOT / "migrations" / "005_crm_customers.sql"
+TASKS_PATH = PROJECT_ROOT / "migrations" / "006_tasks.sql"
 _SUBSCRIPTION_POLICY_STATEMENT_PATTERN = re.compile(
     r"\bcreate\s+policy\b(?:(?!;)[\s\S])*?\bon\s+public\.subscriptions\b"
     r"(?:(?!;)[\s\S])*?;",
@@ -39,6 +40,10 @@ def _read_admin_migration() -> str:
 
 def _read_crm_migration() -> str:
     return CRM_PATH.read_text(encoding="utf-8").lower()
+
+
+def _read_tasks_migration() -> str:
+    return TASKS_PATH.read_text(encoding="utf-8").lower()
 
 
 def _subscription_policy_statements(schema: str) -> list[str]:
@@ -234,3 +239,15 @@ def test_crm_customers_uses_member_read_and_manager_mutation_rls() -> None:
     for action in ("insert", "update", "delete"):
         assert f'create policy "customers_{action}_manager"' in migration
     assert "array['owner', 'admin']::text[]" in migration
+
+
+def test_tasks_schema_and_rls_are_organization_scoped() -> None:
+    migration = _read_tasks_migration()
+    assert "create table public.tasks" in migration
+    assert "created_by uuid not null references auth.users(id)" in migration
+    assert "status text not null default 'open'" in migration
+    assert "priority text not null default 'normal'" in migration
+    assert "create index idx_tasks_organization_status" in migration
+    assert "alter table public.tasks enable row level security" in migration
+    assert 'create policy "tasks_select_member"' in migration
+    assert 'create policy "tasks_update_creator_or_manager"' in migration
