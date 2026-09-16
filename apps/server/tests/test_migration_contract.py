@@ -5,6 +5,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 SCHEMA_PATH = PROJECT_ROOT / "migrations" / "001_auth_entitlements.sql"
 SEED_PATH = PROJECT_ROOT / "migrations" / "002_seed_entitlements.sql"
 HARDENING_PATH = PROJECT_ROOT / "migrations" / "003_subscription_and_organization_hardening.sql"
+ADMIN_PATH = PROJECT_ROOT / "migrations" / "004_admin_subscription_rpc.sql"
 _SUBSCRIPTION_POLICY_STATEMENT_PATTERN = re.compile(
     r"\bcreate\s+policy\b(?:(?!;)[\s\S])*?\bon\s+public\.subscriptions\b"
     r"(?:(?!;)[\s\S])*?;",
@@ -29,6 +30,10 @@ def _read_seed() -> str:
 
 def _read_hardening() -> str:
     return HARDENING_PATH.read_text(encoding="utf-8").lower()
+
+
+def _read_admin_migration() -> str:
+    return ADMIN_PATH.read_text(encoding="utf-8").lower()
 
 
 def _subscription_policy_statements(schema: str) -> list[str]:
@@ -179,3 +184,19 @@ def test_hardening_exposes_only_authenticated_existence_rpc_with_auth_guard() ->
     assert (
         "grant execute on function public.organization_exists(uuid) to authenticated" in hardening
     )
+
+
+def test_admin_subscription_rpc_is_atomic_and_service_role_only() -> None:
+    migration = _read_admin_migration()
+
+    assert "create function public.replace_organization_subscription" in migration
+    assert "security definer" in migration
+    assert "set search_path = ''" in migration
+    assert "delete from public.subscriptions" in migration
+    assert "insert into public.subscriptions" in migration
+    assert "revoke all on function public.replace_organization_subscription" in migration
+    assert "from public" in migration
+    assert "from anon" in migration
+    assert "from authenticated" in migration
+    assert "grant execute on function public.replace_organization_subscription" in migration
+    assert "to service_role" in migration

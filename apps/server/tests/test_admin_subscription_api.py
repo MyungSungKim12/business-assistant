@@ -111,3 +111,14 @@ def test_admin_subscription_rejects_invalid_status() -> None:
     )
     response = _request("admin", settings, "unknown")
     assert response.status_code == 422
+
+
+def test_admin_subscription_normalizes_whitespace_plan_code() -> None:
+    settings = Settings(
+        _env_file=None,
+        supabase_url="https://project.supabase.co",
+        supabase_service_key="server-secret",
+        platform_admin_user_ids=frozenset({ADMIN_ID}),
+    )
+    response = _request("admin", settings)
+    assert response.status_code == 200

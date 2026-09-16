@@ -2,7 +2,11 @@ from uuid import UUID
 
 import httpx
 
-from business_assistant_server.api.admin import AdminSubscriptionRequest
+from business_assistant_server.api.admin import (
+    AdminSubscriptionInputError,
+    AdminSubscriptionRequest,
+    AdminSubscriptionUnavailableError,
+)
 
 
 class SupabaseAdminSubscriptionRepository:
@@ -16,34 +20,27 @@ class SupabaseAdminSubscriptionRepository:
         self, organization_id: UUID, request: AdminSubscriptionRequest
     ) -> AdminSubscriptionRequest:
         headers = {"apikey": self._service_key, "Authorization": f"Bearer {self._service_key}"}
-        async with httpx.AsyncClient() as client:
-            plan = await client.get(
-                f"{self._url}/plans",
-                params={"select": "id", "code": f"eq.{request.plan_code}"},
-                headers=headers,
-            )
-            plan.raise_for_status()
-            rows = plan.json()
-            if not isinstance(rows, list) or not rows:
-                raise ValueError("Unknown plan code")
-            await client.delete(
-                f"{self._url}/subscriptions",
-                params={
-                    "organization_id": f"eq.{organization_id}",
-                    "status": "in.(trialing,active)",
-                },
-                headers=headers,
-            )
-            created = await client.post(
-                f"{self._url}/subscriptions",
-                json={
-                    "organization_id": str(organization_id),
-                    "plan_id": rows[0]["id"],
-                    "status": request.status,
-                    "starts_at": request.starts_at.isoformat(),
-                    "ends_at": request.ends_at.isoformat() if request.ends_at else None,
-                },
-                headers=headers,
-            )
-            created.raise_for_status()
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"{self._url}/rpc/replace_organization_subscription",
+                    json={
+                        "target_organization_id": str(organization_id),
+                        "target_plan_code": request.plan_code,
+                        "target_status": request.status,
+                        "target_starts_at": request.starts_at.isoformat(),
+                        "target_ends_at": request.ends_at.isoformat() if request.ends_at else None,
+                    },
+                    headers=headers,
+                )
+                if response.status_code == 400:
+                    raise AdminSubscriptionInputError("Invalid subscription input")
+                response.raise_for_status()
+                payload = response.json()
+        except AdminSubscriptionInputError:
+            raise
+        except (httpx.HTTPError, ValueError) as error:
+            raise AdminSubscriptionUnavailableError() from error
+        if not isinstance(payload, dict) or payload.get("plan_code") != request.plan_code:
+            raise AdminSubscriptionUnavailableError()
         return request

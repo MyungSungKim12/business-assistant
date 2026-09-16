@@ -12,6 +12,14 @@ from business_assistant_server.dependencies.auth import get_current_user, get_se
 router = APIRouter()
 
 
+class AdminSubscriptionInputError(Exception):
+    pass
+
+
+class AdminSubscriptionUnavailableError(Exception):
+    pass
+
+
 class AdminSubscriptionRequest(BaseModel):
     plan_code: str
     status: str
@@ -23,7 +31,7 @@ class AdminSubscriptionRequest(BaseModel):
     def plan_code_is_not_blank(cls, value: str) -> str:
         if not value.strip():
             raise ValueError("plan_code is required")
-        return value.upper()
+        return value.strip().upper()
 
     @field_validator("status")
     @classmethod
@@ -65,4 +73,11 @@ async def replace_subscription(
 ) -> AdminSubscriptionRequest:
     if current_user.user_id not in settings.platform_admin_user_ids:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Platform admin required")
-    return await repository.replace_subscription(organization_id, request)
+    try:
+        return await repository.replace_subscription(organization_id, request)
+    except AdminSubscriptionInputError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from None
+    except AdminSubscriptionUnavailableError:
+        raise HTTPException(
+            status_code=503, detail="Admin subscription service unavailable"
+        ) from None
