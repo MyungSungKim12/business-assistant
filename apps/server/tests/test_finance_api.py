@@ -216,9 +216,7 @@ def test_finance_crud_filters_and_summary() -> None:
     )
     assert listed.status_code == 200
     assert len(listed.json()) == 1
-    summary = _request(
-        "GET", _path("finance-summary"), finance_repository=repository
-    )
+    summary = _request("GET", _path("finance-summary"), finance_repository=repository)
     assert summary.status_code == 200
     assert summary.json()["income_total"] == "100.00"
     assert summary.json()["expense_total"] == "25.50"
@@ -235,11 +233,29 @@ def test_finance_crud_filters_and_summary() -> None:
 def test_finance_validates_input_and_manager_role() -> None:
     repository = FakeFinanceRepository()
     for payload in (
-        {"transaction_type": "other", "amount": "1", "transaction_date": "2030-01-01", "category": "X"},
-        {"transaction_type": "income", "amount": "0", "transaction_date": "2030-01-01", "category": "X"},
-        {"transaction_type": "income", "amount": "1", "transaction_date": "2030-01-01", "category": ""},
+        {
+            "transaction_type": "other",
+            "amount": "1",
+            "transaction_date": "2030-01-01",
+            "category": "X",
+        },
+        {
+            "transaction_type": "income",
+            "amount": "0",
+            "transaction_date": "2030-01-01",
+            "category": "X",
+        },
+        {
+            "transaction_type": "income",
+            "amount": "1",
+            "transaction_date": "2030-01-01",
+            "category": "",
+        },
     ):
-        assert _request("POST", _path(), finance_repository=repository, json=payload).status_code == 422
+        assert (
+            _request("POST", _path(), finance_repository=repository, json=payload).status_code
+            == 422
+        )
     assert (
         _request(
             "POST",
@@ -258,8 +274,6 @@ def test_finance_validates_input_and_manager_role() -> None:
 
 
 def test_finance_provider_error_is_safe() -> None:
-    response = _request(
-        "GET", _path(), finance_repository=UnavailableFinanceRepository()
-    )
+    response = _request("GET", _path(), finance_repository=UnavailableFinanceRepository())
     assert response.status_code == 503
     assert response.json() == {"detail": "Finance service unavailable"}

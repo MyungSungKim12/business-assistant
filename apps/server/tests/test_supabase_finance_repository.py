@@ -60,7 +60,9 @@ def test_finance_adapter_calculates_summary_without_float_rounding() -> None:
     async def run() -> None:
         async with httpx.AsyncClient(
             transport=httpx.MockTransport(
-                lambda request: httpx.Response(200, json=[_row(), _row(amount="10.10", transaction_type="expense")])
+                lambda request: httpx.Response(
+                    200, json=[_row(), _row(amount="10.10", transaction_type="expense")]
+                )
             )
         ) as client:
             repository = SupabaseFinanceRepository(
@@ -89,9 +91,7 @@ def test_finance_adapter_maps_provider_errors_safely() -> None:
     asyncio.run(run())
 
 
-def _row(
-    *, amount: str = "1234.50", transaction_type: str = "income"
-) -> dict[str, object]:
+def _row(*, amount: str = "1234.50", transaction_type: str = "income") -> dict[str, object]:
     return {
         "id": str(TRANSACTION_ID),
         "organization_id": str(ORGANIZATION_ID),

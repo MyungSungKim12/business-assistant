@@ -108,9 +108,7 @@ class SupabaseFinanceRepository:
                 expense_total += amount
             else:
                 raise RepositoryUnavailableError()
-        return FinanceSummary(
-            income_total, expense_total, income_total - expense_total, len(rows)
-        )
+        return FinanceSummary(income_total, expense_total, income_total - expense_total, len(rows))
 
     @staticmethod
     def _filters(
@@ -120,7 +118,10 @@ class SupabaseFinanceRepository:
         transaction_type: str | None,
     ) -> dict[str, str]:
         params = {
-            "select": "id,organization_id,created_by,transaction_type,amount,transaction_date,category,counterparty,memo,is_archived,created_at,updated_at",
+            "select": (
+                "id,organization_id,created_by,transaction_type,amount,transaction_date,"
+                "category,counterparty,memo,is_archived,created_at,updated_at"
+            ),
             "organization_id": f"eq.{organization_id}",
         }
         if from_date is not None and to_date is not None:

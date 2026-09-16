@@ -4,13 +4,17 @@ from typing import Annotated
 from uuid import UUID
 
 from business_assistant_common.auth import AuthUser
-from fastapi import APIRouter, Depends, HTTPException, Query, Security, status
+from fastapi import APIRouter, Depends, HTTPException, Security, status
 from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 from business_assistant_server.api.entitlements import get_organization_repository, require_feature
 from business_assistant_server.config import Settings
-from business_assistant_server.dependencies.auth import bearer_scheme, get_current_user, get_settings
+from business_assistant_server.dependencies.auth import (
+    bearer_scheme,
+    get_current_user,
+    get_settings,
+)
 from business_assistant_server.ports.repositories import (
     FinanceRepository,
     FinanceSummary,
@@ -228,9 +232,9 @@ async def list_transactions(
     __: Annotated[None, Depends(require_feature("finance.basic"))],
     ___: Annotated[None, Depends(require_finance_member)],
     repository: Annotated[FinanceRepository, Depends(get_finance_repository)],
-    from_date: date | None = Query(default=None),
-    to_date: date | None = Query(default=None),
-    transaction_type: str | None = Query(default=None),
+    from_date: date | None = None,
+    to_date: date | None = None,
+    transaction_type: str | None = None,
 ) -> list[FinanceTransactionResponse]:
     if from_date and to_date and from_date > to_date:
         raise HTTPException(422, "from_date must not be after to_date")
@@ -308,8 +312,8 @@ async def finance_summary(
     __: Annotated[None, Depends(require_feature("finance.basic"))],
     ___: Annotated[None, Depends(require_finance_member)],
     repository: Annotated[FinanceRepository, Depends(get_finance_repository)],
-    from_date: date | None = Query(default=None),
-    to_date: date | None = Query(default=None),
+    from_date: date | None = None,
+    to_date: date | None = None,
 ) -> FinanceSummaryResponse:
     if from_date and to_date and from_date > to_date:
         raise HTTPException(422, "from_date must not be after to_date")
