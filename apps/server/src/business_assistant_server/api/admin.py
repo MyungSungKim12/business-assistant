@@ -46,6 +46,12 @@ class AdminSubscriptionRequest(BaseModel):
 
     @model_validator(mode="after")
     def window_is_valid(self) -> "AdminSubscriptionRequest":
+        if self.starts_at.tzinfo is None or self.starts_at.utcoffset() is None:
+            raise ValueError("starts_at must be timezone-aware")
+        if self.ends_at is not None and (
+            self.ends_at.tzinfo is None or self.ends_at.utcoffset() is None
+        ):
+            raise ValueError("ends_at must be timezone-aware")
         if self.ends_at is not None and self.ends_at <= self.starts_at:
             raise ValueError("ends_at must be after starts_at")
         return self
