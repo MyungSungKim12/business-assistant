@@ -8,6 +8,7 @@ HARDENING_PATH = PROJECT_ROOT / "migrations" / "003_subscription_and_organizatio
 ADMIN_PATH = PROJECT_ROOT / "migrations" / "004_admin_subscription_rpc.sql"
 CRM_PATH = PROJECT_ROOT / "migrations" / "005_crm_customers.sql"
 TASKS_PATH = PROJECT_ROOT / "migrations" / "006_tasks.sql"
+DOCUMENTS_PATH = PROJECT_ROOT / "migrations" / "007_documents.sql"
 _SUBSCRIPTION_POLICY_STATEMENT_PATTERN = re.compile(
     r"\bcreate\s+policy\b(?:(?!;)[\s\S])*?\bon\s+public\.subscriptions\b"
     r"(?:(?!;)[\s\S])*?;",
@@ -44,6 +45,10 @@ def _read_crm_migration() -> str:
 
 def _read_tasks_migration() -> str:
     return TASKS_PATH.read_text(encoding="utf-8").lower()
+
+
+def _read_documents_migration() -> str:
+    return DOCUMENTS_PATH.read_text(encoding="utf-8").lower()
 
 
 def _subscription_policy_statements(schema: str) -> list[str]:
@@ -256,3 +261,37 @@ def test_tasks_schema_and_rls_are_organization_scoped() -> None:
     assert "new.created_by is distinct from old.created_by" in migration
     assert "create trigger tasks_prevent_tenant_change before update on public.tasks" in migration
     assert "execute function private.prevent_task_tenant_change()" in migration
+
+
+def test_documents_schema_is_tenant_scoped_and_indexed() -> None:
+    migration = _read_documents_migration()
+    for table_name in ("document_templates", "documents"):
+        assert f"create table public.{table_name}" in migration
+        assert f"alter table public.{table_name} enable row level security" in migration
+        assert f"create index idx_{table_name}_organization_updated" in migration
+
+    assert "template_id uuid references public.document_templates(id)" in migration
+    assert "status text not null default 'draft'" in migration
+    assert "check (status in ('draft', 'final', 'archived'))" in migration
+    assert "created_by uuid not null references auth.users(id)" in migration
+
+
+def test_documents_rls_allows_member_reads_and_manager_mutations() -> None:
+    migration = _read_documents_migration()
+    for table_name in ("document_templates", "documents"):
+        assert f'create policy "{table_name}_select_member"' in migration
+        assert f'create policy "{table_name}_insert_manager"' in migration
+        assert f'create policy "{table_name}_update_manager"' in migration
+        assert "array['owner', 'admin', 'member']::text[]" in migration
+        assert "array['owner', 'admin']::text[]" in migration
+
+    assert "document_template_same_organization" in migration
+
+
+def test_documents_reject_tenant_changes_with_before_update_triggers() -> None:
+    migration = _read_documents_migration()
+    for table_name in ("document_templates", "documents"):
+        assert f"prevent_{table_name}_tenant_change" in migration
+        assert f"create trigger {table_name}_prevent_tenant_change before update on public.{table_name}" in migration
+        assert "new.organization_id is distinct from old.organization_id" in migration
+        assert "new.created_by is distinct from old.created_by" in migration
