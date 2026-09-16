@@ -8,6 +8,7 @@ from business_assistant_server.api.entitlements import FeatureAccessDenied
 from business_assistant_server.api.entitlements import router as entitlement_router
 from business_assistant_server.api.health import router as health_router
 from business_assistant_server.api.organizations import router as organization_router
+from business_assistant_server.api.tasks import router as task_router
 
 
 def create_app() -> FastAPI:
@@ -18,6 +19,7 @@ def create_app() -> FastAPI:
     app.include_router(organization_router, prefix="/api/v1")
     app.include_router(entitlement_router, prefix="/api/v1")
     app.include_router(customer_router, prefix="/api/v1")
+    app.include_router(task_router, prefix="/api/v1")
 
     @app.exception_handler(FeatureAccessDenied)
     async def feature_access_denied_handler(

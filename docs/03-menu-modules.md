@@ -6,7 +6,7 @@
 | --- | --- | --- | --- |
 | 1 | 홈 대시보드 | 없음 | 사용 가능 |
 | 2 | 고객·거래처 | `crm.basic` | 고객 CRUD 사용 가능 |
-| 3 | 일정·할 일 | `schedule.basic` | 준비 중 |
+| 3 | 일정·할 일 | `task.basic` | 작업 CRUD 사용 가능 |
 | 4 | 문서 자동화 | `document.template` | 준비 중 |
 | 5 | 매출·지출 | `finance.basic` | 준비 중 |
 | 6 | 파일·자료 | `files.basic` | 준비 중 |

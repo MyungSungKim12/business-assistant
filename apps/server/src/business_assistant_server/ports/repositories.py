@@ -66,6 +66,34 @@ class CustomerRepository(Protocol):
     async def delete_customer(self, organization_id: UUID, customer_id: UUID) -> bool: ...
 
 
+@dataclass(frozen=True, slots=True)
+class TaskSummary:
+    id: UUID
+    organization_id: UUID
+    created_by: UUID
+    title: str
+    description: str
+    due_at: str | None
+    status: str
+    priority: str
+
+
+@runtime_checkable
+class TaskRepository(Protocol):
+    async def list_tasks(
+        self, organization_id: UUID, task_status: str | None
+    ) -> list[TaskSummary]: ...
+
+    async def create_task(
+        self, organization_id: UUID, created_by: UUID, values: dict[str, str | None]
+    ) -> TaskSummary: ...
+
+    async def update_task(
+        self, organization_id: UUID, task_id: UUID, user_id: UUID, values: dict[str, str | None]
+    ) -> TaskSummary | None: ...
+    async def delete_task(self, organization_id: UUID, task_id: UUID, user_id: UUID) -> bool: ...
+
+
 @runtime_checkable
 class OrganizationRepository(Protocol):
     """Organization data access scoped to the authenticated user."""
