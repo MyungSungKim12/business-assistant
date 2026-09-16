@@ -254,3 +254,5 @@ def test_tasks_schema_and_rls_are_organization_scoped() -> None:
     assert "create function private.prevent_task_tenant_change" in migration
     assert "new.organization_id is distinct from old.organization_id" in migration
     assert "new.created_by is distinct from old.created_by" in migration
+    assert "create trigger tasks_prevent_tenant_change before update on public.tasks" in migration
+    assert "execute function private.prevent_task_tenant_change()" in migration

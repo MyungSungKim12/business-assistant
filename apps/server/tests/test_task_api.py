@@ -213,6 +213,15 @@ def test_task_rejects_null_description_and_naive_due_at_but_preserves_omitted_fi
     assert response.json()["description"] == "Draft"
 
 
+def test_task_patch_rejects_null_description_and_naive_due_at() -> None:
+    repository = FakeTaskRepository()
+    for payload in ({"description": None}, {"due_at": "2030-01-01T00:00:00"}):
+        response = _request(
+            "PATCH", f"{_path()}/{TASK_ID}", task_repository=repository, json=payload
+        )
+        assert response.status_code == 422
+
+
 def test_task_provider_error_is_safe() -> None:
     response = _request("GET", _path(), task_repository=UnavailableTaskRepository())
     assert response.status_code == 503
