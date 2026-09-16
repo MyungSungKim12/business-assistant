@@ -1,5 +1,6 @@
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
+from decimal import Decimal
 from typing import Protocol, runtime_checkable
 from uuid import UUID
 
@@ -148,6 +149,53 @@ class DocumentRepository(Protocol):
     async def update_document(
         self, organization_id: UUID, document_id: UUID, values: dict[str, object]
     ) -> DocumentSummary | None: ...
+
+
+@dataclass(frozen=True, slots=True)
+class FinanceTransactionSummary:
+    id: UUID
+    organization_id: UUID
+    created_by: UUID
+    transaction_type: str
+    amount: Decimal
+    transaction_date: str
+    category: str
+    counterparty: str
+    memo: str
+    is_archived: bool
+    created_at: str
+    updated_at: str
+
+
+@dataclass(frozen=True, slots=True)
+class FinanceSummary:
+    income_total: Decimal
+    expense_total: Decimal
+    net_total: Decimal
+    transaction_count: int
+
+
+@runtime_checkable
+class FinanceRepository(Protocol):
+    async def list_transactions(
+        self,
+        organization_id: UUID,
+        from_date: date | None,
+        to_date: date | None,
+        transaction_type: str | None,
+    ) -> list[FinanceTransactionSummary]: ...
+
+    async def create_transaction(
+        self, organization_id: UUID, created_by: UUID, values: dict[str, object]
+    ) -> FinanceTransactionSummary: ...
+
+    async def update_transaction(
+        self, organization_id: UUID, transaction_id: UUID, values: dict[str, object]
+    ) -> FinanceTransactionSummary | None: ...
+
+    async def summarize_transactions(
+        self, organization_id: UUID, from_date: date | None, to_date: date | None
+    ) -> FinanceSummary: ...
 
 
 @runtime_checkable
