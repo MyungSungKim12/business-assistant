@@ -248,7 +248,9 @@ def test_documents_validate_payload_and_manager_role() -> None:
     repository = FakeDocumentRepository()
     for payload in ({"title": ""}, {"title": None}, {"title": "Doc", "status": "bad"}):
         assert (
-            _request("POST", _path("documents"), document_repository=repository, json=payload).status_code
+            _request(
+                "POST", _path("documents"), document_repository=repository, json=payload
+            ).status_code
             == 422
         )
     assert (

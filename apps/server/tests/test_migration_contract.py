@@ -292,6 +292,10 @@ def test_documents_reject_tenant_changes_with_before_update_triggers() -> None:
     migration = _read_documents_migration()
     for table_name in ("document_templates", "documents"):
         assert f"prevent_{table_name}_tenant_change" in migration
-        assert f"create trigger {table_name}_prevent_tenant_change before update on public.{table_name}" in migration
+        trigger_declaration = (
+            f"create trigger {table_name}_prevent_tenant_change before update on "
+            f"public.{table_name}"
+        )
+        assert trigger_declaration in migration
         assert "new.organization_id is distinct from old.organization_id" in migration
         assert "new.created_by is distinct from old.created_by" in migration

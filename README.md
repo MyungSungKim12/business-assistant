@@ -147,6 +147,8 @@ PRO
 - `plan_features`: 상품에 포함된 기능
 - `subscriptions`: 조직의 구독 상태와 기간
 - `customers`: 조직별 고객·거래처 연락처와 메모
+- `document_templates`: 조직별 문서 템플릿
+- `documents`: 조직별 텍스트 문서와 상태
 - `device_registrations`: 허용된 PC 등록
 - `audit_logs`: 보안·관리 작업 기록
 
@@ -201,7 +203,7 @@ business-assistant/
 
 - [x] 고객·거래처
 - [x] 일정·할 일
-- [ ] 문서 자동화
+- [x] 문서 자동화 텍스트 CRUD 기반
 - [ ] 매출·지출
 - [ ] 보고서·분석
 
@@ -225,9 +227,9 @@ business-assistant/
 ## 개발 상태
 
 Supabase 자격 증명이 없어도 기본 프로그램과 테스트를 실행할 수 있습니다. Supabase가
-설정되면 인증·조직·구독 권한 및 CRM 고객 API를 함께 확인할 수 있습니다. CRM 고객 데이터는
-조직 멤버십, `crm.basic` 기능 권한, 그리고 Supabase RLS를 함께 검사합니다. 다음 단계에서는
-등록 기기와 나머지 범용 업무 기능을 순서대로 구현합니다.
+설정되면 인증·조직·구독 권한 및 CRM 고객·문서 API를 함께 확인할 수 있습니다. CRM 고객과
+문서 데이터는 조직 멤버십, 기능 권한, 그리고 Supabase RLS를 함께 검사합니다. 파일 첨부,
+매출·지출, 보고서·분석 등 나머지 범용 업무 기능은 순서대로 구현합니다.
 
 ## 문서
 

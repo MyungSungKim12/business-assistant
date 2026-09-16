@@ -8,7 +8,11 @@ from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 from business_assistant_server.api.entitlements import get_organization_repository, require_feature
 from business_assistant_server.config import Settings
-from business_assistant_server.dependencies.auth import bearer_scheme, get_current_user, get_settings
+from business_assistant_server.dependencies.auth import (
+    bearer_scheme,
+    get_current_user,
+    get_settings,
+)
 from business_assistant_server.ports.repositories import (
     DocumentRepository,
     DocumentSummary,
@@ -190,7 +194,9 @@ def get_document_repository(
 async def require_document_management_role(
     organization_id: UUID,
     current_user: Annotated[AuthUser, Depends(get_current_user)],
-    organization_repository: Annotated[OrganizationRepository, Depends(get_organization_repository)],
+    organization_repository: Annotated[
+        OrganizationRepository, Depends(get_organization_repository)
+    ],
 ) -> None:
     try:
         role = await organization_repository.get_membership(current_user.user_id, organization_id)
@@ -243,7 +249,9 @@ async def list_document_templates(
     repository: Annotated[DocumentRepository, Depends(get_document_repository)],
 ) -> list[DocumentTemplateResponse]:
     try:
-        return [_template_response(item) for item in await repository.list_templates(organization_id)]
+        return [
+            _template_response(item) for item in await repository.list_templates(organization_id)
+        ]
     except RepositoryUnavailableError:
         raise _unavailable() from None
 
@@ -294,9 +302,7 @@ async def update_document_template(
     return _template_response(item)
 
 
-@router.get(
-    "/organizations/{organization_id}/documents", response_model=list[DocumentResponse]
-)
+@router.get("/organizations/{organization_id}/documents", response_model=list[DocumentResponse])
 async def list_documents(
     organization_id: UUID,
     _: Annotated[AuthUser, Depends(get_current_user)],
@@ -304,7 +310,9 @@ async def list_documents(
     repository: Annotated[DocumentRepository, Depends(get_document_repository)],
 ) -> list[DocumentResponse]:
     try:
-        return [_document_response(item) for item in await repository.list_documents(organization_id)]
+        return [
+            _document_response(item) for item in await repository.list_documents(organization_id)
+        ]
     except RepositoryUnavailableError:
         raise _unavailable() from None
 

@@ -40,7 +40,9 @@ def test_document_adapter_uses_tenant_token_and_scopes_templates_and_documents()
                 {"template_id": str(TEMPLATE_ID), "title": "Quote 1", "content": "Body"},
             )
             assert await repository.update_template(ORGANIZATION_ID, TEMPLATE_ID, {"name": "New"})
-            assert await repository.update_document(ORGANIZATION_ID, DOCUMENT_ID, {"status": "final"})
+            assert await repository.update_document(
+                ORGANIZATION_ID, DOCUMENT_ID, {"status": "final"}
+            )
 
     asyncio.run(run())
 
