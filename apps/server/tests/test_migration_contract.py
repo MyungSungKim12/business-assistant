@@ -9,6 +9,7 @@ ADMIN_PATH = PROJECT_ROOT / "migrations" / "004_admin_subscription_rpc.sql"
 CRM_PATH = PROJECT_ROOT / "migrations" / "005_crm_customers.sql"
 TASKS_PATH = PROJECT_ROOT / "migrations" / "006_tasks.sql"
 DOCUMENTS_PATH = PROJECT_ROOT / "migrations" / "007_documents.sql"
+FINANCE_PATH = PROJECT_ROOT / "migrations" / "008_finance_transactions.sql"
 _SUBSCRIPTION_POLICY_STATEMENT_PATTERN = re.compile(
     r"\bcreate\s+policy\b(?:(?!;)[\s\S])*?\bon\s+public\.subscriptions\b"
     r"(?:(?!;)[\s\S])*?;",
@@ -49,6 +50,10 @@ def _read_tasks_migration() -> str:
 
 def _read_documents_migration() -> str:
     return DOCUMENTS_PATH.read_text(encoding="utf-8").lower()
+
+
+def _read_finance_migration() -> str:
+    return FINANCE_PATH.read_text(encoding="utf-8").lower()
 
 
 def _subscription_policy_statements(schema: str) -> list[str]:
@@ -299,3 +304,34 @@ def test_documents_reject_tenant_changes_with_before_update_triggers() -> None:
         assert trigger_declaration in migration
         assert "new.organization_id is distinct from old.organization_id" in migration
         assert "new.created_by is distinct from old.created_by" in migration
+
+
+def test_finance_transactions_schema_is_tenant_scoped_and_constrained() -> None:
+    migration = _read_finance_migration()
+    assert "create table public.finance_transactions" in migration
+    assert "organization_id uuid not null references public.organizations(id)" in migration
+    assert "transaction_type text not null" in migration
+    assert "check (transaction_type in ('income', 'expense'))" in migration
+    assert "amount numeric(14, 2) not null" in migration
+    assert "check (amount > 0)" in migration
+    assert "transaction_date date not null" in migration
+    assert "category text not null" in migration
+    assert "create index idx_finance_transactions_organization_date" in migration
+    assert "create index idx_finance_transactions_organization_type_date" in migration
+    assert "alter table public.finance_transactions enable row level security" in migration
+
+
+def test_finance_transactions_rls_allows_member_reads_and_manager_mutations() -> None:
+    migration = _read_finance_migration()
+    for policy_name in (
+        "finance_transactions_select_member",
+        "finance_transactions_insert_manager",
+        "finance_transactions_update_manager",
+    ):
+        assert f'create policy "{policy_name}"' in migration
+    assert "array['owner', 'admin', 'member']::text[]" in migration
+    assert "array['owner', 'admin']::text[]" in migration
+    assert "create function private.prevent_finance_transactions_tenant_change" in migration
+    assert "create trigger finance_transactions_prevent_tenant_change before update" in migration
+    assert "new.organization_id is distinct from old.organization_id" in migration
+    assert "new.created_by is distinct from old.created_by" in migration
