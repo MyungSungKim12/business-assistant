@@ -7,7 +7,10 @@ from uuid import UUID
 import httpx
 import pytest
 from business_assistant_server.adapters.supabase_finance import SupabaseFinanceRepository
-from business_assistant_server.ports.repositories import RepositoryUnavailableError
+from business_assistant_server.ports.repositories import (
+    RepositoryUnavailableError,
+    RepositoryValidationError,
+)
 
 ORGANIZATION_ID = UUID("11111111-1111-1111-1111-111111111111")
 USER_ID = UUID("12345678-1234-5678-1234-567812345678")
@@ -87,6 +90,31 @@ def test_finance_adapter_maps_provider_errors_safely() -> None:
             )
             with pytest.raises(RepositoryUnavailableError):
                 await repository.list_transactions(ORGANIZATION_ID, None, None, None)
+
+    asyncio.run(run())
+
+
+def test_finance_adapter_maps_postgrest_constraint_errors_to_validation() -> None:
+    async def run() -> None:
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(
+                lambda request: httpx.Response(400, json={"message": "bad"})
+            )
+        ) as client:
+            repository = SupabaseFinanceRepository(
+                "https://project.supabase.co", "publishable-key", "user-token", client
+            )
+            with pytest.raises(RepositoryValidationError):
+                await repository.create_transaction(
+                    ORGANIZATION_ID,
+                    USER_ID,
+                    {
+                        "transaction_type": "income",
+                        "amount": "1",
+                        "transaction_date": "2030-01-01",
+                        "category": "Sales",
+                    },
+                )
 
     asyncio.run(run())
 
