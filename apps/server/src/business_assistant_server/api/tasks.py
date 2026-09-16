@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
@@ -28,7 +29,7 @@ class TaskCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     title: str
     description: str = ""
-    due_at: str | None = None
+    due_at: datetime | None = None
     status: str = "open"
     priority: str = "normal"
 
@@ -54,12 +55,19 @@ class TaskCreateRequest(BaseModel):
             raise ValueError("invalid task priority")
         return value
 
+    @field_validator("due_at")
+    @classmethod
+    def valid_due_at(cls, value: datetime | None) -> datetime | None:
+        if value is not None and (value.tzinfo is None or value.utcoffset() is None):
+            raise ValueError("due_at must be timezone-aware")
+        return value
+
 
 class TaskUpdateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     title: str | None = None
     description: str | None = None
-    due_at: str | None = None
+    due_at: datetime | None = None
     status: str | None = None
     priority: str | None = None
 
@@ -83,6 +91,18 @@ class TaskUpdateRequest(BaseModel):
         if value is not None and value not in _PRIORITIES:
             raise ValueError("invalid task priority")
         return value
+
+    @field_validator("description")
+    @classmethod
+    def valid_description(cls, value: str | None) -> str | None:
+        if value is None:
+            raise ValueError("description must not be null")
+        return value
+
+    @field_validator("due_at")
+    @classmethod
+    def valid_due_at(cls, value: datetime | None) -> datetime | None:
+        return TaskCreateRequest.valid_due_at(value)
 
     @model_validator(mode="after")
     def nonempty(self) -> "TaskUpdateRequest":
@@ -165,7 +185,7 @@ async def create_task(
     try:
         return _response(
             await repository.create_task(
-                organization_id, current_user.user_id, request.model_dump()
+                organization_id, current_user.user_id, request.model_dump(mode="json")
             )
         )
     except RepositoryUnavailableError:
@@ -183,7 +203,10 @@ async def update_task(
 ) -> TaskResponse:
     try:
         task = await repository.update_task(
-            organization_id, task_id, current_user.user_id, request.model_dump(exclude_unset=True)
+            organization_id,
+            task_id,
+            current_user.user_id,
+            request.model_dump(exclude_unset=True, mode="json"),
         )
     except RepositoryUnavailableError:
         raise _unavailable() from None

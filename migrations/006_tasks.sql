@@ -9,6 +9,17 @@ create index idx_tasks_organization_id on public.tasks (organization_id);
 create index idx_tasks_created_by on public.tasks (created_by);
 create index idx_tasks_organization_status on public.tasks (organization_id, status);
 alter table public.tasks enable row level security;
+create function private.prevent_task_tenant_change()
+returns trigger language plpgsql set search_path = '' as $$
+begin
+ if new.organization_id is distinct from old.organization_id or new.created_by is distinct from old.created_by then
+  raise exception 'task organization and creator are immutable';
+ end if;
+ return new;
+end;
+$$;
+revoke all on function private.prevent_task_tenant_change() from public;
+create trigger tasks_prevent_tenant_change before update on public.tasks for each row execute function private.prevent_task_tenant_change();
 create policy "tasks_select_member" on public.tasks for select to authenticated using ((select private.has_organization_role(organization_id, array['owner','admin','member']::text[])));
 create policy "tasks_insert_creator_or_manager" on public.tasks for insert to authenticated with check (created_by = (select auth.uid()) and (select private.has_organization_role(organization_id, array['owner','admin','member']::text[])));
 create policy "tasks_update_creator_or_manager" on public.tasks for update to authenticated using (created_by = (select auth.uid()) or (select private.has_organization_role(organization_id, array['owner','admin']::text[]))) with check (created_by = (select auth.uid()) or (select private.has_organization_role(organization_id, array['owner','admin']::text[])));

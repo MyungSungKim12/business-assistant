@@ -251,3 +251,6 @@ def test_tasks_schema_and_rls_are_organization_scoped() -> None:
     assert "alter table public.tasks enable row level security" in migration
     assert 'create policy "tasks_select_member"' in migration
     assert 'create policy "tasks_update_creator_or_manager"' in migration
+    assert "create function private.prevent_task_tenant_change" in migration
+    assert "new.organization_id is distinct from old.organization_id" in migration
+    assert "new.created_by is distinct from old.created_by" in migration

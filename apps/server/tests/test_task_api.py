@@ -197,6 +197,22 @@ def test_task_crud_filter_validation_and_scoping() -> None:
     assert _request("DELETE", f"{_path()}/{task_id}", task_repository=repository).status_code == 204
 
 
+def test_task_rejects_null_description_and_naive_due_at_but_preserves_omitted_fields() -> None:
+    repository = FakeTaskRepository()
+    for payload in (
+        {"title": "Task", "description": None},
+        {"title": "Task", "due_at": "2030-01-01T00:00:00"},
+    ):
+        assert (
+            _request("POST", _path(), task_repository=repository, json=payload).status_code == 422
+        )
+    response = _request(
+        "PATCH", f"{_path()}/{TASK_ID}", task_repository=repository, json={"status": "done"}
+    )
+    assert response.status_code == 200
+    assert response.json()["description"] == "Draft"
+
+
 def test_task_provider_error_is_safe() -> None:
     response = _request("GET", _path(), task_repository=UnavailableTaskRepository())
     assert response.status_code == 503
