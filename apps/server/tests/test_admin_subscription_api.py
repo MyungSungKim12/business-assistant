@@ -32,7 +32,11 @@ class FakeAdminRepository:
 
 
 def _request(
-    token: str | None, settings: Settings, subscription_status: str = "active"
+    token: str | None,
+    settings: Settings,
+    subscription_status: str = "active",
+    plan_code: str = "BASIC",
+    ends_at: str | None = None,
 ) -> httpx.Response:
     async def send() -> httpx.Response:
         app = create_app()
@@ -47,10 +51,10 @@ def _request(
                 f"/api/v1/admin/organizations/{ORGANIZATION_ID}/subscription",
                 headers=headers,
                 json={
-                    "plan_code": "BASIC",
+                    "plan_code": plan_code,
                     "status": subscription_status,
                     "starts_at": "2026-09-16T00:00:00Z",
-                    "ends_at": None,
+                    "ends_at": ends_at,
                 },
             )
 
@@ -97,9 +101,19 @@ def test_admin_subscription_accepts_valid_platform_admin_request() -> None:
         supabase_service_key="server-secret",
         platform_admin_user_ids=frozenset({ADMIN_ID}),
     )
-    response = _request("admin", settings)
+    response = _request("admin", settings, plan_code="  basic  ")
     assert response.status_code == 200
     assert response.json()["plan_code"] == "BASIC"
+
+
+def test_admin_subscription_rejects_non_positive_window() -> None:
+    settings = Settings(
+        _env_file=None,
+        supabase_url="https://project.supabase.co",
+        supabase_service_key="server-secret",
+        platform_admin_user_ids=frozenset({ADMIN_ID}),
+    )
+    assert _request("admin", settings, ends_at="2026-09-16T00:00:00Z").status_code == 422
 
 
 def test_admin_subscription_rejects_invalid_status() -> None:
@@ -120,5 +134,6 @@ def test_admin_subscription_normalizes_whitespace_plan_code() -> None:
         supabase_service_key="server-secret",
         platform_admin_user_ids=frozenset({ADMIN_ID}),
     )
-    response = _request("admin", settings)
+    response = _request("admin", settings, plan_code="  basic  ")
     assert response.status_code == 200
+    assert response.json()["plan_code"] == "BASIC"

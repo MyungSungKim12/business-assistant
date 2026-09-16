@@ -4,6 +4,7 @@ import httpx
 
 from business_assistant_server.api.admin import (
     AdminSubscriptionInputError,
+    AdminSubscriptionNotFoundError,
     AdminSubscriptionRequest,
     AdminSubscriptionUnavailableError,
 )
@@ -34,10 +35,16 @@ class SupabaseAdminSubscriptionRepository:
                     headers=headers,
                 )
                 if response.status_code == 400:
+                    try:
+                        message = response.json().get("message", "")
+                    except ValueError:
+                        raise AdminSubscriptionUnavailableError() from None
+                    if message == "organization not found":
+                        raise AdminSubscriptionNotFoundError()
                     raise AdminSubscriptionInputError("Invalid subscription input")
                 response.raise_for_status()
                 payload = response.json()
-        except AdminSubscriptionInputError:
+        except (AdminSubscriptionInputError, AdminSubscriptionNotFoundError):
             raise
         except (httpx.HTTPError, ValueError) as error:
             raise AdminSubscriptionUnavailableError() from error

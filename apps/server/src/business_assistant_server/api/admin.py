@@ -4,7 +4,7 @@ from uuid import UUID
 
 from business_assistant_common.auth import AuthUser
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, model_validator
 
 from business_assistant_server.config import Settings
 from business_assistant_server.dependencies.auth import get_current_user, get_settings
@@ -17,6 +17,10 @@ class AdminSubscriptionInputError(Exception):
 
 
 class AdminSubscriptionUnavailableError(Exception):
+    pass
+
+
+class AdminSubscriptionNotFoundError(Exception):
     pass
 
 
@@ -39,6 +43,12 @@ class AdminSubscriptionRequest(BaseModel):
         if value not in {"trialing", "active", "past_due", "canceled", "expired"}:
             raise ValueError("unsupported subscription status")
         return value
+
+    @model_validator(mode="after")
+    def window_is_valid(self) -> "AdminSubscriptionRequest":
+        if self.ends_at is not None and self.ends_at <= self.starts_at:
+            raise ValueError("ends_at must be after starts_at")
+        return self
 
 
 class AdminSubscriptionRepository(Protocol):
@@ -77,6 +87,8 @@ async def replace_subscription(
         return await repository.replace_subscription(organization_id, request)
     except AdminSubscriptionInputError as error:
         raise HTTPException(status_code=422, detail=str(error)) from None
+    except AdminSubscriptionNotFoundError:
+        raise HTTPException(status_code=404, detail="Organization not found") from None
     except AdminSubscriptionUnavailableError:
         raise HTTPException(
             status_code=503, detail="Admin subscription service unavailable"
