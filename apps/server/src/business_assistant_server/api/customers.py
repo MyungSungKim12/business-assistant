@@ -86,7 +86,7 @@ class CustomerUpdateRequest(BaseModel):
     @classmethod
     def name_is_present(cls, value: str | None) -> str | None:
         if value is None:
-            return None
+            raise ValueError("name must not be null")
         value = value.strip()
         if not value or len(value) > 200:
             raise ValueError("name must be between 1 and 200 characters")
@@ -105,7 +105,9 @@ class CustomerUpdateRequest(BaseModel):
     @field_validator("notes")
     @classmethod
     def notes_are_bounded(cls, value: str | None) -> str | None:
-        if value is not None and len(value) > 5000:
+        if value is None:
+            raise ValueError("notes must not be null")
+        if len(value) > 5000:
             raise ValueError("notes must be at most 5000 characters")
         return value
 

@@ -49,6 +49,7 @@ def test_customer_adapter_uses_tenant_token_and_organization_scope_for_crud() ->
     assert requests[2].url.params["id"] == f"eq.{CUSTOMER_ID}"
     assert requests[3].url.params["organization_id"] == f"eq.{ORGANIZATION_ID}"
     assert json.loads(requests[1].content)["organization_id"] == str(ORGANIZATION_ID)
+    assert json.loads(requests[2].content) == {"phone": "010-0000-0000"}
 
 
 def test_customer_adapter_maps_provider_and_malformed_responses_safely() -> None:

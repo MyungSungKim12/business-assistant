@@ -198,6 +198,30 @@ def test_customer_crud_validates_and_scopes_organization() -> None:
     assert created_id not in repository.customers
 
 
+def test_customer_update_rejects_null_for_non_nullable_fields_and_preserves_omitted_fields() -> (
+    None
+):
+    repository = FakeCustomerRepository()
+    for field in ("name", "notes"):
+        response = _request(
+            "PATCH",
+            f"{_customers_path()}/{CUSTOMER_ID}",
+            customer_repository=repository,
+            json={field: None},
+        )
+        assert response.status_code == 422
+
+    response = _request(
+        "PATCH",
+        f"{_customers_path()}/{CUSTOMER_ID}",
+        customer_repository=repository,
+        json={"phone": "010-9999-9999"},
+    )
+    assert response.status_code == 200
+    assert response.json()["name"] == "Hana Kim"
+    assert response.json()["notes"] == "Priority customer"
+
+
 def test_customer_provider_failure_is_mapped_safely() -> None:
     response = _request(
         "GET", _customers_path(), customer_repository=UnavailableCustomerRepository()

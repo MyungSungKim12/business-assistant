@@ -8,7 +8,8 @@
 ## 검증 기록
 
 - 테스트 우선 작성 후 API/어댑터 누락으로 실패하는 RED 상태를 확인했다.
-- `powershell -ExecutionPolicy Bypass -File scripts/check.ps1`: Ruff format/lint, mypy 및 전체 테스트 90개 통과.
+- `powershell -ExecutionPolicy Bypass -File scripts/check.ps1`: Ruff format/lint, mypy 및 전체 테스트 91개 통과.
 - `uv run python -c "import supabase; print('supabase import ok')"`: Supabase import 통과.
 - `git diff --check`: 공백 오류 없음.
-- 전체 `scripts/check.ps1`의 Ruff와 mypy 및 CRM 서버 테스트는 통과했다. 다만 기존 Qt 로그인 전환 테스트가 전체 모음에서 두 차례 실패하고 `apps/desktop/tests`만 단독 실행하면 19개 모두 통과하는 전역 상태/타이밍 변동을 확인했다.
+- PATCH의 명시적 `name` 또는 `notes` null은 422로 거부하고, 생략 필드는 기존 값으로 유지됨을 API·어댑터 회귀 테스트로 확인했다.
+- 로그인 전환 테스트는 메인 창 생성 뒤 로그인 다이얼로그가 닫히는 Qt 이벤트까지 대기하도록 안정화했다. 전체 검사를 연속 두 차례 실행해 각각 91개 테스트 통과를 확인했다.

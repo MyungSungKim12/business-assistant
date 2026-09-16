@@ -37,10 +37,10 @@ def test_successful_login_transitions_to_an_entitled_main_window(qtbot) -> None:
     qtbot.mouseClick(shell.login_dialog.login_button, Qt.MouseButton.LeftButton)
 
     qtbot.waitUntil(lambda: shell.main_window is not None)
+    qtbot.waitUntil(lambda: not shell.login_dialog.isVisible())
 
     assert shell.main_window is not None
     assert shell.main_window.navigation_menu.item(1).flags() & Qt.ItemFlag.ItemIsEnabled
-    assert not shell.login_dialog.isVisible()
 
 
 def test_login_network_work_runs_off_the_ui_thread_and_restores_buttons(qtbot) -> None:  # type: ignore[no-untyped-def]
