@@ -5,9 +5,9 @@ from business_assistant_server.api.admin import router as admin_router
 from business_assistant_server.api.auth import router as auth_router
 from business_assistant_server.api.customers import router as customer_router
 from business_assistant_server.api.documents import router as document_router
-from business_assistant_server.api.finance import router as finance_router
 from business_assistant_server.api.entitlements import FeatureAccessDenied
 from business_assistant_server.api.entitlements import router as entitlement_router
+from business_assistant_server.api.finance import router as finance_router
 from business_assistant_server.api.health import router as health_router
 from business_assistant_server.api.organizations import router as organization_router
 from business_assistant_server.api.tasks import router as task_router
