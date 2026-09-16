@@ -24,4 +24,4 @@
 
 ## 검증
 
-- 전체 품질 검사에서 117개 테스트, Ruff, mypy, Supabase import와 diff check가 통과했다.
+- 전체 품질 검사에서 118개 테스트, Ruff, mypy, Supabase import와 diff check가 통과했다.
