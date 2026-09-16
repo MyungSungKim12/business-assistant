@@ -33,12 +33,23 @@ Copy-Item .env.example .env
 APP_SUPABASE_URL=
 APP_SUPABASE_PUBLISHABLE_KEY=
 APP_SUPABASE_SERVICE_KEY=
+APP_PLATFORM_ADMIN_USER_IDS=
 ```
 
 `.env`는 로컬 개발용 파일이며 `.gitignore`로 제외됩니다. `.env 파일을 Git에 추가하지
 마세요.` `scripts/check.ps1`은 실수로 추적된 `.env`를 검사에서 실패로 처리합니다.
 서비스 키와 데이터베이스 URL은 서버의 안전한 비밀 관리 방식으로만 배포하고, 데스크톱 앱,
 클라이언트 설정, 설치 파일, 오류 메시지와 로그에 포함하지 않습니다.
+
+`APP_PLATFORM_ADMIN_USER_IDS`에는 구독을 관리할 서버 운영자 UUID만 쉼표로 구분해 입력합니다.
+이 allowlist와 service key는 서버 환경에만 두며 데스크톱 앱에 전달하지 않습니다. 예시 요청은
+실제 값 대신 자리표시자를 사용합니다.
+
+```powershell
+curl.exe -X POST "http://127.0.0.1:8000/api/v1/admin/organizations/<organization-uuid>/subscription" `
+  -H "Authorization: Bearer <admin-access-token>" -H "Content-Type: application/json" `
+  -d '{"plan_code":"BASIC","status":"active","starts_at":"2026-09-16T00:00:00Z","ends_at":null}'
+```
 
 ## 3 마이그레이션 적용
 
