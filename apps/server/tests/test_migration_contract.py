@@ -10,6 +10,7 @@ CRM_PATH = PROJECT_ROOT / "migrations" / "005_crm_customers.sql"
 TASKS_PATH = PROJECT_ROOT / "migrations" / "006_tasks.sql"
 DOCUMENTS_PATH = PROJECT_ROOT / "migrations" / "007_documents.sql"
 FINANCE_PATH = PROJECT_ROOT / "migrations" / "008_finance_transactions.sql"
+FILES_PATH = PROJECT_ROOT / "migrations" / "009_file_assets.sql"
 _SUBSCRIPTION_POLICY_STATEMENT_PATTERN = re.compile(
     r"\bcreate\s+policy\b(?:(?!;)[\s\S])*?\bon\s+public\.subscriptions\b"
     r"(?:(?!;)[\s\S])*?;",
@@ -54,6 +55,20 @@ def _read_documents_migration() -> str:
 
 def _read_finance_migration() -> str:
     return FINANCE_PATH.read_text(encoding="utf-8").lower()
+
+
+def _read_files_migration() -> str:
+    return FILES_PATH.read_text(encoding="utf-8").lower()
+
+
+def test_files_migration_defines_org_scoped_metadata_and_storage_rls() -> None:
+    migration = _read_files_migration()
+    assert "create table public.file_assets" in migration
+    assert "alter table public.file_assets enable row level security" in migration
+    assert "idx_file_assets_org_archived_created" in migration
+    assert "storage.buckets" in migration
+    assert "business_files_select_member" in migration
+    assert "business_files_insert_member" in migration
 
 
 def _subscription_policy_statements(schema: str) -> list[str]:

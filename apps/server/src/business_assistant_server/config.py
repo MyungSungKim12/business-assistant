@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     supabase_url: AnyHttpUrl | None = None
     supabase_publishable_key: str | None = None
     supabase_service_key: str | None = None
+    file_bucket: str = "business-files"
     platform_admin_user_ids: frozenset[UUID] = frozenset()
 
     @field_validator("platform_admin_user_ids", mode="before")

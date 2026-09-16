@@ -62,6 +62,9 @@ Supabase Dashboard의 SQL Editor 또는 팀에서 사용하는 Supabase CLI 마�
 4. `migrations/004_admin_subscription_rpc.sql`
 5. `migrations/005_crm_customers.sql`
 6. `migrations/006_tasks.sql`
+7. `migrations/007_documents.sql`
+8. `migrations/008_finance_transactions.sql`
+9. `migrations/009_file_assets.sql`
 
 적용 대상이 개발 프로젝트인지 먼저 확인합니다. SQL은 `profiles`, `organizations`,
 `memberships`, 상품·기능·구독 테이블과 기본 BASIC, STANDARD, PRO 권한 데이터를
@@ -120,3 +123,4 @@ powershell -ExecutionPolicy Bypass -File scripts/run-desktop.ps1
 Supabase Dashboard의 Auth Providers에서 Confirm email 설정과 `SITE_URL` 및 허용된 redirect URL을
 개발·운영 환경별로 확인하세요. 확인 메일 발송에는 SMTP 구성이 필요하며, 운영 환경에는 신뢰할 수
 있는 SMTP 공급자를 사용합니다. 확인 링크·토큰·서비스 키를 로그나 오류 화면에 표시하지 마세요.
+`migrations/009_file_assets.sql`은 비공개 `business-files` Storage 버킷과 조직 경계 RLS 정책을 추가합니다. 파일 기능을 사용하려면 반드시 009까지 실행하세요. 버킷은 public으로 변경하지 말고, desktop 앱에 service-role 키를 넣지 마세요.

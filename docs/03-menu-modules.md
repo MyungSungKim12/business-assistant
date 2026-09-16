@@ -9,7 +9,7 @@
 | 3 | 일정·할 일 | `task.basic` | 작업 CRUD 사용 가능 |
 | 4 | 문서 자동화 | `document.template` | 템플릿·문서 CRUD 사용 가능 |
 | 5 | 매출·지출 | `finance.basic` | 거래 CRUD·기간 집계 사용 가능 |
-| 6 | 파일·자료 | `files.basic` | 준비 중 |
+| 6 | 파일·자료 | `files.basic` | 조직 파일 목록·signed URL·보관 처리 사용 가능 |
 | 7 | 데이터 가져오기·내보내기 | `data.basic` | 준비 중 |
 | 8 | 보고서·분석 | `reports.basic` | 준비 중 |
 | 9 | 업무 자동화 | `automation.custom` | 준비 중 |

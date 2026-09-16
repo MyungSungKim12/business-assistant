@@ -198,6 +198,38 @@ class FinanceRepository(Protocol):
     ) -> FinanceSummary: ...
 
 
+@dataclass(frozen=True, slots=True)
+class FileSummary:
+    id: UUID
+    organization_id: UUID
+    uploaded_by: UUID
+    original_name: str
+    content_type: str
+    size_bytes: int
+    is_archived: bool
+    created_at: str
+    updated_at: str
+    storage_path: str
+
+
+@runtime_checkable
+class FileRepository(Protocol):
+    async def list_files(
+        self, organization_id: UUID, include_archived: bool = False
+    ) -> list[FileSummary]: ...
+
+    async def create_file(
+        self,
+        organization_id: UUID,
+        uploaded_by: UUID,
+        values: dict[str, object],
+    ) -> FileSummary: ...
+
+    async def get_file(self, organization_id: UUID, file_id: UUID) -> FileSummary | None: ...
+
+    async def archive_file(self, organization_id: UUID, file_id: UUID) -> FileSummary | None: ...
+
+
 @runtime_checkable
 class OrganizationRepository(Protocol):
     """Organization data access scoped to the authenticated user."""

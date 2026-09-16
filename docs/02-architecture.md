@@ -25,7 +25,7 @@ PySide6 Desktop → FastAPI Server → Supabase Auth / PostgreSQL / Storage
 - **공통 패키지**: 앱과 서버가 함께 쓰는 순수 타입과 API 계약을 담당합니다.
 - **Supabase**: Auth, PostgreSQL, Storage를 제공합니다. 서비스가 바뀌어도 영향이 작도록 서버의 공급자 포트 뒤에 둡니다.
 
-현재 `AuthPort`는 access token 검증을, `StoragePort`는 파일 업로드 URL 발급을 위한 계약만 정의합니다. 목표 구현에서는 실제 Supabase 연결 코드를 이 포트를 구현하는 어댑터에만 둡니다.
+현재 `AuthPort`는 access token 검증을, `StoragePort`는 파일의 signed upload/download URL 발급을 위한 계약을 정의합니다. 실제 Supabase 연결 코드는 이 포트를 구현하는 어댑터에만 둡니다.
 
 ## 요청 흐름 (목표 설계)
 
