@@ -94,6 +94,55 @@ class TaskRepository(Protocol):
     async def delete_task(self, organization_id: UUID, task_id: UUID, user_id: UUID) -> bool: ...
 
 
+@dataclass(frozen=True, slots=True)
+class DocumentTemplateSummary:
+    id: UUID
+    organization_id: UUID
+    created_by: UUID
+    name: str
+    description: str
+    content: str
+    is_archived: bool
+    created_at: str
+    updated_at: str
+
+
+@dataclass(frozen=True, slots=True)
+class DocumentSummary:
+    id: UUID
+    organization_id: UUID
+    template_id: UUID | None
+    created_by: UUID
+    title: str
+    content: str
+    status: str
+    created_at: str
+    updated_at: str
+
+
+@runtime_checkable
+class DocumentRepository(Protocol):
+    async def list_templates(self, organization_id: UUID) -> list[DocumentTemplateSummary]: ...
+
+    async def create_template(
+        self, organization_id: UUID, created_by: UUID, values: dict[str, object]
+    ) -> DocumentTemplateSummary: ...
+
+    async def update_template(
+        self, organization_id: UUID, template_id: UUID, values: dict[str, object]
+    ) -> DocumentTemplateSummary | None: ...
+
+    async def list_documents(self, organization_id: UUID) -> list[DocumentSummary]: ...
+
+    async def create_document(
+        self, organization_id: UUID, created_by: UUID, values: dict[str, object]
+    ) -> DocumentSummary: ...
+
+    async def update_document(
+        self, organization_id: UUID, document_id: UUID, values: dict[str, object]
+    ) -> DocumentSummary | None: ...
+
+
 @runtime_checkable
 class OrganizationRepository(Protocol):
     """Organization data access scoped to the authenticated user."""
