@@ -12,6 +12,7 @@ from business_assistant_server.ports.repositories import (
     DocumentSummary,
     DocumentTemplateSummary,
     RepositoryUnavailableError,
+    RepositoryValidationError,
     SubscriptionSummary,
 )
 
@@ -173,6 +174,14 @@ class UnavailableDocumentRepository(FakeDocumentRepository):
         raise RepositoryUnavailableError()
 
 
+class InvalidDocumentRepository(FakeDocumentRepository):
+    async def create_document(
+        self, organization_id: UUID, created_by: UUID, values: dict[str, object]
+    ) -> DocumentSummary:
+        del organization_id, created_by, values
+        raise RepositoryValidationError()
+
+
 def _request(
     method: str,
     path: str,
@@ -246,7 +255,11 @@ def test_document_template_and_document_crud() -> None:
 
 def test_documents_validate_payload_and_manager_role() -> None:
     repository = FakeDocumentRepository()
-    for payload in ({"title": ""}, {"title": None}, {"title": "Doc", "status": "bad"}):
+    for payload in (
+        {"title": ""},
+        {"title": None},
+        {"title": "Doc", "status": "bad"},
+    ):
         assert (
             _request(
                 "POST", _path("documents"), document_repository=repository, json=payload
@@ -263,6 +276,34 @@ def test_documents_validate_payload_and_manager_role() -> None:
         ).status_code
         == 403
     )
+    assert (
+        _request(
+            "GET",
+            _path("documents"),
+            organization_repository=FakeOrganizationRepository(role="member"),
+            document_repository=repository,
+        ).status_code
+        == 200
+    )
+    assert (
+        _request(
+            "PATCH",
+            f"{_path('documents')}/{DOCUMENT_ID}",
+            document_repository=repository,
+            json={"template_id": None},
+        ).status_code
+        == 422
+    )
+
+
+def test_document_reference_validation_is_not_reported_as_provider_outage() -> None:
+    response = _request(
+        "POST",
+        _path("documents"),
+        document_repository=InvalidDocumentRepository(),
+        json={"title": "Doc"},
+    )
+    assert response.status_code == 422
 
 
 def test_document_provider_error_is_safe() -> None:

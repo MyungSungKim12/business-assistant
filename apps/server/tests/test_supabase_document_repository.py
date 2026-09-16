@@ -5,7 +5,10 @@ from uuid import UUID
 import httpx
 import pytest
 from business_assistant_server.adapters.supabase_documents import SupabaseDocumentRepository
-from business_assistant_server.ports.repositories import RepositoryUnavailableError
+from business_assistant_server.ports.repositories import (
+    RepositoryUnavailableError,
+    RepositoryValidationError,
+)
 
 ORGANIZATION_ID = UUID("11111111-1111-1111-1111-111111111111")
 USER_ID = UUID("12345678-1234-5678-1234-567812345678")
@@ -66,6 +69,24 @@ def test_document_adapter_maps_provider_and_malformed_responses_safely() -> None
             )
             with pytest.raises(RepositoryUnavailableError):
                 await repository.list_documents(ORGANIZATION_ID)
+
+    asyncio.run(run())
+
+
+def test_document_adapter_maps_postgrest_domain_rejection_to_validation_error() -> None:
+    async def run() -> None:
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(
+                lambda request: httpx.Response(400, json={"message": "bad"})
+            )
+        ) as client:
+            repository = SupabaseDocumentRepository(
+                "https://project.supabase.co", "publishable-key", "user-token", client
+            )
+            with pytest.raises(RepositoryValidationError):
+                await repository.create_document(
+                    ORGANIZATION_ID, USER_ID, {"title": "Doc", "template_id": str(TEMPLATE_ID)}
+                )
 
     asyncio.run(run())
 

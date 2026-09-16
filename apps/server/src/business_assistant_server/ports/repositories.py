@@ -11,6 +11,13 @@ class RepositoryUnavailableError(Exception):
         super().__init__("Organization service unavailable")
 
 
+class RepositoryValidationError(Exception):
+    """The provider rejected a request because its data violated a domain rule."""
+
+    def __init__(self) -> None:
+        super().__init__("Repository request is invalid")
+
+
 @dataclass(frozen=True, slots=True)
 class OrganizationSummary:
     id: UUID

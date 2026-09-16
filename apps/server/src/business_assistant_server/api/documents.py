@@ -19,6 +19,7 @@ from business_assistant_server.ports.repositories import (
     DocumentTemplateSummary,
     OrganizationRepository,
     RepositoryUnavailableError,
+    RepositoryValidationError,
 )
 
 router = APIRouter()
@@ -138,6 +139,13 @@ class DocumentUpdateRequest(BaseModel):
             raise ValueError("content must not be null")
         return DocumentCreateRequest.valid_content(value)
 
+    @field_validator("template_id")
+    @classmethod
+    def template_id_must_not_be_null(cls, value: UUID | None) -> UUID:
+        if value is None:
+            raise ValueError("template_id must not be null")
+        return value
+
     @field_validator("status")
     @classmethod
     def valid_status(cls, value: str | None) -> str:
@@ -206,6 +214,21 @@ async def require_document_management_role(
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Document management permission required")
 
 
+async def require_document_member(
+    organization_id: UUID,
+    current_user: Annotated[AuthUser, Depends(get_current_user)],
+    organization_repository: Annotated[
+        OrganizationRepository, Depends(get_organization_repository)
+    ],
+) -> None:
+    try:
+        role = await organization_repository.get_membership(current_user.user_id, organization_id)
+    except RepositoryUnavailableError:
+        raise _unavailable() from None
+    if role not in {"owner", "admin", "member"}:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Document access permission required")
+
+
 def _unavailable() -> HTTPException:
     return HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Document service unavailable")
 
@@ -246,12 +269,15 @@ async def list_document_templates(
     organization_id: UUID,
     _: Annotated[AuthUser, Depends(get_current_user)],
     __: Annotated[None, Depends(require_feature("document.template"))],
+    ___: Annotated[None, Depends(require_document_member)],
     repository: Annotated[DocumentRepository, Depends(get_document_repository)],
 ) -> list[DocumentTemplateResponse]:
     try:
         return [
             _template_response(item) for item in await repository.list_templates(organization_id)
         ]
+    except RepositoryValidationError:
+        raise HTTPException(422, "Invalid document template request") from None
     except RepositoryUnavailableError:
         raise _unavailable() from None
 
@@ -273,6 +299,8 @@ async def create_document_template(
         item = await repository.create_template(
             organization_id, current_user.user_id, request.model_dump(mode="json")
         )
+    except RepositoryValidationError:
+        raise HTTPException(422, "Invalid document template request") from None
     except RepositoryUnavailableError:
         raise _unavailable() from None
     return _template_response(item)
@@ -295,6 +323,8 @@ async def update_document_template(
         item = await repository.update_template(
             organization_id, template_id, request.model_dump(exclude_unset=True, mode="json")
         )
+    except RepositoryValidationError:
+        raise HTTPException(422, "Invalid document template request") from None
     except RepositoryUnavailableError:
         raise _unavailable() from None
     if item is None:
@@ -307,12 +337,15 @@ async def list_documents(
     organization_id: UUID,
     _: Annotated[AuthUser, Depends(get_current_user)],
     __: Annotated[None, Depends(require_feature("document.template"))],
+    ___: Annotated[None, Depends(require_document_member)],
     repository: Annotated[DocumentRepository, Depends(get_document_repository)],
 ) -> list[DocumentResponse]:
     try:
         return [
             _document_response(item) for item in await repository.list_documents(organization_id)
         ]
+    except RepositoryValidationError:
+        raise HTTPException(422, "Invalid document request") from None
     except RepositoryUnavailableError:
         raise _unavailable() from None
 
@@ -334,6 +367,8 @@ async def create_document(
         item = await repository.create_document(
             organization_id, current_user.user_id, request.model_dump(mode="json")
         )
+    except RepositoryValidationError:
+        raise HTTPException(422, "Invalid document request") from None
     except RepositoryUnavailableError:
         raise _unavailable() from None
     return _document_response(item)
@@ -358,6 +393,8 @@ async def update_document(
             document_id,
             request.model_dump(exclude_unset=True, mode="json"),
         )
+    except RepositoryValidationError:
+        raise HTTPException(422, "Invalid document request") from None
     except RepositoryUnavailableError:
         raise _unavailable() from None
     if item is None:

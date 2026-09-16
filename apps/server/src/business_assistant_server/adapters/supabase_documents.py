@@ -10,6 +10,7 @@ from business_assistant_server.ports.repositories import (
     DocumentSummary,
     DocumentTemplateSummary,
     RepositoryUnavailableError,
+    RepositoryValidationError,
 )
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
@@ -150,6 +151,10 @@ class SupabaseDocumentRepository:
                     )
             response.raise_for_status()
             payload = response.json()
+        except httpx.HTTPStatusError as error:
+            if error.response.status_code == 400:
+                raise RepositoryValidationError() from error
+            raise RepositoryUnavailableError() from error
         except (httpx.HTTPError, ValueError) as error:
             raise RepositoryUnavailableError() from error
         if not isinstance(payload, list) or not all(isinstance(item, dict) for item in payload):
