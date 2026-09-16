@@ -34,6 +34,38 @@ class SubscriptionSummary:
     features: list[str]
 
 
+@dataclass(frozen=True, slots=True)
+class CustomerSummary:
+    id: UUID
+    organization_id: UUID
+    name: str
+    email: str | None
+    phone: str | None
+    notes: str
+
+
+@runtime_checkable
+class CustomerRepository(Protocol):
+    """Customer data access scoped to an authenticated organization member."""
+
+    async def list_customers(self, organization_id: UUID) -> list[CustomerSummary]: ...
+
+    async def create_customer(
+        self,
+        organization_id: UUID,
+        name: str,
+        email: str | None,
+        phone: str | None,
+        notes: str,
+    ) -> CustomerSummary: ...
+
+    async def update_customer(
+        self, organization_id: UUID, customer_id: UUID, values: dict[str, str | None]
+    ) -> CustomerSummary | None: ...
+
+    async def delete_customer(self, organization_id: UUID, customer_id: UUID) -> bool: ...
+
+
 @runtime_checkable
 class OrganizationRepository(Protocol):
     """Organization data access scoped to the authenticated user."""

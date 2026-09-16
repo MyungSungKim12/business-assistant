@@ -60,6 +60,7 @@ Supabase Dashboard의 SQL Editor 또는 팀에서 사용하는 Supabase CLI 마�
 2. `migrations/002_seed_entitlements.sql`
 3. `migrations/003_subscription_and_organization_hardening.sql`
 4. `migrations/004_admin_subscription_rpc.sql`
+5. `migrations/005_crm_customers.sql`
 
 적용 대상이 개발 프로젝트인지 먼저 확인합니다. SQL은 `profiles`, `organizations`,
 `memberships`, 상품·기능·구독 테이블과 기본 BASIC, STANDARD, PRO 권한 데이터를

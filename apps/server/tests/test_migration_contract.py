@@ -6,6 +6,7 @@ SCHEMA_PATH = PROJECT_ROOT / "migrations" / "001_auth_entitlements.sql"
 SEED_PATH = PROJECT_ROOT / "migrations" / "002_seed_entitlements.sql"
 HARDENING_PATH = PROJECT_ROOT / "migrations" / "003_subscription_and_organization_hardening.sql"
 ADMIN_PATH = PROJECT_ROOT / "migrations" / "004_admin_subscription_rpc.sql"
+CRM_PATH = PROJECT_ROOT / "migrations" / "005_crm_customers.sql"
 _SUBSCRIPTION_POLICY_STATEMENT_PATTERN = re.compile(
     r"\bcreate\s+policy\b(?:(?!;)[\s\S])*?\bon\s+public\.subscriptions\b"
     r"(?:(?!;)[\s\S])*?;",
@@ -34,6 +35,10 @@ def _read_hardening() -> str:
 
 def _read_admin_migration() -> str:
     return ADMIN_PATH.read_text(encoding="utf-8").lower()
+
+
+def _read_crm_migration() -> str:
+    return CRM_PATH.read_text(encoding="utf-8").lower()
 
 
 def _subscription_policy_statements(schema: str) -> list[str]:
@@ -200,3 +205,32 @@ def test_admin_subscription_rpc_is_atomic_and_service_role_only() -> None:
     assert "from authenticated" in migration
     assert "grant execute on function public.replace_organization_subscription" in migration
     assert "to service_role" in migration
+
+
+def test_crm_customers_schema_is_tenant_scoped_and_indexed() -> None:
+    migration = _read_crm_migration()
+
+    assert "create table public.customers" in migration
+    assert (
+        "organization_id uuid not null references public.organizations(id) on delete cascade"
+        in migration
+    )
+    assert "email text" in migration
+    assert "phone text" in migration
+    assert "notes text not null default ''" in migration
+    assert (
+        "create index idx_customers_organization_id on public.customers (organization_id)"
+        in migration
+    )
+
+
+def test_crm_customers_uses_member_read_and_manager_mutation_rls() -> None:
+    migration = _read_crm_migration()
+
+    assert "alter table public.customers enable row level security" in migration
+    assert 'create policy "customers_select_member"' in migration
+    assert "for select\nto authenticated" in migration
+    assert "array['owner', 'admin', 'member']::text[]" in migration
+    for action in ("insert", "update", "delete"):
+        assert f'create policy "customers_{action}_manager"' in migration
+    assert "array['owner', 'admin']::text[]" in migration

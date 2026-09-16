@@ -3,6 +3,7 @@ from fastapi.responses import JSONResponse
 
 from business_assistant_server.api.admin import router as admin_router
 from business_assistant_server.api.auth import router as auth_router
+from business_assistant_server.api.customers import router as customer_router
 from business_assistant_server.api.entitlements import FeatureAccessDenied
 from business_assistant_server.api.entitlements import router as entitlement_router
 from business_assistant_server.api.health import router as health_router
@@ -16,6 +17,7 @@ def create_app() -> FastAPI:
     app.include_router(admin_router, prefix="/api/v1")
     app.include_router(organization_router, prefix="/api/v1")
     app.include_router(entitlement_router, prefix="/api/v1")
+    app.include_router(customer_router, prefix="/api/v1")
 
     @app.exception_handler(FeatureAccessDenied)
     async def feature_access_denied_handler(

@@ -8,6 +8,10 @@
    멱등하게 등록합니다.
 3. `003_subscription_and_organization_hardening.sql`로 활성 구독 중복을 막고,
    사용자 JWT만으로 조직 존재 여부를 확인하는 제한된 RPC를 추가합니다.
+4. `004_admin_subscription_rpc.sql`로 플랫폼 관리자 전용의 원자적 구독 교체 RPC를
+   추가합니다.
+5. `005_crm_customers.sql`로 조직별 고객 데이터를 만들고 멤버 조회와 관리자 변경 RLS를
+   적용합니다.
 
 적용 전에는 대상 Supabase 프로젝트의 마이그레이션 환경에서 실행하는지 확인합니다.
 연결 문자열과 서버 전용 비밀값은 로컬 `.env`에만 보관하고, 데스크톱 앱이나 Git에
