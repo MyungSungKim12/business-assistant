@@ -20,7 +20,7 @@
 ## 검증
 
 - 마이그레이션 계약, 저장소 어댑터, API 권한·입력 검증 회귀 테스트를 추가했다.
-- 전체 품질 검사에서 106개 테스트, Ruff, mypy, Supabase import와 diff check가 통과했다.
+- 전체 품질 검사에서 108개 테스트, Ruff, mypy, Supabase import와 diff check가 통과했다.
 
 ## 후속 범위
 
