@@ -30,7 +30,13 @@ _MONEY_LIMIT = Decimal("1000000000000")
 
 
 def _valid_amount(value: Decimal) -> Decimal:
-    if value <= 0 or value >= _MONEY_LIMIT or value.as_tuple().exponent < -2:
+    exponent = value.as_tuple().exponent
+    if (
+        not value.is_finite()
+        or value <= 0
+        or value >= _MONEY_LIMIT
+        or (isinstance(exponent, int) and exponent < -2)
+    ):
         raise ValueError("amount must be positive with at most 2 decimal places")
     return value
 
