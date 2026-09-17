@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime
 from typing import Any, TypeVar
 from uuid import UUID
@@ -13,6 +14,7 @@ from business_assistant_server.ports.repositories import (
 )
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
+logger = logging.getLogger(__name__)
 
 
 class _OrganizationRow(BaseModel):
@@ -211,6 +213,9 @@ class SupabaseOrganizationRepository:
             response.raise_for_status()
             payload = response.json()
         except (httpx.HTTPError, ValueError) as error:
+            logger.warning(
+                "Supabase organization request failed: %s %s", method, _error_message(error)
+            )
             raise RepositoryUnavailableError() from error
         if not isinstance(payload, list) or not all(isinstance(item, dict) for item in payload):
             raise RepositoryUnavailableError()
@@ -234,6 +239,7 @@ class SupabaseOrganizationRepository:
             response.raise_for_status()
             return response.json()
         except (httpx.HTTPError, ValueError) as error:
+            logger.warning("Supabase organization RPC failed: %s %s", method, _error_message(error))
             raise RepositoryUnavailableError() from error
 
     @staticmethod
@@ -248,3 +254,12 @@ class SupabaseOrganizationRepository:
         if not rows:
             raise RepositoryUnavailableError()
         return SupabaseOrganizationRepository._parse_rows(rows[:1], model)[0]
+
+
+def _error_message(error: Exception) -> str:
+    response = getattr(error, "response", None)
+    if response is not None:
+        detail = getattr(response, "text", "")
+        if detail:
+            return " ".join(str(detail).split())[:500]
+    return " ".join(str(error).split())[:500]
