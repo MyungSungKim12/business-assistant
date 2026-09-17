@@ -47,6 +47,9 @@ create index idx_treatment_records_customer_date
 create index idx_treatment_records_category
     on public.treatment_records (organization_id, category, treatment_date desc);
 
+create unique index if not exists idx_treatment_records_id_customer
+    on public.treatment_records (id, customer_id);
+
 create table public.treatment_photos (
     id uuid primary key default gen_random_uuid(),
     organization_id uuid not null references public.organizations(id) on delete cascade,
