@@ -21,6 +21,9 @@ create index if not exists idx_customers_tags on public.customers using gin (tag
 create index if not exists idx_customers_next_visit on public.customers (organization_id, next_visit_date)
     where next_visit_date is not null;
 
+create unique index if not exists idx_customers_id_organization
+    on public.customers (id, organization_id);
+
 create table public.treatment_records (
     id uuid primary key default gen_random_uuid(),
     organization_id uuid not null references public.organizations(id) on delete cascade,

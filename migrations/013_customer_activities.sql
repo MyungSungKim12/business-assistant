@@ -1,5 +1,8 @@
 begin;
 
+create unique index if not exists idx_customers_id_organization
+    on public.customers (id, organization_id);
+
 create table public.customer_activities (
     id uuid primary key default gen_random_uuid(),
     organization_id uuid not null references public.organizations(id) on delete cascade,
@@ -14,7 +17,6 @@ create table public.customer_activities (
         references public.customers (id, organization_id) on delete cascade
 );
 
-create unique index idx_customers_id_organization on public.customers (id, organization_id);
 create index idx_customer_activities_customer_occurred
     on public.customer_activities (organization_id, customer_id, occurred_at desc);
 
