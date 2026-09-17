@@ -75,6 +75,38 @@ class CustomerRepository(Protocol):
 
 
 @dataclass(frozen=True, slots=True)
+class CustomerActivitySummary:
+    id: UUID
+    organization_id: UUID
+    customer_id: UUID
+    activity_type: str
+    title: str
+    description: str
+    occurred_at: str
+
+
+@runtime_checkable
+class CustomerActivityRepository(Protocol):
+    async def list_activities(
+        self, organization_id: UUID, customer_id: UUID
+    ) -> list[CustomerActivitySummary]: ...
+
+    async def create_activity(
+        self,
+        organization_id: UUID,
+        customer_id: UUID,
+        activity_type: str,
+        title: str,
+        description: str,
+        occurred_at: str | None,
+    ) -> CustomerActivitySummary: ...
+
+    async def delete_activity(
+        self, organization_id: UUID, customer_id: UUID, activity_id: UUID
+    ) -> bool: ...
+
+
+@dataclass(frozen=True, slots=True)
 class TaskSummary:
     id: UUID
     organization_id: UUID

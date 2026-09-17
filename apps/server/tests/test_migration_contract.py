@@ -304,6 +304,23 @@ def test_crm_customers_uses_member_read_and_manager_mutation_rls() -> None:
     assert "array['owner', 'admin', 'member']::text[]" in migration
     for action in ("insert", "update", "delete"):
         assert f'create policy "customers_{action}_manager"' in migration
+
+
+def test_crm_customer_activities_schema_is_tenant_scoped_and_indexed() -> None:
+    migration = (PROJECT_ROOT / "migrations" / "013_customer_activities.sql").read_text()
+    assert "create table public.customer_activities" in migration
+    assert (
+        "customer_id uuid not null references public.customers(id) on delete cascade" in migration
+    )
+    assert (
+        "organization_id uuid not null references public.organizations(id) on delete cascade"
+        in migration
+    )
+    assert "create index idx_customer_activities_customer_occurred" in migration
+    assert "alter table public.customer_activities enable row level security" in migration
+    assert 'create policy "customer_activities_select_member"' in migration
+    assert 'create policy "customer_activities_insert_member"' in migration
+    assert 'create policy "customer_activities_delete_manager"' in migration
     assert "array['owner', 'admin']::text[]" in migration
 
 
