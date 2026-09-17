@@ -31,6 +31,8 @@ class AuthenticationClient(Protocol):
 
     def list_organizations(self, session: Session) -> list[Organization]: ...
 
+    def create_organization(self, name: str, slug: str, session: Session) -> Organization: ...
+
     def get_entitlements(self, organization_id: UUID, session: Session) -> EntitlementSet: ...
 
 
@@ -39,7 +41,7 @@ class AuthenticationWorker(QObject):
 
     authenticated = Signal(object)
     confirmation_required = Signal()
-    organization_required = Signal()
+    organization_required = Signal(object)
     failed = Signal()
     finished = Signal()
 
@@ -64,7 +66,7 @@ class AuthenticationWorker(QObject):
                 return
             organizations = self._api_client.list_organizations(session)
             if not organizations:
-                self.organization_required.emit()
+                self.organization_required.emit(session)
                 return
             entitlements = self._api_client.get_entitlements(organizations[0].id, session)
             self.authenticated.emit(entitlements)
@@ -97,10 +99,12 @@ class LoginDialog(QDialog):
         self,
         api_client: AuthenticationClient,
         on_authenticated: Callable[[EntitlementSet], None],
+        on_organization_required: Callable[[Session], None] | None = None,
     ) -> None:
         super().__init__()
         self._api_client = api_client
         self._on_authenticated = on_authenticated
+        self._organization_callback = on_organization_required
         self._thread: QThread | None = None
         self._worker: AuthenticationWorker | None = None
         self._authentication_succeeded = False
@@ -168,8 +172,10 @@ class LoginDialog(QDialog):
     def _show_confirmation_required(self) -> None:
         self.error_label.setText("이메일을 확인한 뒤 로그인해 주세요.")
 
-    def _show_organization_required(self) -> None:
+    def _show_organization_required(self, session: Session) -> None:
         self.error_label.setText("조직이 없습니다. 관리자에게 조직 생성을 요청해 주세요.")
+        if self._organization_callback is not None:
+            self._organization_callback(session)
 
     def _show_request_error(self) -> None:
         self.error_label.setText("서버 요청에 실패했습니다. 다시 시도해 주세요.")

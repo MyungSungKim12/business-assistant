@@ -11,6 +11,8 @@ from PySide6.QtWidgets import QApplication
 from business_assistant_desktop.api_client import ApiClient
 from business_assistant_desktop.login_dialog import AuthenticationClient, LoginDialog
 from business_assistant_desktop.main_window import MainWindow
+from business_assistant_desktop.organization_dialog import OrganizationDialog
+from business_assistant_desktop.session import Session
 
 
 def create_application(argv: Sequence[str] | None = None) -> QApplication:
@@ -37,11 +39,29 @@ class DesktopShell:
 
     def __init__(self, api_client: AuthenticationClient) -> None:
         self.main_window: MainWindow | None = None
-        self.login_dialog = LoginDialog(api_client, self._show_main_window)
+        self._api_client = api_client
+        self._organization_dialog: OrganizationDialog | None = None
+        self.login_dialog = LoginDialog(
+            api_client, self._show_main_window, self._show_organization_dialog
+        )
 
     def _show_main_window(self, entitlements: EntitlementSet) -> None:
         self.main_window = create_main_window(entitlements)
         self.main_window.show()
+
+    def _show_organization_dialog(self, session: Session) -> None:
+        self._organization_dialog = OrganizationDialog(
+            lambda name, slug: self._api_client.create_organization(name, slug, session),
+            lambda organization: self._complete_organization(session, organization),
+        )
+        self._organization_dialog.show()
+
+    def _complete_organization(self, session: Session, organization: object) -> None:
+        if hasattr(organization, "id"):
+            org_id = organization.id
+            entitlements = self._api_client.get_entitlements(org_id, session)
+            self._show_main_window(entitlements)
+            self.login_dialog.accept()
 
 
 def create_desktop_shell_from_environment() -> DesktopShell:

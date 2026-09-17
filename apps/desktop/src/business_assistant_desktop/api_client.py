@@ -71,6 +71,15 @@ class ApiClient:
             raise ValueError("Organization response must be a list")
         return [_organization_from_payload(_object(item)) for item in payload]
 
+    def create_organization(self, name: str, slug: str, session: Session) -> Organization:
+        response = self._client.post(
+            f"{self._base_url}/api/v1/organizations",
+            json={"name": name, "slug": slug},
+            headers={"Authorization": f"Bearer {session.access_token}"},
+        )
+        response.raise_for_status()
+        return _organization_from_payload(_response_object(response))
+
     def get_entitlements(self, organization_id: UUID, session: Session) -> EntitlementSet:
         """Return the server-calculated features for an organization."""
         response = self._client.get(
