@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from typing import Any
 from uuid import UUID
 
@@ -9,6 +10,14 @@ from business_assistant_server.dependencies.auth import (
     AuthenticationConfigurationError,
     AuthenticationError,
 )
+
+logger = logging.getLogger(__name__)
+
+
+def _error_message(error: Exception) -> str:
+    """Return provider diagnostics without logging request credentials."""
+    message = getattr(error, "message", None) or str(error)
+    return " ".join(str(message).split())[:500]
 
 
 class SupabaseAuthAdapter:
@@ -46,6 +55,11 @@ class SupabaseAuthAdapter:
         except AuthenticationConfigurationError:
             raise
         except Exception as error:
+            logger.warning(
+                "Supabase auth operation failed: %s: %s",
+                "verify_access_token",
+                _error_message(error),
+            )
             raise AuthenticationError() from error
 
     async def _call_auth(self, method_name: str, argument: object) -> object:
@@ -55,6 +69,9 @@ class SupabaseAuthAdapter:
         except AuthenticationConfigurationError:
             raise
         except Exception as error:
+            logger.warning(
+                "Supabase auth operation failed: %s: %s", method_name, _error_message(error)
+            )
             raise AuthenticationError() from error
 
     def _get_client(self) -> Any:
