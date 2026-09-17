@@ -1,4 +1,4 @@
-"""Card-based, searchable customer and partner management page."""
+"""Treatment-focused customer management workspace."""
 
 from dataclasses import dataclass
 from typing import Protocol
@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QTableWidget,
     QTableWidgetItem,
+    QTabWidget,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -32,6 +33,12 @@ class Customer:
     notes: str = ""
     tags: tuple[str, ...] = ()
     status: str = "active"
+    last_visit: str | None = None
+    treatment_notes: str = ""
+    allergies: str = ""
+    treatment_date: str | None = None
+    service_name: str | None = None
+    photos: tuple[str, ...] = ()
 
 
 class CustomerClient(Protocol):
@@ -46,7 +53,7 @@ class CustomerClient(Protocol):
 
 
 class CustomerPage(QWidget):
-    """Display customers as cards with a detail editor and selection signal."""
+    """Card grid plus customer information, treatment history and photos."""
 
     customer_selected = Signal(object)
 
@@ -55,24 +62,25 @@ class CustomerPage(QWidget):
         self._client, self._organization_id = client, organization_id
         self._customers: list[Customer] = []
         self._selected_id: UUID | None = None
-        title = QLabel("고객·거래처")
+        self.customer_cards: list[QPushButton] = []
+        title = QLabel("고객 관리")
         title.setObjectName("page-title")
-        subtitle = QLabel("고객 정보를 한 곳에서 관리하고 최근 활동을 확인하세요.")
+        subtitle = QLabel("고객별 시술 기록과 사진, 특이사항을 한 화면에서 관리하세요.")
         subtitle.setObjectName("page-subtitle")
         self.search_input = QLineEdit()
         self.search_input.setAccessibleName("고객 검색")
-        self.search_input.setPlaceholderText("이름, 이메일, 전화번호, 태그 검색")
+        self.search_input.setPlaceholderText("이름, 연락처, 시술명, 태그로 검색")
         self.filter_combo = QComboBox()
         for label, key in (
             ("전체 고객", "all"),
-            ("이메일 있는 고객", "email"),
-            ("전화번호 있는 고객", "phone"),
+            ("활성 고객", "active"),
+            ("보관 고객", "archived"),
         ):
             self.filter_combo.addItem(label, key)
         self.sort_combo = QComboBox()
+        self.sort_combo.addItem("최근 방문순", "recent")
         self.sort_combo.addItem("이름순", "name")
-        self.sort_combo.addItem("최근 등록순", "recent")
-        self.clear_button = QPushButton("필터 초기화")
+        self.clear_button = QPushButton("초기화")
         self.clear_button.setObjectName("secondary-button")
         toolbar = QHBoxLayout()
         toolbar.addWidget(self.search_input, 1)
@@ -81,7 +89,7 @@ class CustomerPage(QWidget):
         toolbar.addWidget(self.clear_button)
         self.loading_label, self.error_label = QLabel(), QLabel()
         self.error_label.setWordWrap(True)
-        self.empty_label = QLabel("조건에 맞는 고객이 없습니다.")
+        self.empty_label = QLabel("검색 조건에 맞는 고객이 없습니다.")
         self.empty_label.setObjectName("status")
         self._cards_host = QWidget()
         self._cards_layout = QGridLayout(self._cards_host)
@@ -91,37 +99,20 @@ class CustomerPage(QWidget):
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QScrollArea.Shape.NoFrame)
         scroll.setWidget(self._cards_host)
-        # Retained for integrations that used the original table query surface.
-        self.customer_table = QTableWidget(0, 4)
+        self.customer_table = QTableWidget(0, 1)
         self.customer_table.setVisible(False)
+        self.detail_tabs = QTabWidget()
+        self.detail_tabs.addTab(self._build_info_tab(), "고객 정보")
+        self.detail_tabs.addTab(self._build_treatment_tab(), "시술 기록")
+        self.detail_tabs.addTab(self._build_photo_tab(), "사진")
+        self.detail_tabs.setObjectName("customer-detail-tabs")
         detail = QWidget()
-        detail.setObjectName("content-card")
         detail_layout = QVBoxLayout(detail)
-        detail_title = QLabel("고객 상세")
-        detail_title.setObjectName("section-title")
-        detail_layout.addWidget(detail_title)
-        form = QFormLayout()
-        self.name_input, self.email_input, self.phone_input = QLineEdit(), QLineEdit(), QLineEdit()
-        self.tags_input = QLineEdit()
-        self.tags_input.setPlaceholderText("예: VIP, 신규, 정기고객 (쉼표로 구분)")
-        self.status_combo = QComboBox()
-        self.status_combo.addItem("활성", "active")
-        self.status_combo.addItem("보관", "archived")
-        self.notes_input = QTextEdit()
-        self.notes_input.setFixedHeight(72)
-        for label, field in (
-            ("이름 *", self.name_input),
-            ("이메일", self.email_input),
-            ("전화번호", self.phone_input),
-            ("태그", self.tags_input),
-            ("상태", self.status_combo),
-            ("메모", self.notes_input),
-        ):
-            form.addRow(label, field)
-        detail_layout.addLayout(form)
+        detail_layout.setContentsMargins(0, 0, 0, 0)
+        detail_layout.addWidget(self.detail_tabs)
         actions = QHBoxLayout()
         self.save_button = QPushButton("고객 추가")
-        self.delete_button = QPushButton("선택 고객 삭제")
+        self.delete_button = QPushButton("고객 보관")
         self.delete_button.setObjectName("danger-button")
         self.clear_form_button = QPushButton("입력 초기화")
         self.clear_form_button.setObjectName("secondary-button")
@@ -129,16 +120,18 @@ class CustomerPage(QWidget):
         actions.addWidget(self.delete_button)
         actions.addWidget(self.clear_form_button)
         detail_layout.addLayout(actions)
+        body = QHBoxLayout()
+        body.addWidget(scroll, 3)
+        body.addWidget(detail, 2)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 18, 20, 18)
-        for widget in (title, subtitle):
-            layout.addWidget(widget)
+        layout.addWidget(title)
+        layout.addWidget(subtitle)
         layout.addLayout(toolbar)
         layout.addWidget(self.loading_label)
         layout.addWidget(self.error_label)
         layout.addWidget(self.empty_label)
-        layout.addWidget(scroll, 1)
-        layout.addWidget(detail)
+        layout.addLayout(body, 1)
         self.search_input.textChanged.connect(self._render)
         self.filter_combo.currentIndexChanged.connect(self._render)
         self.sort_combo.currentIndexChanged.connect(self._render)
@@ -148,6 +141,61 @@ class CustomerPage(QWidget):
         self.delete_button.clicked.connect(self._delete)
         self.clear_form_button.clicked.connect(self._clear_form)
         self._load()
+
+    def _build_info_tab(self) -> QWidget:
+        tab = QWidget()
+        form = QFormLayout(tab)
+        self.name_input, self.email_input, self.phone_input = QLineEdit(), QLineEdit(), QLineEdit()
+        self.tags_input = QLineEdit()
+        self.tags_input.setPlaceholderText("VIP, 신규, 정기고객")
+        self.status_combo = QComboBox()
+        self.status_combo.addItem("활성", "active")
+        self.status_combo.addItem("보관", "archived")
+        self.notes_input = QTextEdit()
+        self.notes_input.setPlaceholderText("고객 응대 메모와 특이사항을 입력하세요")
+        self.notes_input.setFixedHeight(80)
+        for label, field in (
+            ("이름 *", self.name_input),
+            ("이메일", self.email_input),
+            ("전화번호", self.phone_input),
+            ("태그", self.tags_input),
+            ("상태", self.status_combo),
+            ("메모", self.notes_input),
+        ):
+            form.addRow(label, field)
+        return tab
+
+    def _build_treatment_tab(self) -> QWidget:
+        tab = QWidget()
+        form = QFormLayout(tab)
+        self.treatment_date_input = QLineEdit()
+        self.treatment_date_input.setPlaceholderText("예: 2026-09-17")
+        self.service_name_input = QLineEdit()
+        self.service_name_input.setPlaceholderText("예: 진정 관리, 아쿠아필")
+        self.allergies_input = QLineEdit()
+        self.allergies_input.setPlaceholderText("알레르기 또는 금기사항")
+        self.treatment_notes_input = QTextEdit()
+        self.treatment_notes_input.setPlaceholderText("시술 내용, 사용 제품, 고객 반응")
+        self.treatment_notes_input.setFixedHeight(100)
+        for label, field in (
+            ("시술일", self.treatment_date_input),
+            ("시술명", self.service_name_input),
+            ("주의사항", self.allergies_input),
+            ("시술 메모", self.treatment_notes_input),
+        ):
+            form.addRow(label, field)
+        return tab
+
+    def _build_photo_tab(self) -> QWidget:
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        self.photo_gallery = QGridLayout()
+        layout.addLayout(self.photo_gallery)
+        hint = QLabel("시술 사진은 고객 카드에서 바로 확인할 수 있습니다.")
+        hint.setObjectName("page-subtitle")
+        layout.addWidget(hint)
+        layout.addStretch(1)
+        return tab
 
     def _load(self) -> None:
         self.loading_label.setText("고객을 불러오는 중...")
@@ -169,44 +217,51 @@ class CustomerPage(QWidget):
             for c in self._customers
             if (
                 not query
-                or any(
-                    query in value.lower()
-                    for value in (c.name, c.email or "", c.phone or "", " ".join(c.tags))
-                )
+                or query
+                in " ".join(
+                    (c.name, c.email or "", c.phone or "", c.service_name or "", " ".join(c.tags))
+                ).lower()
             )
-            and (key == "all" or (key == "email" and c.email) or (key == "phone" and c.phone))
+            and (key == "all" or c.status == key)
         ]
         result.sort(
-            key=lambda c: c.name.casefold(), reverse=self.sort_combo.currentData() != "name"
+            key=(lambda c: c.name.casefold())
+            if self.sort_combo.currentData() == "name"
+            else (lambda c: c.last_visit or ""),
+            reverse=self.sort_combo.currentData() != "name",
         )
         return result
 
     def _render(self) -> None:
         while self._cards_layout.count():
             layout_item = self._cards_layout.takeAt(0)
-            widget = layout_item.widget() if layout_item is not None else None
-            if widget is not None:
-                widget.deleteLater()
+            if layout_item is not None:
+                widget = layout_item.widget()
+                if widget is not None:
+                    widget.deleteLater()
+        self.customer_cards = []
         visible = self._visible_customers()
         self.customer_table.setRowCount(len(visible))
         for row, customer in enumerate(visible):
             table_item = QTableWidgetItem(customer.name)
             table_item.setData(Qt.ItemDataRole.UserRole, customer.id)
             self.customer_table.setItem(row, 0, table_item)
+            card = self._make_card(customer)
+            self.customer_cards.append(card)
+            self._cards_layout.addWidget(card, row // 2, row % 2)
         self.empty_label.setVisible(not visible)
-        for index, customer in enumerate(visible):
-            self._cards_layout.addWidget(self._make_card(customer), index // 3, index % 3)
 
-    def _make_card(self, customer: Customer) -> QWidget:
+    def _make_card(self, customer: Customer) -> QPushButton:
         card = QPushButton()
-        card.setObjectName("customer-card")
+        card.setObjectName("treatment-customer-card")
         card.setCursor(Qt.CursorShape.PointingHandCursor)
         card.setAccessibleName(f"고객 카드: {customer.name}")
-        card.setMinimumHeight(132)
-        tags = "  ".join(f"#{tag}" for tag in getattr(customer, "tags", ())) or "태그 없음"
+        card.setMinimumHeight(145)
+        tags = "  ".join(f"#{tag}" for tag in customer.tags) or "태그 없음"
+        visit = customer.last_visit or customer.treatment_date or "기록 없음"
         card.setText(
-            f"{customer.name}\n{customer.email or '이메일 없음'}\n"
-            f"{customer.phone or '전화번호 없음'}\n{tags}"
+            f"◉  {customer.name}    ⋮\n{customer.service_name or '최근 시술 기록 없음'}\n"
+            f"시술일  {visit}\n사진 {len(customer.photos)}장   {tags}"
         )
         card.clicked.connect(lambda: self._select_customer(customer))
         return card
@@ -216,38 +271,64 @@ class CustomerPage(QWidget):
         self.name_input.setText(customer.name)
         self.email_input.setText(customer.email or "")
         self.phone_input.setText(customer.phone or "")
-        self.tags_input.setText(", ".join(getattr(customer, "tags", ())))
-        self.status_combo.setCurrentIndex(
-            self.status_combo.findData(getattr(customer, "status", "active"))
-        )
+        self.tags_input.setText(", ".join(customer.tags))
+        self.status_combo.setCurrentIndex(max(0, self.status_combo.findData(customer.status)))
         self.notes_input.setPlainText(customer.notes)
-        self.save_button.setText("고객 수정")
+        self.treatment_date_input.setText(customer.treatment_date or customer.last_visit or "")
+        self.service_name_input.setText(customer.service_name or "")
+        self.allergies_input.setText(customer.allergies)
+        self.treatment_notes_input.setPlainText(customer.treatment_notes)
+        self._render_photos(customer.photos)
+        self.save_button.setText("고객 정보 저장")
         self.customer_selected.emit(customer)
+
+    def _render_photos(self, photos: tuple[str, ...]) -> None:
+        while self.photo_gallery.count():
+            layout_item = self.photo_gallery.takeAt(0)
+            if layout_item is not None:
+                widget = layout_item.widget()
+                if widget is not None:
+                    widget.deleteLater()
+        for index, photo in enumerate(photos):
+            label = QLabel(f"시술 사진 {index + 1}\n{photo}")
+            label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            label.setMinimumSize(120, 86)
+            label.setObjectName("photo-thumbnail")
+            self.photo_gallery.addWidget(label, index // 3, index % 3)
 
     def _select_from_table(self) -> None:
         rows = self.customer_table.selectionModel().selectedRows()
-        if not rows:
-            return
-        table_item = self.customer_table.item(rows[0].row(), 0)
-        if table_item is None:
-            return
-        customer_id = table_item.data(Qt.ItemDataRole.UserRole)
-        customer = next((item for item in self._customers if item.id == customer_id), None)
-        if customer is not None:
-            self._select_customer(customer)
+        if rows:
+            item = self.customer_table.item(rows[0].row(), 0)
+            customer = next(
+                (
+                    c
+                    for c in self._customers
+                    if item and c.id == item.data(Qt.ItemDataRole.UserRole)
+                ),
+                None,
+            )
+            if customer:
+                self._select_customer(customer)
 
     def _save(self) -> None:
         name = self.name_input.text().strip()
         if not name:
             self.error_label.setText("고객 이름을 입력해 주세요.")
             return
-        values = {
+        tags = tuple(t.strip() for t in self.tags_input.text().split(",") if t.strip())
+        values: dict[str, str | None] = {
             "name": name,
             "email": self.email_input.text().strip() or None,
             "phone": self.phone_input.text().strip() or None,
             "notes": self.notes_input.toPlainText().strip(),
+            "tags": ",".join(tags),
+            "status": str(self.status_combo.currentData()),
+            "treatment_date": self.treatment_date_input.text().strip() or None,
+            "service_name": self.service_name_input.text().strip() or None,
+            "allergies": self.allergies_input.text().strip() or None,
+            "treatment_notes": self.treatment_notes_input.toPlainText().strip(),
         }
-        self.loading_label.setText("저장 중...")
         try:
             if self._selected_id is None:
                 self._customers.append(
@@ -268,17 +349,15 @@ class CustomerPage(QWidget):
             self._render()
         except Exception:
             self.error_label.setText("고객 저장에 실패했습니다. 입력값을 확인해 주세요.")
-        finally:
-            self.loading_label.clear()
 
     def _delete(self) -> None:
         if self._selected_id is None and self.customer_table.currentRow() >= 0:
             self._select_from_table()
         if self._selected_id is None:
-            self.error_label.setText("삭제할 고객을 선택해 주세요.")
+            self.error_label.setText("보관할 고객을 선택해 주세요.")
             return
         if (
-            QMessageBox.question(self, "고객 삭제", "선택한 고객을 삭제할까요?")
+            QMessageBox.question(self, "고객 보관", "선택한 고객을 보관할까요?")
             != QMessageBox.StandardButton.Yes
         ):
             return
@@ -288,7 +367,7 @@ class CustomerPage(QWidget):
             self._clear_form()
             self._render()
         except Exception:
-            self.error_label.setText("고객 삭제에 실패했습니다.")
+            self.error_label.setText("고객 보관에 실패했습니다.")
 
     def _reset_filters(self) -> None:
         self.search_input.clear()
@@ -297,8 +376,18 @@ class CustomerPage(QWidget):
 
     def _clear_form(self) -> None:
         self._selected_id = None
-        for field in (self.name_input, self.email_input, self.phone_input, self.tags_input):
+        for field in (
+            self.name_input,
+            self.email_input,
+            self.phone_input,
+            self.tags_input,
+            self.treatment_date_input,
+            self.service_name_input,
+            self.allergies_input,
+        ):
             field.clear()
         self.status_combo.setCurrentIndex(0)
         self.notes_input.clear()
+        self.treatment_notes_input.clear()
+        self._render_photos(())
         self.save_button.setText("고객 추가")

@@ -89,3 +89,29 @@ def test_page_shows_error_when_client_fails(qtbot) -> None:  # type: ignore[no-u
     page = CustomerPage(BrokenClient(), ORGANIZATION_ID)
     qtbot.addWidget(page)
     assert "불러오지 못했습니다" in page.error_label.text()
+
+
+def test_customer_workspace_has_treatment_preview_and_detail_tabs(qtbot) -> None:  # type: ignore[no-untyped-def]
+    page = CustomerPage(FakeClient(), ORGANIZATION_ID)
+    qtbot.addWidget(page)
+
+    assert page.customer_cards
+    assert page.detail_tabs.count() == 3
+    assert page.detail_tabs.tabText(0) == "고객 정보"
+    assert page.detail_tabs.tabText(1) == "시술 기록"
+    assert page.detail_tabs.tabText(2) == "사진"
+    assert page.treatment_date_input is not None
+    assert page.photo_gallery is not None
+
+
+def test_customer_card_selection_populates_treatment_fields(qtbot) -> None:  # type: ignore[no-untyped-def]
+    customer = Customer(uuid4(), "시술 고객", notes="주의사항", status="active")
+    client = FakeClient()
+    client.customers = [customer]
+    page = CustomerPage(client, ORGANIZATION_ID)
+    qtbot.addWidget(page)
+    qtbot.mouseClick(page.customer_cards[0], Qt.MouseButton.LeftButton)
+
+    assert page.name_input.text() == "시술 고객"
+    assert page.notes_input.toPlainText() == "주의사항"
+    assert page.detail_tabs.currentIndex() == 0
