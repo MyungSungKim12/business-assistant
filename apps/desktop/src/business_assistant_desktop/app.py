@@ -6,6 +6,7 @@ from collections.abc import Sequence
 import httpx
 from business_assistant_common.entitlements import EntitlementSet
 from dotenv import load_dotenv
+from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QApplication
 from qt_material import apply_stylesheet  # type: ignore[import-untyped]
 
@@ -82,6 +83,12 @@ class DesktopShell:
             self._show_main_window(entitlements)
             self.login_dialog.accept()
 
+    def start_dev_auto_login(self, email: str, password: str) -> None:
+        """Start a development-only login using credentials supplied by the environment."""
+        self.login_dialog.email_input.setText(email)
+        self.login_dialog.password_input.setText(password)
+        QTimer.singleShot(0, self.login_dialog._login)
+
 
 def create_desktop_shell_from_environment() -> DesktopShell:
     """Create the login shell from the FastAPI URL supplied by the environment."""
@@ -91,4 +98,10 @@ def create_desktop_shell_from_environment() -> DesktopShell:
         raise RuntimeError(
             "APP_API_BASE_URL is required; set it to the Business Assistant API URL."
         )
-    return DesktopShell(ApiClient(api_url, httpx.Client(timeout=10.0)))
+    shell = DesktopShell(ApiClient(api_url, httpx.Client(timeout=10.0)))
+    if os.environ.get("BUSINESS_ASSISTANT_DEV_AUTO_LOGIN", "").lower() in {"1", "true", "yes"}:
+        email = os.environ.get("BUSINESS_ASSISTANT_DEV_EMAIL")
+        password = os.environ.get("BUSINESS_ASSISTANT_DEV_PASSWORD")
+        if email and password:
+            shell.start_dev_auto_login(email, password)
+    return shell
