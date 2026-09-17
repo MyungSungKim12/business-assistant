@@ -195,7 +195,7 @@ class SupabaseOrganizationRepository:
             **(headers or {}),
         }
         if method == "POST" and resource == "organizations":
-            logger.info("Organization create JWT claims: %s", _jwt_claims(self._access_token))
+            logger.warning("Organization create JWT claims: %s", _jwt_claims(self._access_token))
         try:
             if self._client is not None:
                 response = await self._client.request(
