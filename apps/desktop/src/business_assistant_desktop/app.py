@@ -7,6 +7,7 @@ import httpx
 from business_assistant_common.entitlements import EntitlementSet
 from dotenv import load_dotenv
 from PySide6.QtWidgets import QApplication
+from qt_material import apply_stylesheet  # type: ignore[import-untyped]
 
 from business_assistant_desktop.api_client import ApiClient
 from business_assistant_desktop.login_dialog import AuthenticationClient, LoginDialog
@@ -26,6 +27,8 @@ def create_application(argv: Sequence[str] | None = None) -> QApplication:
     application.setOrganizationName("Business Assistant")
     application.setApplicationName("Business Assistant")
     application.setApplicationDisplayName("Business Assistant")
+    if not application.styleSheet():
+        apply_stylesheet(application, theme="light_blue.xml", extra={"density_scale": "0"})
     return application
 
 

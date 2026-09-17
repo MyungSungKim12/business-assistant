@@ -30,6 +30,11 @@ def test_shell_factory_loads_dotenv_and_prefers_the_standard_api_url(monkeypatch
     assert dotenv_overrides == [False]
 
 
+def test_create_application_applies_material_stylesheet(qtbot) -> None:  # type: ignore[no-untyped-def]
+    application = desktop_app.create_application([])
+    assert application.styleSheet()
+
+
 def test_main_shows_the_configured_login_shell(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     class FakeApplication:
         def exec(self) -> int:

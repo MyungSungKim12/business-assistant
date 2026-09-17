@@ -6,6 +6,7 @@ dependencies = [
   "business-assistant-common",
   "httpx>=0.28,<1",
   "PySide6>=6.8,<7",
+  "qt-material>=2.17,<3",
   "python-dotenv>=1.0,<2",
 ]
 
