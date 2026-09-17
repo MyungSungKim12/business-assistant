@@ -224,8 +224,24 @@ class _BoundTaskClient:
     def list_tasks(self, organization_id: Any, status: str | None = None) -> Any:
         return self._client.list_tasks(organization_id, self._session, status)
 
-    def create_task(self, organization_id: Any, **values: Any) -> Any:
-        return self._client.create_task(organization_id, self._session, **values)
+    def create_task(
+        self,
+        organization_id: Any,
+        title: str,
+        description: str,
+        due_at: str | None,
+        status: str,
+        priority: str,
+    ) -> Any:
+        return self._client.create_task(
+            organization_id,
+            self._session,
+            title,
+            description,
+            due_at,
+            status,
+            priority,
+        )
 
     def update_task(self, organization_id: Any, task_id: Any, values: dict[str, Any]) -> Any:
         return self._client.update_task(organization_id, self._session, task_id, values)
