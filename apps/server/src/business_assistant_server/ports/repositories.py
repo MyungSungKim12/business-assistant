@@ -50,6 +50,14 @@ class CustomerSummary:
     email: str | None
     phone: str | None
     notes: str
+    birth_date: str | None = None
+    skin_type: str | None = None
+    concerns: list[str] | None = None
+    allergies: str = ""
+    last_visit_date: str | None = None
+    next_visit_date: str | None = None
+    tags: list[str] | None = None
+    status: str = "active"
 
 
 @runtime_checkable
@@ -65,10 +73,11 @@ class CustomerRepository(Protocol):
         email: str | None,
         phone: str | None,
         notes: str,
+        **profile: object,
     ) -> CustomerSummary: ...
 
     async def update_customer(
-        self, organization_id: UUID, customer_id: UUID, values: dict[str, str | None]
+        self, organization_id: UUID, customer_id: UUID, values: dict[str, object]
     ) -> CustomerSummary | None: ...
 
     async def delete_customer(self, organization_id: UUID, customer_id: UUID) -> bool: ...
@@ -103,6 +112,53 @@ class CustomerActivityRepository(Protocol):
 
     async def delete_activity(
         self, organization_id: UUID, customer_id: UUID, activity_id: UUID
+    ) -> bool: ...
+
+
+@dataclass(frozen=True, slots=True)
+class TreatmentSummary:
+    id: UUID
+    organization_id: UUID
+    customer_id: UUID
+    treatment_date: str
+    treatment_name: str
+    category: str
+    practitioner: str
+    notes: str
+    amount: Decimal | None
+    next_visit_date: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class TreatmentPhotoSummary:
+    id: UUID
+    organization_id: UUID
+    customer_id: UUID
+    treatment_id: UUID
+    storage_path: str
+    thumbnail_path: str | None
+    content_type: str
+    caption: str
+    sort_order: int
+    taken_at: str | None
+
+
+@runtime_checkable
+class TreatmentRepository(Protocol):
+    async def list_treatments(
+        self, organization_id: UUID, customer_id: UUID
+    ) -> list[TreatmentSummary]: ...
+    async def create_treatment(
+        self, organization_id: UUID, customer_id: UUID, values: dict[str, object]
+    ) -> TreatmentSummary: ...
+    async def list_photos(
+        self, organization_id: UUID, customer_id: UUID, treatment_id: UUID | None = None
+    ) -> list[TreatmentPhotoSummary]: ...
+    async def create_photo(
+        self, organization_id: UUID, customer_id: UUID, values: dict[str, object]
+    ) -> TreatmentPhotoSummary: ...
+    async def delete_photo(
+        self, organization_id: UUID, customer_id: UUID, photo_id: UUID
     ) -> bool: ...
 
 

@@ -21,6 +21,14 @@ class _CustomerRow(BaseModel):
     email: str | None
     phone: str | None
     notes: str
+    birth_date: str | None = None
+    skin_type: str | None = None
+    concerns: list[str] = []
+    allergies: str = ""
+    last_visit_date: str | None = None
+    next_visit_date: str | None = None
+    tags: list[str] = []
+    status: str = "active"
 
 
 class SupabaseCustomerRepository:
@@ -42,7 +50,10 @@ class SupabaseCustomerRepository:
         rows = await self._request_rows(
             "GET",
             params={
-                "select": "id,organization_id,name,email,phone,notes",
+                "select": (
+                    "id,organization_id,name,email,phone,notes,birth_date,skin_type,"
+                    "concerns,allergies,last_visit_date,next_visit_date,tags,status"
+                ),
                 "organization_id": f"eq.{organization_id}",
             },
         )
@@ -55,6 +66,7 @@ class SupabaseCustomerRepository:
         email: str | None,
         phone: str | None,
         notes: str,
+        **profile: object,
     ) -> CustomerSummary:
         rows = await self._request_rows(
             "POST",
@@ -64,13 +76,14 @@ class SupabaseCustomerRepository:
                 "email": email,
                 "phone": phone,
                 "notes": notes,
+                **profile,
             },
             headers={"Prefer": "return=representation"},
         )
         return self._to_summary(self._parse_one(rows, _CustomerRow))
 
     async def update_customer(
-        self, organization_id: UUID, customer_id: UUID, values: dict[str, str | None]
+        self, organization_id: UUID, customer_id: UUID, values: dict[str, object]
     ) -> CustomerSummary | None:
         rows = await self._request_rows(
             "PATCH",
@@ -95,7 +108,7 @@ class SupabaseCustomerRepository:
         method: str,
         *,
         params: dict[str, str] | None = None,
-        json: dict[str, str | None] | None = None,
+        json: dict[str, object] | None = None,
         headers: dict[str, str] | None = None,
     ) -> list[dict[str, Any]]:
         request_headers = {
@@ -145,5 +158,18 @@ class SupabaseCustomerRepository:
     @staticmethod
     def _to_summary(row: _CustomerRow) -> CustomerSummary:
         return CustomerSummary(
-            row.id, row.organization_id, row.name, row.email, row.phone, row.notes
+            row.id,
+            row.organization_id,
+            row.name,
+            row.email,
+            row.phone,
+            row.notes,
+            row.birth_date,
+            row.skin_type,
+            row.concerns,
+            row.allergies,
+            row.last_visit_date,
+            row.next_visit_date,
+            row.tags,
+            row.status,
         )

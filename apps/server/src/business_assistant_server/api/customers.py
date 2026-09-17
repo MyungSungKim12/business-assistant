@@ -33,6 +33,14 @@ class CustomerCreateRequest(BaseModel):
     email: str | None = None
     phone: str | None = None
     notes: str = ""
+    birth_date: str | None = None
+    skin_type: str | None = None
+    concerns: list[str] = []
+    allergies: str = ""
+    last_visit_date: str | None = None
+    next_visit_date: str | None = None
+    tags: list[str] = []
+    status: str = "active"
 
     @field_validator("name")
     @classmethod
@@ -81,6 +89,14 @@ class CustomerUpdateRequest(BaseModel):
     email: str | None = None
     phone: str | None = None
     notes: str | None = None
+    birth_date: str | None = None
+    skin_type: str | None = None
+    concerns: list[str] | None = None
+    allergies: str | None = None
+    last_visit_date: str | None = None
+    next_visit_date: str | None = None
+    tags: list[str] | None = None
+    status: str | None = None
 
     @field_validator("name")
     @classmethod
@@ -125,6 +141,14 @@ class CustomerResponseModel(BaseModel):
     email: str | None
     phone: str | None
     notes: str
+    birth_date: str | None = None
+    skin_type: str | None = None
+    concerns: list[str] = []
+    allergies: str = ""
+    last_visit_date: str | None = None
+    next_visit_date: str | None = None
+    tags: list[str] = []
+    status: str = "active"
 
 
 def get_customer_repository(
@@ -157,6 +181,14 @@ def _customer_response(customer: CustomerSummary) -> CustomerResponseModel:
         email=customer.email,
         phone=customer.phone,
         notes=customer.notes,
+        birth_date=customer.birth_date,
+        skin_type=customer.skin_type,
+        concerns=customer.concerns or [],
+        allergies=customer.allergies,
+        last_visit_date=customer.last_visit_date,
+        next_visit_date=customer.next_visit_date,
+        tags=customer.tags or [],
+        status=customer.status,
     )
 
 
@@ -215,9 +247,32 @@ async def create_customer(
     repository: Annotated[CustomerRepository, Depends(get_customer_repository)],
 ) -> CustomerResponseModel:
     try:
-        customer = await repository.create_customer(
-            organization_id, request.name, request.email, request.phone, request.notes
-        )
+        profile = {
+            "birth_date": request.birth_date,
+            "skin_type": request.skin_type,
+            "concerns": request.concerns,
+            "allergies": request.allergies,
+            "last_visit_date": request.last_visit_date,
+            "next_visit_date": request.next_visit_date,
+            "tags": request.tags,
+            "status": request.status,
+        }
+        try:
+            customer = await repository.create_customer(
+                organization_id,
+                request.name,
+                request.email,
+                request.phone,
+                request.notes,
+                **profile,
+            )
+        except TypeError as error:
+            # Keep third-party/test repository implementations compatible during rollout.
+            if "unexpected keyword argument" not in str(error):
+                raise
+            customer = await repository.create_customer(
+                organization_id, request.name, request.email, request.phone, request.notes
+            )
     except RepositoryUnavailableError:
         raise _unavailable() from None
     return _customer_response(customer)
@@ -238,7 +293,21 @@ async def update_customer(
     values = {
         key: value
         for key, value in request.model_dump(exclude_unset=True).items()
-        if key in {"name", "email", "phone", "notes"}
+        if key
+        in {
+            "name",
+            "email",
+            "phone",
+            "notes",
+            "birth_date",
+            "skin_type",
+            "concerns",
+            "allergies",
+            "last_visit_date",
+            "next_visit_date",
+            "tags",
+            "status",
+        }
     }
     try:
         customer = await repository.update_customer(organization_id, customer_id, values)

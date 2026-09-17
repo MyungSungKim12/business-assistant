@@ -324,6 +324,35 @@ def test_crm_customer_activities_schema_is_tenant_scoped_and_indexed() -> None:
     assert "array['owner', 'admin']::text[]" in migration
 
 
+def test_customer_records_schema_contains_profile_treatments_and_photos_with_rls() -> None:
+    migration = (PROJECT_ROOT / "migrations" / "014_customer_records.sql").read_text()
+    for column in (
+        "birth_date date",
+        "skin_type text",
+        "concerns text[]",
+        "allergies text",
+        "last_visit_date date",
+        "next_visit_date date",
+        "tags text[]",
+    ):
+        assert column in migration
+    for table_name in ("treatment_records", "treatment_photos"):
+        assert f"create table public.{table_name}" in migration
+        assert f"alter table public.{table_name} enable row level security" in migration
+    assert "idx_treatment_records_customer_date" in migration
+    assert "idx_treatment_photos_treatment_sort" in migration
+    assert "treatment_records_select_member" in migration
+    assert "treatment_photos_select_member" in migration
+
+
+def test_customer_demo_seed_contains_safe_profile_treatment_and_photo_examples() -> None:
+    seed = (PROJECT_ROOT / "migrations" / "015_seed_customer_demo.sql").read_text()
+    assert "insert into public.customers" in seed.lower()
+    assert "insert into public.treatment_records" in seed.lower()
+    assert "insert into public.treatment_photos" in seed.lower()
+    assert "where o.slug = 'test'" in seed.lower()
+
+
 def test_tasks_schema_and_rls_are_organization_scoped() -> None:
     migration = _read_tasks_migration()
     assert "create table public.tasks" in migration

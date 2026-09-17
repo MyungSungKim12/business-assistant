@@ -23,6 +23,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from business_assistant_desktop.icons import set_icon
+
 
 @dataclass(frozen=True, slots=True)
 class Customer:
@@ -82,6 +84,7 @@ class CustomerPage(QWidget):
         self.sort_combo.addItem("이름순", "name")
         self.clear_button = QPushButton("초기화")
         self.clear_button.setObjectName("secondary-button")
+        set_icon(self.clear_button, "mdi6.filter-variant-remove")
         toolbar = QHBoxLayout()
         toolbar.addWidget(self.search_input, 1)
         toolbar.addWidget(self.filter_combo)
@@ -112,10 +115,13 @@ class CustomerPage(QWidget):
         detail_layout.addWidget(self.detail_tabs)
         actions = QHBoxLayout()
         self.save_button = QPushButton("고객 추가")
+        set_icon(self.save_button, "mdi6.content-save-outline")
         self.delete_button = QPushButton("고객 보관")
         self.delete_button.setObjectName("danger-button")
+        set_icon(self.delete_button, "mdi6.archive-outline", "#8B5E4B")
         self.clear_form_button = QPushButton("입력 초기화")
         self.clear_form_button.setObjectName("secondary-button")
+        set_icon(self.clear_form_button, "mdi6.broom")
         actions.addWidget(self.save_button)
         actions.addWidget(self.delete_button)
         actions.addWidget(self.clear_form_button)

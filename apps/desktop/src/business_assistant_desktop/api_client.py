@@ -40,6 +40,38 @@ class Customer:
     notes: str
     tags: tuple[str, ...] = ()
     status: str = "active"
+    birth_date: str | None = None
+    skin_type: str | None = None
+    concerns: tuple[str, ...] = ()
+    allergies: str = ""
+    last_visit_date: str | None = None
+    next_visit_date: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class Treatment:
+    id: UUID
+    customer_id: UUID
+    treatment_date: str
+    treatment_name: str
+    category: str
+    practitioner: str
+    notes: str
+    amount: Decimal | None
+    next_visit_date: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class TreatmentPhoto:
+    id: UUID
+    customer_id: UUID
+    treatment_id: UUID
+    storage_path: str
+    thumbnail_path: str | None
+    content_type: str
+    caption: str
+    sort_order: int
+    taken_at: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -464,6 +496,12 @@ def _customer_from_payload(payload: dict[str, object]) -> Customer:
         if isinstance(raw_tags, list)
         else ()
     )
+    raw_concerns = payload.get("concerns", [])
+    concerns = (
+        tuple(item for item in raw_concerns if isinstance(item, str))
+        if isinstance(raw_concerns, list)
+        else ()
+    )
     return Customer(
         UUID(_required_string(payload, "id")),
         _required_string(payload, "name"),
@@ -472,6 +510,12 @@ def _customer_from_payload(payload: dict[str, object]) -> Customer:
         _required_string(payload, "notes"),
         tags,
         _optional_string(payload, "status") or "active",
+        _optional_string(payload, "birth_date"),
+        _optional_string(payload, "skin_type"),
+        concerns,
+        _optional_string(payload, "allergies") or "",
+        _optional_string(payload, "last_visit_date"),
+        _optional_string(payload, "next_visit_date"),
     )
 
 

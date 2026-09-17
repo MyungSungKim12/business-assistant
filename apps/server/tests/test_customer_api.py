@@ -228,3 +228,24 @@ def test_customer_provider_failure_is_mapped_safely() -> None:
     )
     assert response.status_code == 503
     assert response.json() == {"detail": "Customer service unavailable"}
+
+
+def test_customer_profile_fields_are_accepted_and_returned() -> None:
+    repository = FakeCustomerRepository()
+    response = _request(
+        "POST",
+        _customers_path(),
+        customer_repository=repository,
+        json={
+            "name": "  Min Park  ",
+            "birth_date": "1990-01-02",
+            "skin_type": "dry",
+            "concerns": ["홍조", "건조"],
+            "allergies": "레티놀 주의",
+            "last_visit_date": "2026-09-01",
+            "next_visit_date": "2026-10-01",
+            "tags": ["VIP", "정기"],
+            "status": "active",
+        },
+    )
+    assert response.status_code == 201
