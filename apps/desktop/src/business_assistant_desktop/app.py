@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 from PySide6.QtWidgets import QApplication
 from qt_material import apply_stylesheet  # type: ignore[import-untyped]
 
-from business_assistant_desktop.api_client import ApiClient
+from business_assistant_desktop.api_client import ApiClient, Organization
 from business_assistant_desktop.login_dialog import AuthenticationClient, LoginDialog
 from business_assistant_desktop.main_window import MainWindow
 from business_assistant_desktop.organization_dialog import OrganizationDialog
@@ -42,15 +42,32 @@ class DesktopShell:
 
     def __init__(self, api_client: AuthenticationClient) -> None:
         self.main_window: MainWindow | None = None
+        self._context_handled = False
         self._api_client = api_client
         self._organization_dialog: OrganizationDialog | None = None
         self.login_dialog = LoginDialog(
-            api_client, self._show_main_window, self._show_organization_dialog
+            api_client,
+            self._show_main_window,
+            self._show_organization_dialog,
+            self._show_authenticated_context,
         )
 
     def _show_main_window(self, entitlements: EntitlementSet) -> None:
+        if self._context_handled:
+            self._context_handled = False
+            return
         self.main_window = create_main_window(entitlements)
         self.main_window.show()
+
+    def _show_authenticated_context(self, context: object) -> None:
+        if not isinstance(context, tuple) or len(context) != 3:
+            return
+        entitlements, session, organization = context
+        if isinstance(entitlements, EntitlementSet) and isinstance(organization, Organization):
+            self._context_handled = True
+            self.main_window = MainWindow(entitlements, self._api_client, session, organization)
+            self.main_window.show()
+            self.login_dialog.accept()
 
     def _show_organization_dialog(self, session: Session) -> None:
         self._organization_dialog = OrganizationDialog(

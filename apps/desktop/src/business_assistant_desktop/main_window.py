@@ -1,5 +1,7 @@
 """Product-style application shell and navigation."""
 
+from typing import Any
+
 from business_assistant_common.entitlements import EntitlementSet
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
@@ -15,6 +17,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from business_assistant_desktop.customer_page import CustomerPage
 from business_assistant_desktop.menu_catalog import MENU_CATALOG
 
 _STYLE = """
@@ -60,7 +63,13 @@ class PlaceholderPage(QFrame):
 class MainWindow(QMainWindow):
     """Application shell with consistent navigation and page states."""
 
-    def __init__(self, entitlements: EntitlementSet) -> None:
+    def __init__(
+        self,
+        entitlements: EntitlementSet,
+        client: object | None = None,
+        session: object | None = None,
+        organization: object | None = None,
+    ) -> None:
         super().__init__()
         self.setWindowTitle("Business Assistant")
         self.setMinimumSize(1100, 720)
@@ -103,9 +112,17 @@ class MainWindow(QMainWindow):
             item = self.navigation_menu.item(self.navigation_menu.count() - 1)
             if not available:
                 item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEnabled)
-            self._page_by_key[menu.key] = self.pages.addWidget(
-                PlaceholderPage(menu.label, self._description(menu.key), available)
-            )
+            page: QWidget = PlaceholderPage(menu.label, self._description(menu.key), available)
+            if (
+                menu.key == "crm"
+                and client is not None
+                and session is not None
+                and organization is not None
+            ):
+                organization_id = getattr(organization, "id", None)
+                if organization_id is not None:
+                    page = CustomerPage(_BoundCustomerClient(client, session), organization_id)
+            self._page_by_key[menu.key] = self.pages.addWidget(page)
         body_layout.addWidget(self.navigation_menu)
         body_layout.addWidget(self.pages, 1)
         root_layout.addWidget(body, 1)
@@ -123,3 +140,28 @@ class MainWindow(QMainWindow):
             "finance": "수입·지출을 기록하고 기간별 합계를 확인합니다.",
             "files": "조직 파일을 안전하게 업로드하고 공유합니다.",
         }.get(key, "업무에 필요한 기능을 준비하고 있습니다.")
+
+
+class _BoundCustomerClient:
+    def __init__(self, client: Any, session: Any) -> None:
+        self._client = client
+        self._session = session
+
+    def list_customers(self, organization_id: Any) -> Any:
+        return self._client.list_customers(organization_id, self._session)
+
+    def create_customer(
+        self, organization_id: Any, name: str, email: str | None, phone: str | None, notes: str
+    ) -> Any:
+        return self._client.create_customer(
+            organization_id, self._session, name, email, phone, notes
+        )
+
+    def update_customer(
+        self, organization_id: Any, customer_id: Any, values: dict[str, str | None]
+    ) -> Any:
+        return self._client.update_customer(organization_id, self._session, customer_id, values)
+
+    def delete_customer(self, organization_id: Any, customer_id: Any) -> bool:
+        self._client.delete_customer(organization_id, self._session, customer_id)
+        return True

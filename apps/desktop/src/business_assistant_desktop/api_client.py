@@ -28,6 +28,27 @@ class SignUpResult:
     email_confirmation_required: bool
 
 
+@dataclass(frozen=True, slots=True)
+class Customer:
+    id: UUID
+    name: str
+    email: str | None
+    phone: str | None
+    notes: str
+
+
+@dataclass(frozen=True, slots=True)
+class Task:
+    id: UUID
+    organization_id: UUID
+    created_by: UUID
+    title: str
+    description: str
+    due_at: str | None
+    status: str
+    priority: str
+
+
 class ApiClient:
     """Request authenticated data from the server without direct database access."""
 
@@ -79,6 +100,54 @@ class ApiClient:
         )
         response.raise_for_status()
         return _organization_from_payload(_response_object(response))
+
+    def list_customers(self, organization_id: UUID, session: Session) -> list[Customer]:
+        response = self._client.get(
+            f"{self._base_url}/api/v1/organizations/{organization_id}/customers",
+            headers=_auth_header(session),
+        )
+        response.raise_for_status()
+        return [_customer_from_payload(_object(item)) for item in response.json()]
+
+    def create_customer(
+        self,
+        organization_id: UUID,
+        session: Session,
+        name: str,
+        email: str | None,
+        phone: str | None,
+        notes: str,
+    ) -> Customer:
+        response = self._client.post(
+            f"{self._base_url}/api/v1/organizations/{organization_id}/customers",
+            headers=_auth_header(session),
+            json={"name": name, "email": email, "phone": phone, "notes": notes},
+        )
+        response.raise_for_status()
+        return _customer_from_payload(_response_object(response))
+
+    def update_customer(
+        self,
+        organization_id: UUID,
+        session: Session,
+        customer_id: UUID,
+        values: dict[str, str | None],
+    ) -> Customer:
+        response = self._client.patch(
+            f"{self._base_url}/api/v1/organizations/{organization_id}/customers/{customer_id}",
+            headers=_auth_header(session),
+            json=values,
+        )
+        response.raise_for_status()
+        return _customer_from_payload(_response_object(response))
+
+    def delete_customer(self, organization_id: UUID, session: Session, customer_id: UUID) -> bool:
+        response = self._client.delete(
+            f"{self._base_url}/api/v1/organizations/{organization_id}/customers/{customer_id}",
+            headers=_auth_header(session),
+        )
+        response.raise_for_status()
+        return True
 
     def get_entitlements(self, organization_id: UUID, session: Session) -> EntitlementSet:
         """Return the server-calculated features for an organization."""
@@ -132,3 +201,24 @@ def _organization_from_payload(payload: dict[str, object]) -> Organization:
         slug=_required_string(payload, "slug"),
         role=_required_string(payload, "role"),
     )
+
+
+def _auth_header(session: Session) -> dict[str, str]:
+    return {"Authorization": f"Bearer {session.access_token}"}
+
+
+def _customer_from_payload(payload: dict[str, object]) -> Customer:
+    return Customer(
+        UUID(_required_string(payload, "id")),
+        _required_string(payload, "name"),
+        _optional_string(payload, "email"),
+        _optional_string(payload, "phone"),
+        _required_string(payload, "notes"),
+    )
+
+
+def _optional_string(payload: dict[str, object], field_name: str) -> str | None:
+    value = payload.get(field_name)
+    if value is not None and not isinstance(value, str):
+        raise ValueError(f"API response field {field_name} must be a string or null")
+    return value

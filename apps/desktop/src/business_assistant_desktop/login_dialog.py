@@ -6,7 +6,7 @@ from uuid import UUID
 
 import httpx
 from business_assistant_common.entitlements import EntitlementSet
-from PySide6.QtCore import QObject, QThread, Signal, Slot
+from PySide6.QtCore import QObject, Qt, QThread, Signal, Slot
 from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import (
     QDialog,
@@ -40,6 +40,7 @@ class AuthenticationWorker(QObject):
     """Run the complete FastAPI authentication sequence outside the UI thread."""
 
     authenticated = Signal(object)
+    authenticated_context = Signal(object)
     confirmation_required = Signal()
     organization_required = Signal(object)
     failed = Signal()
@@ -69,6 +70,7 @@ class AuthenticationWorker(QObject):
                 self.organization_required.emit(session)
                 return
             entitlements = self._api_client.get_entitlements(organizations[0].id, session)
+            self.authenticated_context.emit((entitlements, session, organizations[0]))
             self.authenticated.emit(entitlements)
         except (httpx.HTTPError, ValueError):
             self.failed.emit()
@@ -100,11 +102,13 @@ class LoginDialog(QDialog):
         api_client: AuthenticationClient,
         on_authenticated: Callable[[EntitlementSet], None],
         on_organization_required: Callable[[Session], None] | None = None,
+        on_authenticated_context: Callable[[object], None] | None = None,
     ) -> None:
         super().__init__()
         self._api_client = api_client
         self._on_authenticated = on_authenticated
         self._organization_callback = on_organization_required
+        self._context_callback = on_authenticated_context
         self._thread: QThread | None = None
         self._worker: AuthenticationWorker | None = None
         self._authentication_succeeded = False
@@ -156,6 +160,10 @@ class LoginDialog(QDialog):
         worker.moveToThread(thread)
         thread.started.connect(worker.run)
         worker.authenticated.connect(self._complete_authentication)
+        if self._context_callback is not None:
+            worker.authenticated_context.connect(
+                self._handle_authenticated_context, Qt.ConnectionType.QueuedConnection
+            )
         worker.confirmation_required.connect(self._show_confirmation_required)
         worker.organization_required.connect(self._show_organization_required)
         worker.failed.connect(self._show_request_error)
@@ -168,6 +176,11 @@ class LoginDialog(QDialog):
     def _complete_authentication(self, entitlements: EntitlementSet) -> None:
         self._on_authenticated(entitlements)
         self._authentication_succeeded = True
+
+    @Slot(object)
+    def _handle_authenticated_context(self, context: object) -> None:
+        if self._context_callback is not None:
+            self._context_callback(context)
 
     def _show_confirmation_required(self) -> None:
         self.error_label.setText("이메일을 확인한 뒤 로그인해 주세요.")
