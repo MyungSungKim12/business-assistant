@@ -38,6 +38,8 @@ class Customer:
     email: str | None
     phone: str | None
     notes: str
+    tags: tuple[str, ...] = ()
+    status: str = "active"
 
 
 @dataclass(frozen=True, slots=True)
@@ -456,12 +458,20 @@ def _auth_header(session: Session) -> dict[str, str]:
 
 
 def _customer_from_payload(payload: dict[str, object]) -> Customer:
+    raw_tags = payload.get("tags", [])
+    tags = (
+        tuple(item for item in raw_tags if isinstance(item, str))
+        if isinstance(raw_tags, list)
+        else ()
+    )
     return Customer(
         UUID(_required_string(payload, "id")),
         _required_string(payload, "name"),
         _optional_string(payload, "email"),
         _optional_string(payload, "phone"),
         _required_string(payload, "notes"),
+        tags,
+        _optional_string(payload, "status") or "active",
     )
 
 

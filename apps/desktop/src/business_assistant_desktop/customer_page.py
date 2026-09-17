@@ -203,7 +203,7 @@ class CustomerPage(QWidget):
         card.setCursor(Qt.CursorShape.PointingHandCursor)
         card.setAccessibleName(f"고객 카드: {customer.name}")
         card.setMinimumHeight(132)
-        tags = "  ".join(f"#{tag}" for tag in customer.tags) or "태그 없음"
+        tags = "  ".join(f"#{tag}" for tag in getattr(customer, "tags", ())) or "태그 없음"
         card.setText(
             f"{customer.name}\n{customer.email or '이메일 없음'}\n"
             f"{customer.phone or '전화번호 없음'}\n{tags}"
@@ -216,8 +216,10 @@ class CustomerPage(QWidget):
         self.name_input.setText(customer.name)
         self.email_input.setText(customer.email or "")
         self.phone_input.setText(customer.phone or "")
-        self.tags_input.setText(", ".join(customer.tags))
-        self.status_combo.setCurrentIndex(self.status_combo.findData(customer.status))
+        self.tags_input.setText(", ".join(getattr(customer, "tags", ())))
+        self.status_combo.setCurrentIndex(
+            self.status_combo.findData(getattr(customer, "status", "active"))
+        )
         self.notes_input.setPlainText(customer.notes)
         self.save_button.setText("고객 수정")
         self.customer_selected.emit(customer)
