@@ -1,10 +1,12 @@
 """Treatment-focused customer management workspace."""
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Protocol
 from uuid import UUID
 
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QComboBox,
     QFormLayout,
@@ -301,6 +303,14 @@ class CustomerPage(QWidget):
             label.setMinimumSize(120, 86)
             label.setObjectName("photo-thumbnail")
             self.photo_gallery.addWidget(label, index // 3, index % 3)
+        if not photos:
+            preview = QLabel()
+            preview.setObjectName("photo-thumbnail")
+            pixmap = QPixmap(Path(__file__).with_name("assets") / "treatment-samples.png")
+            if not pixmap.isNull():
+                preview.setPixmap(pixmap.scaled(360, 180, Qt.AspectRatioMode.KeepAspectRatio))
+            preview.setToolTip("데모 시술사진 미리보기")
+            self.photo_gallery.addWidget(preview, 0, 0, 1, 3)
 
     def _select_from_table(self) -> None:
         rows = self.customer_table.selectionModel().selectedRows()
