@@ -1,3 +1,5 @@
+import base64
+import json
 import logging
 from datetime import datetime
 from typing import Any, TypeVar
@@ -192,6 +194,8 @@ class SupabaseOrganizationRepository:
             "Authorization": f"Bearer {self._access_token}",
             **(headers or {}),
         }
+        if method == "POST" and resource == "organizations":
+            logger.info("Organization create JWT claims: %s", _jwt_claims(self._access_token))
         try:
             if self._client is not None:
                 response = await self._client.request(
@@ -263,3 +267,14 @@ def _error_message(error: Exception) -> str:
         if detail:
             return " ".join(str(detail).split())[:500]
     return " ".join(str(error).split())[:500]
+
+
+def _jwt_claims(token: str) -> dict[str, str]:
+    """Expose only non-sensitive JWT routing claims for local diagnostics."""
+    try:
+        payload = token.split(".")[1]
+        payload += "=" * (-len(payload) % 4)
+        claims = json.loads(base64.urlsafe_b64decode(payload).decode("utf-8"))
+        return {key: str(claims[key]) for key in ("role", "sub", "aud") if key in claims}
+    except (IndexError, ValueError, UnicodeDecodeError, json.JSONDecodeError):
+        return {"invalid": "true"}
