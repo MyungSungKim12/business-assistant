@@ -14,18 +14,26 @@ from target_org
 where not exists (select 1 from public.customers c where c.organization_id = target_org.id and c.email = 'minji.demo@example.com');
 
 with target_org as (select o.id from public.organizations o where o.slug = 'test' limit 1), target_customer as (
-    select c.id, c.organization_id from public.customers c join target_org o on o.id = c.organization_id where c.email = 'minji.demo@example.com' limit 1
+    select c.id, c.organization_id, m.user_id as created_by
+    from public.customers c
+    join target_org o on o.id = c.organization_id
+    join public.memberships m on m.organization_id = c.organization_id and m.role = 'owner'
+    where c.email = 'minji.demo@example.com' limit 1
 )
-insert into public.treatment_records (organization_id, customer_id, treatment_date, treatment_name, category, practitioner, notes, next_visit_date)
-select organization_id, id, current_date - 14, 'Soothing Hydration Care', 'Facial', 'Demo Practitioner', 'Focused on reducing cheek and jaw redness', current_date + 21
+insert into public.treatment_records (organization_id, customer_id, treatment_date, treatment_name, category, practitioner, notes, next_visit_date, created_by)
+select organization_id, id, current_date - 14, 'Soothing Hydration Care', 'Facial', 'Demo Practitioner', 'Focused on reducing cheek and jaw redness', current_date + 21, created_by
 from target_customer
 where not exists (select 1 from public.treatment_records t where t.customer_id = target_customer.id and t.treatment_name = 'Soothing Hydration Care');
 
 with target_org as (select o.id from public.organizations o where o.slug = 'test' limit 1), target_customer as (
-    select c.id, c.organization_id from public.customers c join target_org o on o.id = c.organization_id where c.email = 'minji.demo@example.com' limit 1
-), target_treatment as (select t.id, t.customer_id, t.organization_id from public.treatment_records t join target_customer c on c.id = t.customer_id where t.treatment_name = 'Soothing Hydration Care' limit 1)
-insert into public.treatment_photos (organization_id, customer_id, treatment_id, storage_path, thumbnail_path, caption, sort_order, taken_at)
-select organization_id, customer_id, id, 'demo/customer-minji/treatment-01.jpg', 'demo/customer-minji/treatment-01-thumb.jpg', 'Before treatment', 0, now() - interval '14 days'
+    select c.id, c.organization_id, m.user_id as created_by
+    from public.customers c
+    join target_org o on o.id = c.organization_id
+    join public.memberships m on m.organization_id = c.organization_id and m.role = 'owner'
+    where c.email = 'minji.demo@example.com' limit 1
+), target_treatment as (select t.id, t.customer_id, t.organization_id, c.created_by from public.treatment_records t join target_customer c on c.id = t.customer_id where t.treatment_name = 'Soothing Hydration Care' limit 1)
+insert into public.treatment_photos (organization_id, customer_id, treatment_id, storage_path, thumbnail_path, caption, sort_order, taken_at, created_by)
+select organization_id, customer_id, id, 'demo/customer-minji/treatment-01.jpg', 'demo/customer-minji/treatment-01-thumb.jpg', 'Before treatment', 0, now() - interval '14 days', created_by
 from target_treatment
 where not exists (select 1 from public.treatment_photos p where p.treatment_id = target_treatment.id and p.sort_order = 0);
 
