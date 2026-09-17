@@ -18,26 +18,12 @@ from PySide6.QtWidgets import (
 )
 
 from business_assistant_desktop.customer_page import CustomerPage
+from business_assistant_desktop.design_tokens import application_stylesheet
 from business_assistant_desktop.document_page import DocumentPage
 from business_assistant_desktop.file_page import FilePage
 from business_assistant_desktop.finance_page import FinancePage
 from business_assistant_desktop.menu_catalog import MENU_CATALOG
 from business_assistant_desktop.task_page import TaskPage
-
-_STYLE = """
-QMainWindow, QWidget { background: #f7f8fa; color: #1f2937; }
-#top-bar { background: #ffffff; border-bottom: 1px solid #e5e7eb; }
-#brand { font-size: 18px; font-weight: 700; color: #111827; }
-#context, #page-subtitle, #status { color: #6b7280; }
-#navigation { background: #111827; border: 0; padding: 10px 8px; }
-#navigation::item { color: #cbd5e1; padding: 11px 12px; border-radius: 7px; }
-#navigation::item:selected, #navigation::item:hover { background: #2563eb; color: #ffffff; }
-#navigation::item:disabled { color: #64748b; }
-#content-card { background: #ffffff; border: 1px solid #e5e7eb; border-radius: 10px; }
-#page-title { font-size: 24px; font-weight: 700; color: #111827; }
-QPushButton { background: #2563eb; color: white; border: 0; border-radius: 6px;
- padding: 9px 16px; font-weight: 600; }
-"""
 
 
 class PlaceholderPage(QFrame):
@@ -78,7 +64,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Business Assistant")
         self.setMinimumSize(1100, 720)
         self.resize(1280, 820)
-        self.setStyleSheet(_STYLE)
+        self.setStyleSheet(application_stylesheet())
 
         root = QWidget()
         root_layout = QVBoxLayout(root)
@@ -87,26 +73,37 @@ class MainWindow(QMainWindow):
         top_bar = QFrame()
         top_bar.setObjectName("top-bar")
         top_layout = QHBoxLayout(top_bar)
-        top_layout.setContentsMargins(22, 14, 22, 14)
+        top_bar.setMinimumHeight(64)
+        top_layout.setContentsMargins(22, 12, 22, 12)
+        top_layout.setSpacing(12)
         brand = QLabel("Business Assistant")
         brand.setObjectName("brand")
         context = QLabel("내 조직  ·  현재 구독")
-        context.setObjectName("context")
+        context.setObjectName("organization-context")
+        context.setAccessibleName("현재 조직과 구독 정보")
+        sync_status = QLabel("● 동기화됨")
+        sync_status.setObjectName("sync-status")
+        sync_status.setAccessibleName("서버 동기화 상태")
         account = QPushButton("계정")
+        account.setObjectName("account-button")
+        account.setAccessibleName("계정 메뉴")
+        account.setToolTip("계정 및 구독 설정")
         top_layout.addWidget(brand)
-        top_layout.addSpacing(20)
         top_layout.addWidget(context)
         top_layout.addStretch()
+        top_layout.addWidget(sync_status)
         top_layout.addWidget(account)
         root_layout.addWidget(top_bar)
 
         body = QWidget()
         body_layout = QHBoxLayout(body)
-        body_layout.setContentsMargins(0, 0, 0, 0)
-        body_layout.setSpacing(0)
+        body_layout.setContentsMargins(16, 16, 16, 16)
+        body_layout.setSpacing(16)
         self.navigation_menu = QListWidget()
         self.navigation_menu.setObjectName("navigation")
-        self.navigation_menu.setFixedWidth(240)
+        self.navigation_menu.setFixedWidth(248)
+        self.navigation_menu.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.navigation_menu.setAccessibleName("주요 메뉴")
         self.navigation_menu.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
         self.pages = QStackedWidget()
         self._page_by_key: dict[str, int] = {}
@@ -171,8 +168,13 @@ class MainWindow(QMainWindow):
                         can_manage=_can_manage(organization),
                     )
             self._page_by_key[menu.key] = self.pages.addWidget(page)
+        content_area = QFrame()
+        content_area.setObjectName("content-area")
+        content_layout = QVBoxLayout(content_area)
+        content_layout.setContentsMargins(8, 0, 8, 0)
+        content_layout.addWidget(self.pages)
         body_layout.addWidget(self.navigation_menu)
-        body_layout.addWidget(self.pages, 1)
+        body_layout.addWidget(content_area, 1)
         root_layout.addWidget(body, 1)
         self.setCentralWidget(root)
         self.navigation_menu.currentRowChanged.connect(self.pages.setCurrentIndex)

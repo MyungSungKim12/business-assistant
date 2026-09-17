@@ -67,7 +67,6 @@ class DesktopShell:
             self._context_handled = True
             self.main_window = MainWindow(entitlements, self._api_client, session, organization)
             self.main_window.show()
-            self.login_dialog.accept()
 
     def _show_organization_dialog(self, session: Session) -> None:
         self._organization_dialog = OrganizationDialog(
