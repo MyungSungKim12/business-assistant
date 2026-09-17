@@ -11,6 +11,7 @@ TASKS_PATH = PROJECT_ROOT / "migrations" / "006_tasks.sql"
 DOCUMENTS_PATH = PROJECT_ROOT / "migrations" / "007_documents.sql"
 FINANCE_PATH = PROJECT_ROOT / "migrations" / "008_finance_transactions.sql"
 FILES_PATH = PROJECT_ROOT / "migrations" / "009_file_assets.sql"
+GRANTS_PATH = PROJECT_ROOT / "migrations" / "010_authenticated_grants.sql"
 _SUBSCRIPTION_POLICY_STATEMENT_PATTERN = re.compile(
     r"\bcreate\s+policy\b(?:(?!;)[\s\S])*?\bon\s+public\.subscriptions\b"
     r"(?:(?!;)[\s\S])*?;",
@@ -61,6 +62,10 @@ def _read_files_migration() -> str:
     return FILES_PATH.read_text(encoding="utf-8").lower()
 
 
+def _read_grants_migration() -> str:
+    return GRANTS_PATH.read_text(encoding="utf-8").lower()
+
+
 def test_files_migration_defines_org_scoped_metadata_and_storage_rls() -> None:
     migration = _read_files_migration()
     assert "create table public.file_assets" in migration
@@ -69,6 +74,14 @@ def test_files_migration_defines_org_scoped_metadata_and_storage_rls() -> None:
     assert "storage.buckets" in migration
     assert "business_files_select_member" in migration
     assert "business_files_insert_member" in migration
+
+
+def test_authenticated_grants_migration_exposes_rls_protected_tables() -> None:
+    migration = _read_grants_migration()
+    assert "grant usage on schema public to authenticated" in migration
+    assert "public.memberships" in migration
+    assert "public.file_assets" in migration
+    assert "to authenticated" in migration
 
 
 def _subscription_policy_statements(schema: str) -> list[str]:

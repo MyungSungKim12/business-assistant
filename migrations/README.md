@@ -16,6 +16,7 @@
 7. `007_documents.sql`로 조직별 문서 템플릿과 문서 데이터를 적용합니다.
 8. `008_finance_transactions.sql`로 수입·지출 원장과 기간 집계를 적용합니다.
 9. `009_file_assets.sql`로 조직별 파일 메타데이터와 비공개 Storage 버킷/RLS를 적용합니다.
+10. `010_authenticated_grants.sql`로 Supabase Data API의 `authenticated` 역할에 테이블 권한을 부여합니다. 실제 행 접근은 각 테이블의 RLS가 계속 제한합니다.
 
 적용 전에는 대상 Supabase 프로젝트의 마이그레이션 환경에서 실행하는지 확인합니다.
 연결 문자열과 서버 전용 비밀값은 로컬 `.env`에만 보관하고, 데스크톱 앱이나 Git에

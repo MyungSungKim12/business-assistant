@@ -65,6 +65,7 @@ Supabase Dashboard의 SQL Editor 또는 팀에서 사용하는 Supabase CLI 마�
 7. `migrations/007_documents.sql`
 8. `migrations/008_finance_transactions.sql`
 9. `migrations/009_file_assets.sql`
+10. `migrations/010_authenticated_grants.sql`
 
 적용 대상이 개발 프로젝트인지 먼저 확인합니다. SQL은 `profiles`, `organizations`,
 `memberships`, 상품·기능·구독 테이블과 기본 BASIC, STANDARD, PRO 권한 데이터를
