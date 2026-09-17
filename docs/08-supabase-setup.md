@@ -67,6 +67,7 @@ Supabase Dashboard의 SQL Editor 또는 팀에서 사용하는 Supabase CLI 마�
 9. `migrations/009_file_assets.sql`
 10. `migrations/010_authenticated_grants.sql`
 11. `migrations/011_organization_insert_policy.sql`
+12. `migrations/012_create_organization_rpc.sql`
 
 적용 대상이 개발 프로젝트인지 먼저 확인합니다. SQL은 `profiles`, `organizations`,
 `memberships`, 상품·기능·구독 테이블과 기본 BASIC, STANDARD, PRO 권한 데이터를

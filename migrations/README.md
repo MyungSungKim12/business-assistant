@@ -18,6 +18,7 @@
 9. `009_file_assets.sql`로 조직별 파일 메타데이터와 비공개 Storage 버킷/RLS를 적용합니다.
 10. `010_authenticated_grants.sql`로 Supabase Data API의 `authenticated` 역할에 테이블 권한을 부여합니다. 실제 행 접근은 각 테이블의 RLS가 계속 제한합니다.
 11. `011_organization_insert_policy.sql`로 로그인 사용자의 조직 생성 INSERT 정책을 보정합니다. 생성자는 DB 트리거를 통해 owner로 등록됩니다.
+12. `012_create_organization_rpc.sql`로 조직 생성을 인증 사용자 전용 RPC로 처리합니다.
 
 적용 전에는 대상 Supabase 프로젝트의 마이그레이션 환경에서 실행하는지 확인합니다.
 연결 문자열과 서버 전용 비밀값은 로컬 `.env`에만 보관하고, 데스크톱 앱이나 Git에

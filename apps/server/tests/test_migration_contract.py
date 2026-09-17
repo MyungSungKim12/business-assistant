@@ -13,6 +13,7 @@ FINANCE_PATH = PROJECT_ROOT / "migrations" / "008_finance_transactions.sql"
 FILES_PATH = PROJECT_ROOT / "migrations" / "009_file_assets.sql"
 GRANTS_PATH = PROJECT_ROOT / "migrations" / "010_authenticated_grants.sql"
 ORG_POLICY_PATH = PROJECT_ROOT / "migrations" / "011_organization_insert_policy.sql"
+ORG_RPC_PATH = PROJECT_ROOT / "migrations" / "012_create_organization_rpc.sql"
 _SUBSCRIPTION_POLICY_STATEMENT_PATTERN = re.compile(
     r"\bcreate\s+policy\b(?:(?!;)[\s\S])*?\bon\s+public\.subscriptions\b"
     r"(?:(?!;)[\s\S])*?;",
@@ -71,6 +72,10 @@ def _read_org_policy_migration() -> str:
     return ORG_POLICY_PATH.read_text(encoding="utf-8").lower()
 
 
+def _read_org_rpc_migration() -> str:
+    return ORG_RPC_PATH.read_text(encoding="utf-8").lower()
+
+
 def test_files_migration_defines_org_scoped_metadata_and_storage_rls() -> None:
     migration = _read_files_migration()
     assert "create table public.file_assets" in migration
@@ -96,6 +101,15 @@ def test_organization_insert_policy_requires_an_authenticated_creator() -> None:
     assert "for insert" in migration
     assert "to authenticated" in migration
     assert "(select auth.uid()) is not null" in migration
+
+
+def test_organization_creation_rpc_is_restricted_to_authenticated_users() -> None:
+    migration = _read_org_rpc_migration()
+    assert "create or replace function public.create_organization" in migration
+    assert "security definer" in migration
+    assert "if (select auth.uid()) is null" in migration
+    assert "revoke all on function public.create_organization" in migration
+    assert "grant execute on function public.create_organization" in migration
 
 
 def _subscription_policy_statements(schema: str) -> list[str]:

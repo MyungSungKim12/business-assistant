@@ -60,7 +60,8 @@ def test_repository_creates_organizations_and_calculates_active_subscription_fea
     def respond(request: httpx.Request) -> httpx.Response:
         requests.append(request)
         if request.method == "POST":
-            assert json.loads(request.content) == {"name": "Hana", "slug": "hana"}
+            assert request.url.path.endswith("/rpc/create_organization")
+            assert json.loads(request.content) == {"target_name": "Hana", "target_slug": "hana"}
             return httpx.Response(
                 201,
                 json=[{"id": str(ORGANIZATION_ID), "name": "Hana", "slug": "hana"}],

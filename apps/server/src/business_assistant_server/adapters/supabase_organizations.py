@@ -85,10 +85,7 @@ class SupabaseOrganizationRepository:
     ) -> OrganizationSummary:
         del user_id
         rows = await self._request_rows(
-            "POST",
-            "organizations",
-            json={"name": name, "slug": slug},
-            headers={"Prefer": "return=representation"},
+            "POST", "rpc/create_organization", json={"target_name": name, "target_slug": slug}
         )
         organization = self._parse_one(rows, _OrganizationRow)
         return OrganizationSummary(organization.id, organization.name, organization.slug, "owner")
