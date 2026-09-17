@@ -18,7 +18,11 @@ from PySide6.QtWidgets import (
 )
 
 from business_assistant_desktop.customer_page import CustomerPage
+from business_assistant_desktop.document_page import DocumentPage
+from business_assistant_desktop.file_page import FilePage
+from business_assistant_desktop.finance_page import FinancePage
 from business_assistant_desktop.menu_catalog import MENU_CATALOG
+from business_assistant_desktop.task_page import TaskPage
 
 _STYLE = """
 QMainWindow, QWidget { background: #f7f8fa; color: #1f2937; }
@@ -122,6 +126,50 @@ class MainWindow(QMainWindow):
                 organization_id = getattr(organization, "id", None)
                 if organization_id is not None:
                     page = CustomerPage(_BoundCustomerClient(client, session), organization_id)
+            elif (
+                menu.key == "schedule"
+                and client is not None
+                and session is not None
+                and organization is not None
+            ):
+                organization_id = getattr(organization, "id", None)
+                if organization_id is not None:
+                    page = TaskPage(_BoundTaskClient(client, session), organization_id)
+            elif (
+                menu.key == "documents"
+                and client is not None
+                and session is not None
+                and organization is not None
+            ):
+                organization_id = getattr(organization, "id", None)
+                if organization_id is not None:
+                    page = DocumentPage(
+                        _BoundDocumentClient(client, session),
+                        organization_id,
+                        can_manage=_can_manage(organization),
+                    )
+            elif (
+                menu.key == "finance"
+                and client is not None
+                and session is not None
+                and organization is not None
+            ):
+                organization_id = getattr(organization, "id", None)
+                if organization_id is not None:
+                    page = FinancePage(_BoundFinanceClient(client, session), organization_id)
+            elif (
+                menu.key == "files"
+                and client is not None
+                and session is not None
+                and organization is not None
+            ):
+                organization_id = getattr(organization, "id", None)
+                if organization_id is not None:
+                    page = FilePage(
+                        _BoundFileClient(client, session),
+                        organization_id,
+                        can_manage=_can_manage(organization),
+                    )
             self._page_by_key[menu.key] = self.pages.addWidget(page)
         body_layout.addWidget(self.navigation_menu)
         body_layout.addWidget(self.pages, 1)
@@ -165,3 +213,82 @@ class _BoundCustomerClient:
     def delete_customer(self, organization_id: Any, customer_id: Any) -> bool:
         self._client.delete_customer(organization_id, self._session, customer_id)
         return True
+
+
+class _BoundTaskClient:
+    """Adapt the session-aware HTTP client to the task page boundary."""
+
+    def __init__(self, client: Any, session: Any) -> None:
+        self._client, self._session = client, session
+
+    def list_tasks(self, organization_id: Any, status: str | None = None) -> Any:
+        return self._client.list_tasks(organization_id, self._session, status)
+
+    def create_task(self, organization_id: Any, **values: Any) -> Any:
+        return self._client.create_task(organization_id, self._session, **values)
+
+    def update_task(self, organization_id: Any, task_id: Any, values: dict[str, Any]) -> Any:
+        return self._client.update_task(organization_id, self._session, task_id, values)
+
+    def delete_task(self, organization_id: Any, task_id: Any) -> Any:
+        return self._client.delete_task(organization_id, self._session, task_id)
+
+
+class _BoundDocumentClient:
+    """Adapt the session-aware HTTP client to the document page boundary."""
+
+    def __init__(self, client: Any, session: Any) -> None:
+        self._client, self._session = client, session
+
+    def list_document_templates(self, organization_id: Any) -> Any:
+        return self._client.list_document_templates(organization_id, self._session)
+
+    def list_documents(self, organization_id: Any) -> Any:
+        return self._client.list_documents(organization_id, self._session)
+
+    def create_document(
+        self, organization_id: Any, title: str, content: str, template_id: Any
+    ) -> Any:
+        return self._client.create_document(
+            organization_id, self._session, title, content, template_id
+        )
+
+
+class _BoundFinanceClient:
+    """Adapt the session-aware HTTP client to the finance page boundary."""
+
+    def __init__(self, client: Any, session: Any) -> None:
+        self._client, self._session = client, session
+
+    def list_transactions(
+        self, organization_id: Any, transaction_type: Any, from_date: Any, to_date: Any
+    ) -> Any:
+        return self._client.list_transactions(
+            organization_id, self._session, transaction_type, from_date, to_date
+        )
+
+    def get_finance_summary(self, organization_id: Any, from_date: Any, to_date: Any) -> Any:
+        return self._client.get_finance_summary(organization_id, self._session, from_date, to_date)
+
+
+class _BoundFileClient:
+    """Adapt the session-aware HTTP client to the file page boundary."""
+
+    def __init__(self, client: Any, session: Any) -> None:
+        self._client, self._session = client, session
+
+    def list_files(self, organization_id: Any) -> Any:
+        return self._client.list_files(organization_id, self._session)
+
+    def upload_file(self, organization_id: Any, path: Any) -> Any:
+        return self._client.upload_file(organization_id, self._session, path)
+
+    def get_download_url(self, organization_id: Any, file_id: Any) -> Any:
+        return self._client.get_download_url(organization_id, self._session, file_id)
+
+    def archive_file(self, organization_id: Any, file_id: Any) -> Any:
+        return self._client.archive_file(organization_id, self._session, file_id)
+
+
+def _can_manage(organization: object) -> bool:
+    return getattr(organization, "role", "") in {"owner", "admin"}
