@@ -227,7 +227,13 @@ class CustomerPage(QWidget):
                 not query
                 or query
                 in " ".join(
-                    (c.name, c.email or "", c.phone or "", c.service_name or "", " ".join(c.tags))
+                    (
+                        c.name,
+                        c.email or "",
+                        c.phone or "",
+                        getattr(c, "service_name", None) or "",
+                        " ".join(getattr(c, "tags", ())),
+                    )
                 ).lower()
             )
             and (key == "all" or c.status == key)
@@ -235,7 +241,11 @@ class CustomerPage(QWidget):
         result.sort(
             key=(lambda c: c.name.casefold())
             if self.sort_combo.currentData() == "name"
-            else (lambda c: c.last_visit or ""),
+            else (
+                lambda c: (
+                    getattr(c, "last_visit", None) or getattr(c, "last_visit_date", None) or ""
+                )
+            ),
             reverse=self.sort_combo.currentData() != "name",
         )
         return result
@@ -266,10 +276,16 @@ class CustomerPage(QWidget):
         card.setAccessibleName(f"고객 카드: {customer.name}")
         card.setMinimumHeight(145)
         tags = "  ".join(f"#{tag}" for tag in customer.tags) or "태그 없음"
-        visit = customer.last_visit or customer.treatment_date or "기록 없음"
+        visit = (
+            getattr(customer, "last_visit", None)
+            or getattr(customer, "last_visit_date", None)
+            or getattr(customer, "treatment_date", None)
+            or "기록 없음"
+        )
+        service_name = getattr(customer, "service_name", None) or "최근 시술 기록 없음"
         card.setText(
-            f"◉  {customer.name}    ⋮\n{customer.service_name or '최근 시술 기록 없음'}\n"
-            f"시술일  {visit}\n사진 {len(customer.photos)}장   {tags}"
+            f"◉  {customer.name}    ⋮\n{service_name}\n"
+            f"시술일  {visit}\n사진 {len(getattr(customer, 'photos', ()))}장   {tags}"
         )
         card.clicked.connect(lambda: self._select_customer(customer))
         return card
@@ -282,11 +298,15 @@ class CustomerPage(QWidget):
         self.tags_input.setText(", ".join(customer.tags))
         self.status_combo.setCurrentIndex(max(0, self.status_combo.findData(customer.status)))
         self.notes_input.setPlainText(customer.notes)
-        self.treatment_date_input.setText(customer.treatment_date or customer.last_visit or "")
-        self.service_name_input.setText(customer.service_name or "")
-        self.allergies_input.setText(customer.allergies)
-        self.treatment_notes_input.setPlainText(customer.treatment_notes)
-        self._render_photos(customer.photos)
+        self.treatment_date_input.setText(
+            getattr(customer, "treatment_date", None)
+            or getattr(customer, "last_visit_date", None)
+            or ""
+        )
+        self.service_name_input.setText(getattr(customer, "service_name", None) or "")
+        self.allergies_input.setText(getattr(customer, "allergies", ""))
+        self.treatment_notes_input.setPlainText(getattr(customer, "treatment_notes", ""))
+        self._render_photos(getattr(customer, "photos", ()))
         self.save_button.setText("고객 정보 저장")
         self.customer_selected.emit(customer)
 
