@@ -181,6 +181,10 @@ class LoginDialog(QDialog):
     def _handle_authenticated_context(self, context: object) -> None:
         if self._context_callback is not None:
             self._context_callback(context)
+        # Authentication has completed even though the worker's cleanup signal
+        # may still be queued; restore controls immediately for a responsive UI.
+        self.login_button.setEnabled(True)
+        self.signup_button.setEnabled(True)
 
     def _show_confirmation_required(self) -> None:
         self.error_label.setText("이메일을 확인한 뒤 로그인해 주세요.")
