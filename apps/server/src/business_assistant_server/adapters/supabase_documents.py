@@ -9,6 +9,9 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 from business_assistant_server.ports.repositories import (
     DocumentSummary,
     DocumentTemplateSummary,
+    RepositoryConflictError,
+    RepositoryNotFoundError,
+    RepositoryPermissionError,
     RepositoryUnavailableError,
     RepositoryValidationError,
 )
@@ -28,6 +31,9 @@ class _TemplateRow(BaseModel):
     is_archived: bool
     created_at: str
     updated_at: str
+    status: str = "draft"
+    version: int = 1
+    revision: int = 1
 
 
 class _DocumentRow(BaseModel):
@@ -45,6 +51,36 @@ class _DocumentRow(BaseModel):
 
 
 class SupabaseDocumentRepository:
+    async def mutate_template(
+        self, organization_id: UUID, template_id: UUID, values: dict[str, object]
+    ) -> DocumentTemplateSummary:
+        rows = await self._request_rows(
+            "POST",
+            "rpc/mutate_document_template",
+            json={
+                "p_organization_id": str(organization_id),
+                "p_template_id": str(template_id),
+                "p_expected_revision": values["expected_revision"],
+                "p_operation_id": values["operation_id"],
+                "p_action": values["action"],
+                "p_values": values["values"],
+            },
+        )
+        return self._template_summary(self._parse_one(rows, _TemplateRow))
+
+    async def list_template_versions(
+        self, organization_id: UUID, template_id: UUID
+    ) -> list[dict[str, object]]:
+        return await self._request_rows(
+            "GET",
+            "document_template_versions",
+            params={
+                "organization_id": f"eq.{organization_id}",
+                "template_id": f"eq.{template_id}",
+                "order": "version.desc",
+            },
+        )
+
     def __init__(
         self,
         supabase_url: str,
@@ -152,6 +188,22 @@ class SupabaseDocumentRepository:
             response.raise_for_status()
             payload = response.json()
         except httpx.HTTPStatusError as error:
+            if table == "rpc/mutate_document_template":
+                try:
+                    failure = error.response.json()
+                    code = failure.get("code") if isinstance(failure, dict) else None
+                except ValueError:
+                    code = None
+                mapped = {
+                    "P0001": RepositoryConflictError,
+                    "P0002": RepositoryNotFoundError,
+                    "42501": RepositoryPermissionError,
+                    "22023": RepositoryValidationError,
+                    "23514": RepositoryValidationError,
+                    "22P02": RepositoryValidationError,
+                }
+                if code in mapped:
+                    raise mapped[code]() from error
             if error.response.status_code == 400:
                 raise RepositoryValidationError() from error
             raise RepositoryUnavailableError() from error
@@ -186,6 +238,9 @@ class SupabaseDocumentRepository:
             row.is_archived,
             row.created_at,
             row.updated_at,
+            row.status,
+            row.version,
+            row.revision,
         )
 
     @staticmethod

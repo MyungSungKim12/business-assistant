@@ -4,7 +4,9 @@ from fastapi.responses import JSONResponse
 from business_assistant_server.api.admin import router as admin_router
 from business_assistant_server.api.auth import router as auth_router
 from business_assistant_server.api.customer_activities import router as customer_activity_router
+from business_assistant_server.api.customer_photos import router as customer_photo_router
 from business_assistant_server.api.customers import router as customer_router
+from business_assistant_server.api.document_consent import router as document_consent_router
 from business_assistant_server.api.documents import router as document_router
 from business_assistant_server.api.entitlements import FeatureAccessDenied
 from business_assistant_server.api.entitlements import router as entitlement_router
@@ -13,6 +15,11 @@ from business_assistant_server.api.finance import router as finance_router
 from business_assistant_server.api.health import router as health_router
 from business_assistant_server.api.organizations import router as organization_router
 from business_assistant_server.api.tasks import router as task_router
+from business_assistant_server.api.template_versions import router as template_version_router
+from business_assistant_server.api.treatment_documents import router as treatment_document_router
+from business_assistant_server.api.treatment_sale_drafts import (
+    router as treatment_sale_draft_router,
+)
 from business_assistant_server.api.treatments import router as treatment_router
 
 
@@ -25,9 +32,14 @@ def create_app() -> FastAPI:
     app.include_router(entitlement_router, prefix="/api/v1")
     app.include_router(customer_router, prefix="/api/v1")
     app.include_router(customer_activity_router, prefix="/api/v1")
+    app.include_router(customer_photo_router, prefix="/api/v1")
     app.include_router(treatment_router, prefix="/api/v1")
     app.include_router(task_router, prefix="/api/v1")
     app.include_router(document_router, prefix="/api/v1")
+    app.include_router(template_version_router, prefix="/api/v1")
+    app.include_router(treatment_document_router, prefix="/api/v1")
+    app.include_router(treatment_sale_draft_router, prefix="/api/v1")
+    app.include_router(document_consent_router, prefix="/api/v1")
     app.include_router(finance_router, prefix="/api/v1")
     app.include_router(file_router, prefix="/api/v1")
 

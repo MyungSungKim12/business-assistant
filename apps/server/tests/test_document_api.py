@@ -232,8 +232,8 @@ def test_document_template_and_document_crud() -> None:
         document_repository=repository,
         json={"name": " New template ", "content": "Body"},
     )
-    assert created_template.status_code == 201
-    assert created_template.json()["name"] == "New template"
+    assert created_template.status_code == 409
+    assert len(repository.templates) == 1
     created_document = _request(
         "POST",
         _path("documents"),

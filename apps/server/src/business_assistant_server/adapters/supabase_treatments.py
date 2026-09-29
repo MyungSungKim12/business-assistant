@@ -1,12 +1,17 @@
 from decimal import Decimal
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import httpx
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from business_assistant_server.ports.repositories import (
+    RepositoryConflictError,
+    RepositoryNotFoundError,
+    RepositoryPermissionError,
     RepositoryUnavailableError,
+    RepositoryValidationError,
+    TreatmentEventSummary,
     TreatmentPhotoSummary,
     TreatmentSummary,
 )
@@ -24,6 +29,25 @@ class _Treatment(BaseModel):
     notes: str
     amount: Decimal | None = None
     next_visit_date: str | None = None
+    status: str = "legacy"
+    version: int = 1
+    started_at: str | None = None
+    ended_at: str | None = None
+    consultation_goal: str = ""
+    consultation_plan: str = ""
+    cautions_snapshot: dict[str, object] = Field(default_factory=dict)
+    cautions_acknowledged_by: UUID | None = None
+    cautions_acknowledged_at: str | None = None
+
+
+class _Event(BaseModel):
+    id: UUID
+    actor_id: UUID
+    action: str
+    reason: str
+    occurred_at: str
+    before_data: dict[str, object]
+    after_data: dict[str, object]
 
 
 class _Photo(BaseModel):
@@ -63,7 +87,7 @@ class SupabaseTreatmentRepository:
                 "customer_id": f"eq.{customer_id}",
                 "order": "treatment_date.desc",
             },
-            select="id,organization_id,customer_id,treatment_date,treatment_name,category,practitioner,notes,amount,next_visit_date",
+            select="id,organization_id,customer_id,treatment_date,treatment_name,category,practitioner,notes,amount,next_visit_date,status,version,started_at,ended_at,consultation_goal,consultation_plan,cautions_snapshot,cautions_acknowledged_by,cautions_acknowledged_at",
         )
         return [self._treatment(row) for row in rows]
 
@@ -78,7 +102,74 @@ class SupabaseTreatmentRepository:
         rows = await self._request(
             "POST", "treatment_records", json=payload, headers={"Prefer": "return=representation"}
         )
+        if not rows:
+            raise RepositoryUnavailableError()
         return self._treatment(rows[0])
+
+    async def update_treatment(
+        self,
+        organization_id: UUID,
+        customer_id: UUID,
+        treatment_id: UUID,
+        values: dict[str, object],
+    ) -> TreatmentSummary | None:
+        data = dict(values)
+        expected_version = data.pop("expected_version", None)
+        operation_id = data.pop("operation_id", None) or str(uuid4())
+        if expected_version is None:
+            raise RepositoryConflictError()
+        return await self.mutate_treatment(
+            organization_id,
+            customer_id,
+            treatment_id,
+            {
+                "action": "edit",
+                "expected_version": expected_version,
+                "operation_id": operation_id,
+                "reason": "",
+                "values": data,
+            },
+        )
+
+    async def mutate_treatment(
+        self,
+        organization_id: UUID,
+        customer_id: UUID,
+        treatment_id: UUID,
+        values: dict[str, object],
+    ) -> TreatmentSummary:
+        payload = {
+            "p_organization_id": str(organization_id),
+            "p_customer_id": str(customer_id),
+            "p_treatment_id": str(treatment_id),
+            **{f"p_{key}": value for key, value in values.items()},
+        }
+        payload["p_values"] = values.get("values") or {}
+        rows = await self._request("POST", "rpc/mutate_treatment", json=payload)
+        if not rows:
+            raise RepositoryNotFoundError()
+        return self._treatment(rows[0])
+
+    async def list_treatment_events(
+        self, organization_id: UUID, customer_id: UUID, treatment_id: UUID
+    ) -> list[TreatmentEventSummary]:
+        rows = await self._request(
+            "GET",
+            "treatment_record_events",
+            {
+                "organization_id": f"eq.{organization_id}",
+                "customer_id": f"eq.{customer_id}",
+                "treatment_id": f"eq.{treatment_id}",
+                "order": "occurred_at.desc,id.desc",
+            },
+            select="id,actor_id,action,reason,occurred_at,before_data,after_data",
+        )
+        try:
+            return [
+                TreatmentEventSummary(**_Event.model_validate(row).model_dump()) for row in rows
+            ]
+        except ValidationError as exc:
+            raise RepositoryUnavailableError() from exc
 
     async def list_photos(
         self, organization_id: UUID, customer_id: UUID, treatment_id: UUID | None = None
@@ -155,6 +246,20 @@ class SupabaseTreatmentRepository:
                         json=json,
                         headers={**self._headers, **(headers or {})},
                     )
+            if response.is_error:
+                try:
+                    detail = response.json()
+                    code = detail.get("code") if isinstance(detail, dict) else None
+                except ValueError:
+                    code = None
+                if code == "P0001":
+                    raise RepositoryConflictError()
+                if code == "P0002":
+                    raise RepositoryNotFoundError()
+                if code == "42501":
+                    raise RepositoryPermissionError()
+                if code in {"22023", "22007", "22008", "22P02", "23514", "22003"}:
+                    raise RepositoryValidationError()
             response.raise_for_status()
             payload = response.json()
         except (httpx.HTTPError, ValueError) as error:
@@ -180,6 +285,15 @@ class SupabaseTreatmentRepository:
             item.notes,
             item.amount,
             item.next_visit_date,
+            item.status,
+            item.version,
+            item.started_at,
+            item.ended_at,
+            item.consultation_goal,
+            item.consultation_plan,
+            item.cautions_snapshot,
+            item.cautions_acknowledged_by,
+            item.cautions_acknowledged_at,
         )
 
     @staticmethod

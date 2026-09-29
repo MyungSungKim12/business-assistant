@@ -1,3 +1,4 @@
+import logging
 from typing import Annotated
 from uuid import UUID
 
@@ -22,6 +23,8 @@ from business_assistant_server.ports.repositories import (
     OrganizationRepository,
     RepositoryUnavailableError,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -208,6 +211,11 @@ async def require_customer_management_role(
     try:
         role = await organization_repository.get_membership(current_user.user_id, organization_id)
     except RepositoryUnavailableError:
+        logger.exception(
+            "Customer management role lookup failed: user_id=%s organization_id=%s",
+            current_user.user_id,
+            organization_id,
+        )
         raise _unavailable() from None
     if role not in {"owner", "admin"}:
         raise HTTPException(

@@ -170,6 +170,9 @@ class DocumentTemplateResponse(BaseModel):
     is_archived: bool
     created_at: str
     updated_at: str
+    status: str = "draft"
+    version: int = 1
+    revision: int = 1
 
 
 class DocumentResponse(BaseModel):
@@ -242,6 +245,9 @@ def _template_response(item: DocumentTemplateSummary) -> DocumentTemplateRespons
         description=item.description,
         content=item.content,
         is_archived=item.is_archived,
+        status=item.status,
+        version=item.version,
+        revision=item.revision,
         created_at=item.created_at,
         updated_at=item.updated_at,
     )
@@ -295,15 +301,7 @@ async def create_document_template(
     __: Annotated[None, Depends(require_document_management_role)],
     repository: Annotated[DocumentRepository, Depends(get_document_repository)],
 ) -> DocumentTemplateResponse:
-    try:
-        item = await repository.create_template(
-            organization_id, current_user.user_id, request.model_dump(mode="json")
-        )
-    except RepositoryValidationError:
-        raise HTTPException(422, "Invalid document template request") from None
-    except RepositoryUnavailableError:
-        raise _unavailable() from None
-    return _template_response(item)
+    raise HTTPException(409, "Use the versioned template mutations endpoint")
 
 
 @router.patch(
@@ -319,17 +317,7 @@ async def update_document_template(
     ___: Annotated[None, Depends(require_document_management_role)],
     repository: Annotated[DocumentRepository, Depends(get_document_repository)],
 ) -> DocumentTemplateResponse:
-    try:
-        item = await repository.update_template(
-            organization_id, template_id, request.model_dump(exclude_unset=True, mode="json")
-        )
-    except RepositoryValidationError:
-        raise HTTPException(422, "Invalid document template request") from None
-    except RepositoryUnavailableError:
-        raise _unavailable() from None
-    if item is None:
-        raise HTTPException(404, "Document template not found")
-    return _template_response(item)
+    raise HTTPException(409, "Use the versioned template mutations endpoint")
 
 
 @router.get("/organizations/{organization_id}/documents", response_model=list[DocumentResponse])

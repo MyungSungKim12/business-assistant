@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Protocol, runtime_checkable
@@ -10,6 +10,18 @@ class RepositoryUnavailableError(Exception):
 
     def __init__(self) -> None:
         super().__init__("Organization service unavailable")
+
+
+class RepositoryConflictError(Exception):
+    """The record version or requested state transition conflicts."""
+
+
+class RepositoryNotFoundError(Exception):
+    """The scoped record does not exist."""
+
+
+class RepositoryPermissionError(Exception):
+    """The database rejected this user's write."""
 
 
 class RepositoryValidationError(Exception):
@@ -127,6 +139,15 @@ class TreatmentSummary:
     notes: str
     amount: Decimal | None
     next_visit_date: str | None
+    status: str = "legacy"
+    version: int = 1
+    started_at: str | None = None
+    ended_at: str | None = None
+    consultation_goal: str = ""
+    consultation_plan: str = ""
+    cautions_snapshot: dict[str, object] = field(default_factory=dict)
+    cautions_acknowledged_by: UUID | None = None
+    cautions_acknowledged_at: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -143,14 +164,42 @@ class TreatmentPhotoSummary:
     taken_at: str | None
 
 
+@dataclass(frozen=True, slots=True)
+class TreatmentEventSummary:
+    id: UUID
+    actor_id: UUID
+    action: str
+    reason: str
+    occurred_at: str
+    before_data: dict[str, object]
+    after_data: dict[str, object]
+
+
 @runtime_checkable
 class TreatmentRepository(Protocol):
+    async def mutate_treatment(
+        self,
+        organization_id: UUID,
+        customer_id: UUID,
+        treatment_id: UUID,
+        values: dict[str, object],
+    ) -> TreatmentSummary: ...
+    async def list_treatment_events(
+        self, organization_id: UUID, customer_id: UUID, treatment_id: UUID
+    ) -> list[TreatmentEventSummary]: ...
     async def list_treatments(
         self, organization_id: UUID, customer_id: UUID
     ) -> list[TreatmentSummary]: ...
     async def create_treatment(
         self, organization_id: UUID, customer_id: UUID, values: dict[str, object]
     ) -> TreatmentSummary: ...
+    async def update_treatment(
+        self,
+        organization_id: UUID,
+        customer_id: UUID,
+        treatment_id: UUID,
+        values: dict[str, object],
+    ) -> TreatmentSummary | None: ...
     async def list_photos(
         self, organization_id: UUID, customer_id: UUID, treatment_id: UUID | None = None
     ) -> list[TreatmentPhotoSummary]: ...
@@ -201,6 +250,9 @@ class DocumentTemplateSummary:
     is_archived: bool
     created_at: str
     updated_at: str
+    status: str = "draft"
+    version: int = 1
+    revision: int = 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -218,6 +270,14 @@ class DocumentSummary:
 
 @runtime_checkable
 class DocumentRepository(Protocol):
+    async def mutate_template(
+        self, organization_id: UUID, template_id: UUID, values: dict[str, object]
+    ) -> DocumentTemplateSummary: ...
+
+    async def list_template_versions(
+        self, organization_id: UUID, template_id: UUID
+    ) -> list[dict[str, object]]: ...
+
     async def list_templates(self, organization_id: UUID) -> list[DocumentTemplateSummary]: ...
 
     async def create_template(
@@ -316,6 +376,39 @@ class FileRepository(Protocol):
     async def get_file(self, organization_id: UUID, file_id: UUID) -> FileSummary | None: ...
 
     async def archive_file(self, organization_id: UUID, file_id: UUID) -> FileSummary | None: ...
+
+
+@dataclass(frozen=True, slots=True)
+class CustomerPhotoSummary:
+    id: UUID
+    organization_id: UUID
+    customer_id: UUID
+    uploaded_by: UUID
+    storage_path: str
+    original_name: str
+    content_type: str
+    size_bytes: int
+    caption: str
+    created_at: str
+
+
+@runtime_checkable
+class CustomerPhotoRepository(Protocol):
+    async def list_photos(
+        self, organization_id: UUID, customer_id: UUID
+    ) -> list[CustomerPhotoSummary]: ...
+
+    async def create_photo(
+        self, organization_id: UUID, customer_id: UUID, uploaded_by: UUID, values: dict[str, object]
+    ) -> CustomerPhotoSummary: ...
+
+    async def get_photo(
+        self, organization_id: UUID, customer_id: UUID, photo_id: UUID
+    ) -> CustomerPhotoSummary | None: ...
+
+    async def archive_photo(
+        self, organization_id: UUID, customer_id: UUID, photo_id: UUID
+    ) -> CustomerPhotoSummary | None: ...
 
 
 @runtime_checkable

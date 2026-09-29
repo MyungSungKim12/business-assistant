@@ -353,6 +353,34 @@ def test_customer_demo_seed_contains_safe_profile_treatment_and_photo_examples()
     assert "where o.slug = 'test'" in seed.lower()
 
 
+def test_customer_photos_migration_is_tenant_scoped_and_image_restricted() -> None:
+    migration = (
+        (PROJECT_ROOT / "migrations" / "022_customer_photos.sql")
+        .read_text(encoding="utf-8")
+        .lower()
+    )
+    assert "create table public.customer_photos" in migration
+    assert "customer_photos_customer_scope" in migration
+    assert "content_type in ('image/jpeg', 'image/png', 'image/webp')" in migration
+    assert "size_bytes > 0 and size_bytes <= 10485760" in migration
+    assert 'create policy "customer_photos_select_member"' in migration
+    assert 'create policy "customer_photos_insert_manager"' in migration
+    assert "business_files_customer_photo_insert_manager" in migration
+    assert 'drop policy if exists "business_files_insert_member"' in migration
+    assert "split_part(name, '/', 2) ~*" in migration
+
+
+def test_customer_photo_storage_migration_creates_private_bucket_idempotently() -> None:
+    migration = (
+        (PROJECT_ROOT / "migrations" / "023_customer_photo_storage_bucket.sql")
+        .read_text(encoding="utf-8")
+        .lower()
+    )
+    assert "insert into storage.buckets" in migration
+    assert "'business-files', 'business-files', false" in migration
+    assert "on conflict (id) do update" in migration
+
+
 def test_tasks_schema_and_rls_are_organization_scoped() -> None:
     migration = _read_tasks_migration()
     assert "create table public.tasks" in migration

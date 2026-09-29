@@ -1,5 +1,6 @@
 """PostgREST and Storage adapter for organization-scoped files."""
 
+import logging
 from typing import Any
 from uuid import UUID
 
@@ -13,6 +14,8 @@ from business_assistant_server.ports.repositories import (
     RepositoryValidationError,
 )
 from business_assistant_server.ports.storage import StoragePort
+
+logger = logging.getLogger(__name__)
 
 
 class _FileRow(BaseModel):
@@ -182,9 +185,20 @@ class SupabaseStorageAdapter(StoragePort):
                     )
             response.raise_for_status()
             body = response.json()
-        except (httpx.HTTPError, ValueError) as error:
+        except httpx.HTTPStatusError as error:
+            logger.warning(
+                "Supabase storage request failed: status=%s path=%s body=%s",
+                error.response.status_code,
+                path,
+                error.response.text[:500],
+            )
             raise RepositoryUnavailableError() from error
-        signed = body.get("signedURL") or body.get("signedUrl")
+        except (httpx.HTTPError, ValueError) as error:
+            logger.warning("Supabase storage request failed: path=%s error=%s", path, error)
+            raise RepositoryUnavailableError() from error
+        # Signed download responses use signedURL, while signed upload
+        # responses use url (with the token in its query string).
+        signed = body.get("signedURL") or body.get("signedUrl") or body.get("url")
         if not isinstance(signed, str):
             raise RepositoryUnavailableError()
         return signed if signed.startswith("http") else f"{self._url}{signed}"
