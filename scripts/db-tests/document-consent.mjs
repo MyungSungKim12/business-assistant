@@ -1,0 +1,56 @@
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+import {randomUUID} from 'node:crypto';
+import {PGlite} from '@electric-sql/pglite';
+const db=new PGlite();
+const org=randomUUID(), other=randomUUID(), owner=randomUUID(), member=randomUUID(), outsider=randomUUID(), admin=randomUUID();
+const customer=randomUUID(), treatment=randomUUID(), template=randomUUID();
+const q=(s,p=[])=>db.query(s,p), one=async(s,p)=>(await q(s,p)).rows[0];
+let checks=0;
+const check=async(name,fn)=>{await fn();checks++;console.log(`PASS ${name}`);};
+const fails=(fn,code)=>assert.rejects(fn,e=>{assert.equal(e.code,code,e.message);return true;});
+async function user(id=owner,role='authenticated'){await db.exec(`reset role; set role ${role}`);await q("select set_config('request.jwt.claim.sub',$1,false)",[id??'']);}
+const preview=async(c=customer,t=treatment,tp=template,o=org)=>(await one('select public.preview_treatment_document($1,$2,$3,$4) as data',[o,c,t,tp])).data;
+const issue=(p,op=randomUUID(),tp=template)=>one('select * from public.issue_treatment_document($1,$2,$3,$4,$5,$6::jsonb)',[org,customer,treatment,tp,op,JSON.stringify(p)]);
+try{
+ await db.exec(`create role anon;create role authenticated;create schema auth;create schema private;
+ grant usage on schema auth,private,public to authenticated,anon;
+ create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
+ create table auth.users(id uuid primary key);create table organizations(id uuid primary key);
+ create table memberships(organization_id uuid,user_id uuid,role text);
+ create table customers(id uuid primary key,organization_id uuid not null,name text,phone text,updated_at timestamptz default now());
+ create function private.has_organization_role(target uuid,roles text[]) returns boolean language sql stable security definer set search_path='' as $$select exists(select 1 from public.memberships where organization_id=target and user_id=auth.uid() and role=any(roles))$$;`);
+ await q('insert into auth.users values($1),($2),($3),($4)',[owner,member,outsider,admin]);
+ await q('insert into organizations values($1),($2)',[org,other]);
+ await q("insert into memberships values($1,$2,'owner'),($1,$3,'member'),($4,$5,'owner')",[org,owner,member,other,outsider]);
+ await q("insert into memberships values($1,$2,'admin')",[org,admin]);
+ await q("insert into customers(id,organization_id,name,phone) values($1,$2,'홍길동','01012345678')",[customer,org]);
+ for(const file of ['007_documents.sql','014_customer_records.sql','016_treatment_lifecycle.sql','017_treatment_consultation.sql','018_document_template_versions.sql','019_treatment_document_issuance.sql','020_document_consent.sql']) await db.exec(await readFile(new URL(`../../migrations/${file}`,import.meta.url),'utf8'));
+ await q("insert into treatment_records(id,organization_id,customer_id,treatment_name,amount,created_by) values($1,$2,$3,'Care',0,$4)",[treatment,org,customer,owner]);
+ await user();
+ await q("select * from mutate_document_template($1,$2,0,$3,'create',$4::jsonb)",[org,template,randomUUID(),JSON.stringify({name:'동의서',description:'',content:'{{customer.name}} / {{treatment.name}} / {{treatment.amount}}'})]);
+ await q("select * from mutate_document_template($1,$2,1,$3,'publish','{}')",[org,template,randomUUID()]);
+ const issued=await issue(await preview());
+ const sign={signer_name:'홍길동',strokes:[[[0,0],[1,1]]],confirmed:true};
+ const delivery={method:'paper',recipient:'홍길동',reference:'',note:'',confirmed:true};
+ const revoke={reason:'고객 철회 요청',confirmed:true};
+ const event=(action,values,revision=0,op=randomUUID(),doc=issued.id,c=customer,t=treatment,o=org)=>one('select * from record_treatment_document_event($1,$2,$3,$4,$5,$6,$7,$8::jsonb)',[o,c,t,doc,revision,op,action,JSON.stringify(values)]);
+ await check('unsigned delivery and revocation fail',async()=>{await fails(()=>event('deliver',delivery),'22023');await fails(()=>event('revoke',revoke),'22023');});
+ await check('strict signature shapes, booleans, distinct coordinates and bounds',async()=>{
+  for(const values of [null,[],{}, {...sign,extra:true},{...sign,confirmed:'true'},{...sign,confirmed:false},{...sign,signer_name:' \n'}, {...sign,signer_name:123},{...sign,signer_name:'x'.repeat(101)}, ...[null,[],[[]],[[[true,0],[1,1]]],[[['0',0],[1,1]]],[[[0,0,0],[1,1]]],[[[-0.1,0],[1,1]]],[[[0,0],[0,0]]],Array(51).fill([[0,0]]),[Array(501).fill([0,0])],Array(11).fill(Array(500).fill([0,0]))].map(strokes=>({...sign,strokes}))])await fails(()=>event('sign',values),'22023');
+ });
+ const signOp=randomUUID();let signed;
+ await check('sign persists exact evidence and deterministic content hash',async()=>{signed=await event('sign',sign,0,signOp);assert.equal(signed.revision,1);assert.equal(signed.actor_id,owner);assert.deepEqual(signed.values,sign);assert.match(signed.content_hash,/^[a-f0-9]{64}$/);const hash=await one("select encode(sha256(convert_to(jsonb_build_object('content',content,'title',title,'template_version',template_version)::text,'UTF8')),'hex') as value from issued_treatment_documents where id=$1",[issued.id]);assert.equal(signed.content_hash,hash.value);});
+ await check('replay is exact, including actor, revision and target',async()=>{assert.equal((await event('sign',sign,0,signOp)).id,signed.id);for(const args of [['sign',{...sign,signer_name:'Other'},0,signOp],['sign',sign,1,signOp],['sign',sign,0,signOp,issued.id,randomUUID()]])await fails(()=>event(...args),args[5]?'P0002':'P0001');});
+ await check('stale revision and second signature reject',async()=>{await fails(()=>event('deliver',delivery,0),'P0001');await fails(()=>event('sign',sign,1),'22023');});
+ await check('strict delivery and revoke objects',async()=>{for(const values of [{...delivery,method:'fax'},{...delivery,recipient:'\t'},{...delivery,reference:1},{...delivery,note:null},{...delivery,extra:true},{...delivery,confirmed:false},{...delivery,reference:'x'.repeat(501)},{...delivery,note:'x'.repeat(2001)}])await fails(()=>event('deliver',values,1),'22023');for(const values of [{...revoke,reason:1},{...revoke,reason:' '},{...revoke,reason:'x'.repeat(2001)},{...revoke,extra:true}])await fails(()=>event('revoke',values,1),'22023');});
+ const deliverOp=randomUUID();
+ await check('repeat deliveries retained; revocation terminal; retries survive revocation',async()=>{const first=await event('deliver',delivery,1,deliverOp);assert.equal(first.revision,2);assert.equal((await event('deliver',delivery,2)).revision,3);const revoked=await event('revoke',revoke,3);assert.equal(revoked.revision,4);assert.equal(revoked.content_hash,signed.content_hash);for(const [a,v] of [['sign',sign],['deliver',delivery],['revoke',revoke]])await fails(()=>event(a,v,4),'22023');assert.equal((await event('sign',sign,0,signOp)).id,signed.id);assert.equal((await event('deliver',delivery,1,deliverOp)).id,first.id);});
+ await check('member read only; tenant and anonymous denied',async()=>{await user(member);assert.equal((await q('select * from treatment_document_events')).rows.length,4);await fails(()=>event('sign',sign,0,signOp),'42501');await user(outsider);assert.equal((await q('select * from treatment_document_events')).rows.length,0);await fails(()=>event('sign',sign),'42501');await user(null);await fails(()=>event('sign',sign),'42501');await user(owner,'anon');await fails(()=>event('sign',sign),'42501');await user();await fails(()=>event('sign',sign,0,randomUUID(),randomUUID()),'P0002');});
+ await check('direct insert update delete truncate denied',async()=>{for(const sql of ["update treatment_document_events set action='revoke'",'delete from treatment_document_events','truncate treatment_document_events',"insert into treatment_document_events(id) values(gen_random_uuid())"])await fails(()=>q(sql),'42501');});
+ await check('event rows immutable even through owner SQL',async()=>{await db.exec('reset role');for(const sql of ["update treatment_document_events set action='revoke'",'delete from treatment_document_events','truncate treatment_document_events'])await fails(()=>q(sql),'42501');await fails(()=>q('delete from issued_treatment_documents where id=$1',[issued.id]),'23001');await user();});
+ await check('admin permitted but cannot replay another actor; operation cannot switch document',async()=>{await user(admin);await fails(()=>event('sign',sign,0,signOp),'P0001');await user();const second=await issue(await preview());await fails(()=>event('sign',sign,0,signOp,second.id),'P0001');await user(admin);const result=await event('sign',sign,0,randomUUID(),second.id);assert.equal(result.actor_id,admin);await user();});
+ await check('maximum point count and multiple single-point strokes accepted',async()=>{const large=await issue(await preview());const strokes=Array.from({length:10},()=>Array.from({length:500},(_,i)=>[i/500,1]));assert.equal((await event('sign',{...sign,strokes},0,randomUUID(),large.id)).revision,1);const separate=await issue(await preview());assert.equal((await event('sign',{...sign,strokes:[[[0,0]],[[1,1]]]},0,randomUUID(),separate.id)).revision,1);});
+ await check('failed requests append no evidence and metadata is DB assigned',async()=>{assert.equal((await one('select count(*)::int as n from treatment_document_events')).n,7);assert.ok(signed.occurred_at);assert.equal((await one('select count(*)::int as n from treatment_document_events where document_id=$1',[issued.id])).n,4);});
+ console.log(`${checks} document consent checks passed`);
+}finally{await db.close();}

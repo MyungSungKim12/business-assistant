@@ -4,6 +4,16 @@
 
 > 현재 상태: Supabase Auth, 조직 역할, 구독 기능 권한과 CRM·일정·문서·재무·파일 관리 구현 완료
 
+## 제품 구성과 진행 관리
+
+메뉴별 기능·화면·업무 규칙·실패 처리·인수 조건은 [제품 계획 인덱스](docs/product/README.md)에서 관리합니다.
+
+- [고객관리 상세 계획](docs/product/menus/02-customers.md)
+- [단계별 로드맵](docs/product/roadmap.md)
+- [변경 및 검증 이력](docs/product/changelog.md)
+
+각 기능은 고정 ID와 `planned / baseline / in-progress / verified` 상태로 추적합니다. verified에는 검증 범위와 실환경 확인 여부를 함께 남깁니다.
+
 ## 빠른 시작
 
 PowerShell에서 저장소 루트로 이동한 뒤 아래 명령을 실행하세요.
