@@ -15,7 +15,9 @@ CREATED_DOCUMENT_ID = UUID("44444444-4444-4444-4444-444444444444")
 
 class FakeDocumentClient:
     def __init__(self) -> None:
-        self.templates = [DocumentTemplate(TEMPLATE_ID, "견적서", "기본 견적 내용")]
+        self.templates = [
+            DocumentTemplate(TEMPLATE_ID, "견적서", "기본 견적 내용", status="published")
+        ]
         self.documents = [Document(DOCUMENT_ID, "9월 견적", "draft", "본문", TEMPLATE_ID)]
         self.created: list[tuple[UUID, str, str, UUID | None]] = []
 
@@ -41,7 +43,7 @@ def test_document_page_loads_templates_and_documents(qtbot) -> None:  # type: ig
     page.refresh()
 
     assert page.template_list.count() == 1
-    assert page.template_list.item(0).text() == "견적서"
+    assert page.template_list.item(0).text() == "견적서 · v1 · 게시됨"
     assert page.document_list.count() == 1
     assert "9월 견적" in page.document_list.item(0).text()
     assert page.status_label.text() == "문서 1개를 불러왔습니다."

@@ -2,15 +2,17 @@
 
 import os
 from collections.abc import Sequence
+from pathlib import Path
 
 import httpx
 from business_assistant_common.entitlements import EntitlementSet
 from dotenv import load_dotenv
 from PySide6.QtCore import QTimer
+from PySide6.QtGui import QFont, QFontDatabase
 from PySide6.QtWidgets import QApplication
-from qt_material import apply_stylesheet  # type: ignore[import-untyped]
 
 from business_assistant_desktop.api_client import ApiClient, Organization
+from business_assistant_desktop.design_tokens import application_stylesheet
 from business_assistant_desktop.login_dialog import AuthenticationClient, LoginDialog
 from business_assistant_desktop.main_window import MainWindow
 from business_assistant_desktop.organization_dialog import OrganizationDialog
@@ -28,8 +30,21 @@ def create_application(argv: Sequence[str] | None = None) -> QApplication:
     application.setOrganizationName("Business Assistant")
     application.setApplicationName("Business Assistant")
     application.setApplicationDisplayName("Business Assistant")
+    if not application.property("product-font-loaded"):
+        font_root = Path(__file__).parent / "assets"
+        font_ids = [
+            QFontDatabase.addApplicationFont(str(font_root / f"Pretendard-{weight}.ttf"))
+            for weight in ("Regular", "Medium", "SemiBold", "Bold")
+        ]
+        if all(font_id >= 0 for font_id in font_ids):
+            application.setProperty("product-font-loaded", True)
     if not application.styleSheet():
-        apply_stylesheet(application, theme="light_blue.xml", extra={"density_scale": "0"})
+        application.setStyle("Fusion")
+        font = QFont("Pretendard", 10)
+        font.setHintingPreference(QFont.HintingPreference.PreferFullHinting)
+        font.setStyleStrategy(QFont.StyleStrategy.PreferAntialias)
+        application.setFont(font)
+        application.setStyleSheet(application_stylesheet())
     return application
 
 

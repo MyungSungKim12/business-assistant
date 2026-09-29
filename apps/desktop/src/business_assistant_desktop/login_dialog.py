@@ -113,6 +113,7 @@ class LoginDialog(QDialog):
         self._worker: AuthenticationWorker | None = None
         self._authentication_succeeded = False
         self.setWindowTitle("Business Assistant 로그인")
+        self.setMinimumWidth(440)
 
         self.email_input = QLineEdit()
         self.email_input.setObjectName("email-input")
@@ -120,6 +121,8 @@ class LoginDialog(QDialog):
         self.password_input.setObjectName("password-input")
         self.password_input.setEchoMode(QLineEdit.EchoMode.Password)
         self.login_button = QPushButton("로그인")
+        self.login_button.setProperty("role", "primary")
+        self.login_button.setDefault(True)
         self.signup_button = QPushButton("가입")
         self.loading_label = QLabel()
         self.error_label = QLabel()
@@ -132,6 +135,16 @@ class LoginDialog(QDialog):
         buttons.addWidget(self.login_button)
         buttons.addWidget(self.signup_button)
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(36, 36, 36, 28)
+        layout.setSpacing(18)
+        title = QLabel("매장의 하루를, 한곳에서")
+        title.setObjectName("page-title")
+        subtitle = QLabel("고객의 첫 방문부터 시술과 매장 운영까지")
+        subtitle.setObjectName("page-subtitle")
+        layout.addWidget(title)
+        layout.addWidget(subtitle)
+        layout.addSpacing(8)
+        form.setSpacing(12)
         layout.addLayout(form)
         layout.addLayout(buttons)
         layout.addWidget(self.loading_label)

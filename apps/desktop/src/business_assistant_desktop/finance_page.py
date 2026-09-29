@@ -18,6 +18,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from business_assistant_desktop.sales_draft_dialog import SalesDraftInbox
+
 
 @dataclass(frozen=True, slots=True)
 class Transaction:
@@ -40,6 +42,8 @@ class FinanceSummary:
 
 class FinanceClient(Protocol):
     """Operations the finance page needs from its API boundary."""
+
+    def list_treatment_sale_drafts(self, organization_id: UUID) -> list[dict[str, object]]: ...
 
     def list_transactions(
         self,
@@ -64,6 +68,7 @@ class FinancePage(QWidget):
         super().__init__()
         self._client = client
         self._organization_id = organization_id
+        self._draft_inbox: SalesDraftInbox | None = None
 
         heading = QLabel("매출·지출")
         heading.setObjectName("page-title")
@@ -77,6 +82,9 @@ class FinancePage(QWidget):
         refresh_button.clicked.connect(self.refresh)
         toolbar = QHBoxLayout()
         toolbar.addWidget(heading)
+        self.drafts_button = QPushButton("시술 결제 초안")
+        self.drafts_button.clicked.connect(self._show_drafts)
+        toolbar.addWidget(self.drafts_button)
         toolbar.addStretch()
         toolbar.addWidget(QLabel("유형"))
         toolbar.addWidget(self.type_filter)
@@ -110,6 +118,20 @@ class FinancePage(QWidget):
         layout.addWidget(self.transaction_table)
         layout.addWidget(self.status_label)
         self.refresh()
+
+    def _show_drafts(self) -> None:
+        if self._draft_inbox is not None and self._draft_inbox.isVisible():
+            self._draft_inbox.raise_()
+            return
+        self._draft_inbox = SalesDraftInbox(self._client, self._organization_id, parent=self)
+        self._draft_inbox.show()
+
+    def confirm_leave(self) -> bool:
+        return (
+            self._draft_inbox is None
+            or not self._draft_inbox.isVisible()
+            or self._draft_inbox.confirm_leave()
+        )
 
     def refresh(self) -> None:
         try:

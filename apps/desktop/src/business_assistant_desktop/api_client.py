@@ -1,8 +1,8 @@
 """HTTP boundary between the desktop application and the Business Assistant API."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import cast
 from uuid import UUID
@@ -35,9 +35,9 @@ class SignUpResult:
 class Customer:
     id: UUID
     name: str
-    email: str | None
-    phone: str | None
-    notes: str
+    email: str | None = None
+    phone: str | None = None
+    notes: str = ""
     tags: tuple[str, ...] = ()
     status: str = "active"
     birth_date: str | None = None
@@ -46,6 +46,27 @@ class Customer:
     allergies: str = ""
     last_visit_date: str | None = None
     next_visit_date: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class CustomerActivity:
+    id: UUID
+    customer_id: UUID
+    activity_type: str
+    title: str
+    description: str
+    occurred_at: str
+
+
+@dataclass(frozen=True, slots=True)
+class CustomerPhoto:
+    id: UUID
+    customer_id: UUID
+    storage_path: str
+    content_type: str
+    size_bytes: int
+    caption: str
+    created_at: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,6 +80,15 @@ class Treatment:
     notes: str
     amount: Decimal | None
     next_visit_date: str | None
+    status: str = "legacy"
+    version: int = 1
+    started_at: str | None = None
+    ended_at: str | None = None
+    consultation_goal: str = ""
+    consultation_plan: str = ""
+    cautions_snapshot: dict[str, object] = field(default_factory=dict)
+    cautions_acknowledged_by: UUID | None = None
+    cautions_acknowledged_at: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -97,6 +127,9 @@ class DocumentTemplate:
     is_archived: bool
     created_at: str
     updated_at: str
+    status: str = "draft"
+    version: int = 1
+    revision: int = 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -228,12 +261,24 @@ class ApiClient:
         response.raise_for_status()
         return _customer_from_payload(_response_object(response))
 
+    def create_customer_record(
+        self, organization_id: UUID, session: Session, values: dict[str, object]
+    ) -> Customer:
+        """Create a complete customer profile in one request."""
+        response = self._client.post(
+            f"{self._base_url}/api/v1/organizations/{organization_id}/customers",
+            headers=_auth_header(session),
+            json=values,
+        )
+        response.raise_for_status()
+        return _customer_from_payload(_response_object(response))
+
     def update_customer(
         self,
         organization_id: UUID,
         session: Session,
         customer_id: UUID,
-        values: dict[str, str | None],
+        values: dict[str, object],
     ) -> Customer:
         response = self._client.patch(
             f"{self._base_url}/api/v1/organizations/{organization_id}/customers/{customer_id}",
@@ -250,6 +295,161 @@ class ApiClient:
         )
         response.raise_for_status()
         return True
+
+    def list_customer_activities(
+        self, organization_id: UUID, session: Session, customer_id: UUID
+    ) -> list[CustomerActivity]:
+        response = self._client.get(
+            f"{self._base_url}/api/v1/organizations/{organization_id}"
+            f"/customers/{customer_id}/activities",
+            headers=_auth_header(session),
+        )
+        response.raise_for_status()
+        payload: object = response.json()
+        if not isinstance(payload, list):
+            raise ValueError("Customer activity response must be a list")
+        return [_customer_activity_from_payload(_object(item)) for item in payload]
+
+    def create_customer_activity(
+        self,
+        organization_id: UUID,
+        session: Session,
+        customer_id: UUID,
+        values: dict[str, object],
+    ) -> CustomerActivity:
+        response = self._client.post(
+            f"{self._base_url}/api/v1/organizations/{organization_id}"
+            f"/customers/{customer_id}/activities",
+            headers=_auth_header(session),
+            json=values,
+        )
+        response.raise_for_status()
+        return _customer_activity_from_payload(_response_object(response))
+
+    def list_customer_photos(
+        self, organization_id: UUID, session: Session, customer_id: UUID
+    ) -> list[CustomerPhoto]:
+        response = self._client.get(
+            f"{self._base_url}/api/v1/organizations/{organization_id}/customers/{customer_id}/photos",
+            headers=_auth_header(session),
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if not isinstance(payload, list):
+            raise ValueError("Customer photo response must be a list")
+        return [_customer_photo_from_payload(_object(item)) for item in payload]
+
+    def upload_customer_photo(
+        self,
+        organization_id: UUID,
+        session: Session,
+        customer_id: UUID,
+        original_name: str,
+        content: bytes,
+        content_type: str,
+        caption: str = "",
+    ) -> CustomerPhoto:
+        response = self._client.post(
+            f"{self._base_url}/api/v1/organizations/{organization_id}/customers/{customer_id}/photos/upload-url",
+            headers=_auth_header(session),
+            json={
+                "original_name": original_name,
+                "content_type": content_type,
+                "size_bytes": len(content),
+                "caption": caption,
+            },
+        )
+        response.raise_for_status()
+        payload = _response_object(response)
+        signed_url = _required_string(payload, "signed_url")
+        upload = self._client.put(
+            signed_url, content=content, headers={"Content-Type": content_type}
+        )
+        upload.raise_for_status()
+        return _customer_photo_from_payload(_object(payload.get("photo")))
+
+    def download_customer_photo(
+        self, organization_id: UUID, session: Session, customer_id: UUID, photo_id: UUID
+    ) -> bytes:
+        response = self._client.post(
+            f"{self._base_url}/api/v1/organizations/{organization_id}/customers/{customer_id}/photos/{photo_id}/download-url",
+            headers=_auth_header(session),
+        )
+        response.raise_for_status()
+        signed_url = _required_string(_response_object(response), "signed_url")
+        image = self._client.get(signed_url)
+        image.raise_for_status()
+        return image.content
+
+    def list_treatments(
+        self, organization_id: UUID, session: Session, customer_id: UUID
+    ) -> list[Treatment]:
+        response = self._client.get(
+            f"{self._base_url}/api/v1/organizations/{organization_id}/customers/{customer_id}/treatments",
+            headers=_auth_header(session),
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if not isinstance(payload, list):
+            raise ValueError("Treatment response must be a list")
+        return [_treatment_from_payload(_object(row)) for row in payload]
+
+    def create_treatment(
+        self, organization_id: UUID, session: Session, customer_id: UUID, values: dict[str, object]
+    ) -> Treatment:
+        response = self._client.post(
+            f"{self._base_url}/api/v1/organizations/{organization_id}/customers/{customer_id}/treatments",
+            headers=_auth_header(session),
+            json=values,
+        )
+        response.raise_for_status()
+        return _treatment_from_payload(_response_object(response))
+
+    def update_treatment(
+        self,
+        organization_id: UUID,
+        session: Session,
+        customer_id: UUID,
+        treatment_id: UUID,
+        values: dict[str, object],
+    ) -> Treatment:
+        response = self._client.patch(
+            f"{self._base_url}/api/v1/organizations/{organization_id}/customers/{customer_id}"
+            f"/treatments/{treatment_id}",
+            headers=_auth_header(session),
+            json=values,
+        )
+        response.raise_for_status()
+        return _treatment_from_payload(_response_object(response))
+
+    def mutate_treatment(
+        self,
+        organization_id: UUID,
+        session: Session,
+        customer_id: UUID,
+        treatment_id: UUID,
+        values: dict[str, object],
+    ) -> Treatment:
+        response = self._client.post(
+            f"{self._base_url}/api/v1/organizations/{organization_id}/customers/{customer_id}/treatments/{treatment_id}/mutations",
+            headers={"Authorization": f"Bearer {session.access_token}"},
+            json=values,
+        )
+        response.raise_for_status()
+        return _treatment_from_payload(_object(response.json()))
+
+    def list_treatment_events(
+        self, organization_id: UUID, session: Session, customer_id: UUID, treatment_id: UUID
+    ) -> list[dict[str, object]]:
+        response = self._client.get(
+            f"{self._base_url}/api/v1/organizations/{organization_id}/customers/{customer_id}/treatments/{treatment_id}/events",
+            headers={"Authorization": f"Bearer {session.access_token}"},
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if not isinstance(payload, list):
+            raise ValueError("Expected treatment event list")
+        return [_object(row) for row in payload]
 
     def list_tasks(
         self, organization_id: UUID, session: Session, status: str | None = None
@@ -315,6 +515,199 @@ class ApiClient:
         )
         response.raise_for_status()
         return [_document_template_from_payload(_object(item)) for item in response.json()]
+
+    def list_document_consent_events(
+        self,
+        organization_id: UUID,
+        session: Session,
+        customer_id: UUID,
+        treatment_id: UUID,
+        document_id: UUID,
+    ) -> list[dict[str, object]]:
+        path = (
+            f"organizations/{organization_id}/customers/{customer_id}/treatments/{treatment_id}"
+            f"/documents/{document_id}/events"
+        )
+        response = self._client.get(
+            f"{self._base_url}/api/v1/{path}", headers=_auth_header(session)
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if not isinstance(payload, list):
+            raise ValueError("Expected consent event list")
+        return [_object(row) for row in payload]
+
+    def record_document_consent_event(
+        self,
+        organization_id: UUID,
+        session: Session,
+        customer_id: UUID,
+        treatment_id: UUID,
+        document_id: UUID,
+        payload: dict[str, object],
+    ) -> dict[str, object]:
+        path = (
+            f"organizations/{organization_id}/customers/{customer_id}/treatments/{treatment_id}"
+            f"/documents/{document_id}/events"
+        )
+        response = self._client.post(
+            f"{self._base_url}/api/v1/{path}", headers=_auth_header(session), json=payload
+        )
+        response.raise_for_status()
+        return _response_object(response)
+
+    def preview_treatment_document(
+        self,
+        organization_id: UUID,
+        session: Session,
+        customer_id: UUID,
+        treatment_id: UUID,
+        template_id: UUID,
+    ) -> dict[str, object]:
+        path = (
+            f"organizations/{organization_id}/customers/{customer_id}"
+            f"/treatments/{treatment_id}/documents"
+        )
+        response = self._client.post(
+            f"{self._base_url}/api/v1/{path}/preview",
+            headers=_auth_header(session),
+            json={"template_id": str(template_id)},
+        )
+        response.raise_for_status()
+        return _response_object(response)
+
+    def issue_treatment_document(
+        self,
+        organization_id: UUID,
+        session: Session,
+        customer_id: UUID,
+        treatment_id: UUID,
+        payload: dict[str, object],
+    ) -> dict[str, object]:
+        path = (
+            f"organizations/{organization_id}/customers/{customer_id}"
+            f"/treatments/{treatment_id}/documents"
+        )
+        response = self._client.post(
+            f"{self._base_url}/api/v1/{path}",
+            headers=_auth_header(session),
+            json=payload,
+        )
+        response.raise_for_status()
+        return _response_object(response)
+
+    def list_issued_treatment_documents(
+        self,
+        organization_id: UUID,
+        session: Session,
+        customer_id: UUID,
+        treatment_id: UUID,
+    ) -> list[dict[str, object]]:
+        path = (
+            f"organizations/{organization_id}/customers/{customer_id}"
+            f"/treatments/{treatment_id}/documents"
+        )
+        response = self._client.get(
+            f"{self._base_url}/api/v1/{path}",
+            headers=_auth_header(session),
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if not isinstance(payload, list):
+            raise ValueError("Expected issued document list")
+        return [_object(item) for item in payload]
+
+    def preview_treatment_sale_draft(
+        self,
+        organization_id: UUID,
+        session: Session,
+        customer_id: UUID,
+        treatment_id: UUID,
+        values: dict[str, object],
+    ) -> dict[str, object]:
+        path = (
+            f"organizations/{organization_id}/customers/{customer_id}"
+            f"/treatments/{treatment_id}/sale-draft/preview"
+        )
+        response = self._client.post(
+            f"{self._base_url}/api/v1/{path}",
+            headers=_auth_header(session),
+            json={"values": values},
+        )
+        response.raise_for_status()
+        return _response_object(response)
+
+    def create_treatment_sale_draft(
+        self,
+        organization_id: UUID,
+        session: Session,
+        customer_id: UUID,
+        treatment_id: UUID,
+        payload: dict[str, object],
+    ) -> dict[str, object]:
+        path = (
+            f"organizations/{organization_id}/customers/{customer_id}"
+            f"/treatments/{treatment_id}/sale-draft"
+        )
+        response = self._client.post(
+            f"{self._base_url}/api/v1/{path}",
+            headers=_auth_header(session),
+            json=payload,
+        )
+        response.raise_for_status()
+        return _response_object(response)
+
+    def list_treatment_sale_drafts(
+        self,
+        organization_id: UUID,
+        session: Session,
+        customer_id: UUID | None = None,
+        treatment_id: UUID | None = None,
+    ) -> list[dict[str, object]]:
+        if (customer_id is None) != (treatment_id is None):
+            raise ValueError("Customer and treatment must be provided together")
+        path = f"organizations/{organization_id}/treatment-sale-drafts"
+        if customer_id is not None:
+            path = (
+                f"organizations/{organization_id}/customers/{customer_id}"
+                f"/treatments/{treatment_id}/sale-draft"
+            )
+        response = self._client.get(
+            f"{self._base_url}/api/v1/{path}", headers=_auth_header(session)
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if not isinstance(payload, list):
+            raise ValueError("Expected sale draft list")
+        return [_object(item) for item in payload]
+
+    def mutate_document_template(
+        self,
+        organization_id: UUID,
+        session: Session,
+        template_id: UUID,
+        payload: dict[str, object],
+    ) -> DocumentTemplate:
+        response = self._client.post(
+            f"{self._base_url}/api/v1/organizations/{organization_id}/document-templates/{template_id}/mutations",
+            headers=_auth_header(session),
+            json=payload,
+        )
+        response.raise_for_status()
+        return _document_template_from_payload(_response_object(response))
+
+    def list_document_template_versions(
+        self,
+        organization_id: UUID,
+        session: Session,
+        template_id: UUID,
+    ) -> list[dict[str, object]]:
+        response = self._client.get(
+            f"{self._base_url}/api/v1/organizations/{organization_id}/document-templates/{template_id}/versions",
+            headers=_auth_header(session),
+        )
+        response.raise_for_status()
+        return [_object(item) for item in response.json()]
 
     def list_documents(self, organization_id: UUID, session: Session) -> list[Document]:
         response = self._client.get(
@@ -519,6 +912,32 @@ def _customer_from_payload(payload: dict[str, object]) -> Customer:
     )
 
 
+def _customer_activity_from_payload(payload: dict[str, object]) -> CustomerActivity:
+    return CustomerActivity(
+        id=UUID(_required_string(payload, "id")),
+        customer_id=UUID(_required_string(payload, "customer_id")),
+        activity_type=_required_string(payload, "activity_type"),
+        title=_required_string(payload, "title"),
+        description=_required_string(payload, "description"),
+        occurred_at=_required_string(payload, "occurred_at"),
+    )
+
+
+def _customer_photo_from_payload(payload: dict[str, object]) -> CustomerPhoto:
+    raw_size = payload.get("size_bytes")
+    if not isinstance(raw_size, int) or isinstance(raw_size, bool):
+        raise ValueError("API response field size_bytes must be an integer")
+    return CustomerPhoto(
+        id=UUID(_required_string(payload, "id")),
+        customer_id=UUID(_required_string(payload, "customer_id")),
+        storage_path=_required_string(payload, "storage_path"),
+        content_type=_required_string(payload, "content_type"),
+        size_bytes=raw_size,
+        caption=_required_string(payload, "caption"),
+        created_at=_required_string(payload, "created_at"),
+    )
+
+
 def _optional_string(payload: dict[str, object], field_name: str) -> str | None:
     value = payload.get(field_name)
     if value is not None and not isinstance(value, str):
@@ -550,6 +969,9 @@ def _document_template_from_payload(payload: dict[str, object]) -> DocumentTempl
         _required_bool(payload, "is_archived"),
         _required_string(payload, "created_at"),
         _required_string(payload, "updated_at"),
+        _required_string(payload, "status") if "status" in payload else "draft",
+        int(str(payload.get("version", 1))),
+        int(str(payload.get("revision", 1))),
     )
 
 
@@ -634,3 +1056,41 @@ def _required_bool(payload: dict[str, object], field_name: str) -> bool:
     if not isinstance(value, bool):
         raise ValueError(f"API response field {field_name} must be a boolean")
     return value
+
+
+def _treatment_from_payload(payload: dict[str, object]) -> Treatment:
+    status = payload.get("status", "legacy")
+    version = payload.get("version", 1)
+    if status not in ("legacy", "draft", "in_progress", "completed", "cancelled"):
+        raise ValueError("Invalid treatment status")
+    if not isinstance(version, int) or isinstance(version, bool) or version < 1:
+        raise ValueError("Invalid treatment version")
+    raw = payload.get("amount")
+    try:
+        amount = Decimal(str(raw)) if raw is not None else None
+        if amount is not None and (not amount.is_finite() or amount < 0):
+            raise ValueError("Invalid treatment amount")
+    except InvalidOperation as exc:
+        raise ValueError("Invalid treatment amount") from exc
+    return Treatment(
+        UUID(_required_string(payload, "id")),
+        UUID(_required_string(payload, "customer_id")),
+        _required_string(payload, "treatment_date"),
+        _required_string(payload, "treatment_name"),
+        _required_string(payload, "category"),
+        _required_string(payload, "practitioner"),
+        _required_string(payload, "notes"),
+        amount,
+        _optional_string(payload, "next_visit_date"),
+        str(status),
+        version,
+        _optional_string(payload, "started_at"),
+        _optional_string(payload, "ended_at"),
+        _required_string(payload, "consultation_goal") if "consultation_goal" in payload else "",
+        _required_string(payload, "consultation_plan") if "consultation_plan" in payload else "",
+        _object(payload.get("cautions_snapshot", {})),
+        UUID(str(payload["cautions_acknowledged_by"]))
+        if payload.get("cautions_acknowledged_by") is not None
+        else None,
+        _optional_string(payload, "cautions_acknowledged_at"),
+    )

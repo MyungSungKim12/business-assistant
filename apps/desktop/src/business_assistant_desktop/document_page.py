@@ -11,11 +11,14 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QListWidget,
+    QMessageBox,
     QPushButton,
     QTextEdit,
     QVBoxLayout,
     QWidget,
 )
+
+from business_assistant_desktop.template_manager import STATUS, TemplateManager
 
 
 @dataclass(frozen=True, slots=True)
@@ -24,6 +27,9 @@ class DocumentTemplate:
     name: str
     content: str
     description: str = ""
+    status: str = "draft"
+    version: int = 1
+    revision: int = 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,6 +64,8 @@ class DocumentPage(QWidget):
         self._organization_id = organization_id
         self._templates: list[DocumentTemplate] = []
         self._documents: list[Document] = []
+        self._can_manage = can_manage
+        self._manager: TemplateManager | None = None
 
         heading = QLabel("문서 자동화")
         heading.setObjectName("page-title")
@@ -66,6 +74,9 @@ class DocumentPage(QWidget):
         toolbar = QHBoxLayout()
         toolbar.addWidget(heading)
         toolbar.addStretch()
+        self.manage_button = QPushButton("동의서·서식 관리")
+        self.manage_button.clicked.connect(self._manage_templates)
+        toolbar.addWidget(self.manage_button)
         toolbar.addWidget(refresh_button)
 
         self.template_list = QListWidget()
@@ -105,23 +116,41 @@ class DocumentPage(QWidget):
         layout.addWidget(self.status_label)
         self.refresh()
 
+    def _manage_templates(self) -> None:
+        self._manager = TemplateManager(
+            self._client, self._organization_id, can_manage=self._can_manage, parent=self
+        )
+        self._manager.finished.connect(lambda _result: self.refresh())
+        self._manager.show()
+
+    def confirm_leave(self) -> bool:
+        if self._manager and self._manager.isVisible() and not self._manager.confirm_leave():
+            return False
+        if not self.title_input.text() and not self.content_input.toPlainText():
+            return True
+        return (
+            QMessageBox.question(
+                self,
+                "작성 중인 문서",
+                "저장하지 않은 문서 입력을 버리시겠습니까?",
+                QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Cancel,
+            )
+            == QMessageBox.StandardButton.Discard
+        )
+
     def refresh(self) -> None:
         self.status_label.setText("문서를 불러오는 중...")
         try:
-            self._templates = list(self._client.list_document_templates(self._organization_id))
-            self._documents = list(self._client.list_documents(self._organization_id))
+            templates = list(self._client.list_document_templates(self._organization_id))
+            documents = list(self._client.list_documents(self._organization_id))
         except PermissionError:
-            self._templates = []
-            self._documents = []
             self.status_label.setText("문서 접근 권한이 없습니다.")
-            self._render()
             return
         except Exception:
-            self._templates = []
-            self._documents = []
             self.status_label.setText("문서를 불러오지 못했습니다.")
-            self._render()
             return
+        self._templates, self._documents = templates, documents
         self._render()
         count = len(self._documents)
         self.status_label.setText(
@@ -130,12 +159,17 @@ class DocumentPage(QWidget):
 
     def _render(self) -> None:
         self.template_list.clear()
+        selected = self.template_combo.currentData()
         self.template_combo.blockSignals(True)
         self.template_combo.clear()
         self.template_combo.addItem("템플릿 없음", None)
         for template in self._templates:
-            self.template_list.addItem(template.name)
-            self.template_combo.addItem(template.name, template.id)
+            state = STATUS.get(template.status, template.status)
+            self.template_list.addItem(f"{template.name} · v{template.version} · {state}")
+            if template.status == "published":
+                self.template_combo.addItem(template.name, template.id)
+        restored = self.template_combo.findData(selected)
+        self.template_combo.setCurrentIndex(max(0, restored))
         self.template_combo.blockSignals(False)
         self.document_list.clear()
         for document in self._documents:
@@ -144,11 +178,17 @@ class DocumentPage(QWidget):
     def _apply_template(self, index: int) -> None:
         if index <= 0:
             return
-        template = self._templates[index - 1]
+        template_id = self.template_combo.itemData(index)
+        template = next((row for row in self._templates if row.id == template_id), None)
+        if template is None:
+            return
         if not self.content_input.toPlainText().strip():
             self.content_input.setPlainText(template.content)
 
     def _create(self) -> None:
+        if not self._can_manage:
+            self.status_label.setText("문서 작성 권한이 없습니다.")
+            return
         title = self.title_input.text().strip()
         if not title:
             self.status_label.setText("문서 제목을 입력하세요.")

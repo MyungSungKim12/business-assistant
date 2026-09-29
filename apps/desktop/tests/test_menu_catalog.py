@@ -7,4 +7,4 @@ def test_visible_menus_include_free_and_entitled_features() -> None:
 
     menu_keys = [menu.key for menu in visible_menus(entitlements)]
 
-    assert menu_keys == ["dashboard", "crm", "account", "settings"]
+    assert menu_keys == ["dashboard", "crm", "treatments", "account", "settings"]

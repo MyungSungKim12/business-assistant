@@ -4,6 +4,7 @@ from typing import Any
 
 from business_assistant_common.entitlements import EntitlementSet
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -13,17 +14,23 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSizePolicy,
     QStackedWidget,
+    QStyle,
+    QStyledItemDelegate,
+    QStyleOptionViewItem,
     QVBoxLayout,
     QWidget,
 )
 
 from business_assistant_desktop.customer_page import CustomerPage
+from business_assistant_desktop.customer_widgets import SidebarPanel
 from business_assistant_desktop.design_tokens import application_stylesheet
 from business_assistant_desktop.document_page import DocumentPage
 from business_assistant_desktop.file_page import FilePage
 from business_assistant_desktop.finance_page import FinancePage
+from business_assistant_desktop.icons import icon
 from business_assistant_desktop.menu_catalog import MENU_CATALOG
 from business_assistant_desktop.task_page import TaskPage
+from business_assistant_desktop.treatment_page import TreatmentPage
 
 
 class PlaceholderPage(QFrame):
@@ -48,6 +55,15 @@ class PlaceholderPage(QFrame):
         state.setObjectName("status")
         layout.addWidget(state)
         layout.addStretch()
+
+
+class NavigationDelegate(QStyledItemDelegate):
+    """Selection provides the location cue without Windows' text-only focus box."""
+
+    def paint(self, painter: Any, option: QStyleOptionViewItem, index: Any) -> None:
+        clean = QStyleOptionViewItem(option)
+        clean.state &= ~QStyle.StateFlag.State_HasFocus
+        super().paint(painter, clean, index)
 
 
 class MainWindow(QMainWindow):
@@ -93,24 +109,65 @@ class MainWindow(QMainWindow):
         top_layout.addStretch()
         top_layout.addWidget(sync_status)
         top_layout.addWidget(account)
-        root_layout.addWidget(top_bar)
+        top_bar.hide()
 
         body = QWidget()
         body_layout = QHBoxLayout(body)
-        body_layout.setContentsMargins(16, 16, 16, 16)
-        body_layout.setSpacing(16)
+        body_layout.setContentsMargins(0, 0, 0, 0)
+        body_layout.setSpacing(0)
         self.navigation_menu = QListWidget()
         self.navigation_menu.setObjectName("navigation")
-        self.navigation_menu.setFixedWidth(248)
+        self.navigation_menu.setFixedWidth(188)
+        self.navigation_menu.setItemDelegate(NavigationDelegate(self.navigation_menu))
         self.navigation_menu.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.navigation_menu.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.navigation_menu.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.navigation_menu.setAccessibleName("주요 메뉴")
         self.navigation_menu.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
+        sidebar = SidebarPanel()
+        sidebar.setObjectName("sidebar")
+        sidebar.setFixedWidth(188)
+        side_layout = QVBoxLayout(sidebar)
+        side_layout.setContentsMargins(0, 0, 0, 16)
+        side_layout.setSpacing(0)
+        logo = QLabel("아름다운 오늘,\n더 빛나는 당신에게")
+        logo.setObjectName("sidebar-brand")
+        logo.setFixedHeight(88)
+        brand_row = QHBoxLayout()
+        brand_row.setContentsMargins(14, 0, 0, 0)
+        brand_row.setSpacing(0)
+        brand_mark = QLabel()
+        brand_mark.setObjectName("brand-mark")
+        brand_mark.setPixmap(icon("mdi6.leaf", "#cfb99f").pixmap(28, 40))
+        brand_row.addWidget(brand_mark)
+        brand_row.addWidget(logo, 1)
+        side_layout.addLayout(brand_row)
+        side_layout.addWidget(self.navigation_menu, 1)
+        self.all_menu_button = QPushButton("전체 메뉴")
+        self.all_menu_button.setObjectName("all-menu-button")
+        self.all_menu_button.setIcon(icon("mdi6.menu", "#b5aaa0"))
+        side_layout.addWidget(self.all_menu_button)
+        footer = QLabel("Healthy Skin\nHappier You")
+        footer.setObjectName("sidebar-footer")
+        side_layout.addWidget(footer)
         self.pages = QStackedWidget()
         self._page_by_key: dict[str, int] = {}
         for menu in MENU_CATALOG:
             available = menu.feature_code is None or entitlements.has(menu.feature_code)
             self.navigation_menu.addItem(menu.label if available else f"{menu.label} (준비 중)")
             item = self.navigation_menu.item(self.navigation_menu.count() - 1)
+            item.setToolTip(item.text())
+            menu_icon = {
+                "dashboard": "mdi6.home-outline",
+                "crm": "mdi6.account-outline",
+                "schedule": "mdi6.calendar-month-outline",
+                "treatments": "mdi6.clipboard-text-outline",
+                "documents": "mdi6.text-box-outline",
+                "files": "mdi6.folder-outline",
+                "reports": "mdi6.chart-bar",
+                "settings": "mdi6.cog-outline",
+            }.get(menu.key, "mdi6.circle-small")
+            item.setIcon(icon(menu_icon, "#dfd9d1"))
             if not available:
                 item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEnabled)
             page: QWidget = PlaceholderPage(menu.label, self._description(menu.key), available)
@@ -122,7 +179,26 @@ class MainWindow(QMainWindow):
             ):
                 organization_id = getattr(organization, "id", None)
                 if organization_id is not None:
-                    page = CustomerPage(_BoundCustomerClient(client, session), organization_id)
+                    page = CustomerPage(
+                        _BoundCustomerClient(client, session),
+                        organization_id,
+                        can_manage=_can_manage(organization),
+                    )
+                    page.treatment_requested.connect(self._open_treatments)
+            elif (
+                menu.key == "treatments"
+                and available
+                and client is not None
+                and session is not None
+                and organization is not None
+            ):
+                organization_id = getattr(organization, "id", None)
+                if organization_id is not None:
+                    page = TreatmentPage(
+                        _BoundTreatmentClient(client, session),
+                        organization_id,
+                        can_manage=_can_manage(organization),
+                    )
             elif (
                 menu.key == "schedule"
                 and client is not None
@@ -171,14 +247,72 @@ class MainWindow(QMainWindow):
         content_area = QFrame()
         content_area.setObjectName("content-area")
         content_layout = QVBoxLayout(content_area)
-        content_layout.setContentsMargins(8, 0, 8, 0)
+        content_layout.setContentsMargins(0, 0, 0, 0)
         content_layout.addWidget(self.pages)
-        body_layout.addWidget(self.navigation_menu)
+        body_layout.addWidget(sidebar)
         body_layout.addWidget(content_area, 1)
         root_layout.addWidget(body, 1)
         self.setCentralWidget(root)
-        self.navigation_menu.currentRowChanged.connect(self.pages.setCurrentIndex)
+        self.navigation_menu.currentRowChanged.connect(self._navigate)
         self.navigation_menu.setCurrentRow(0)
+        self._expanded_navigation = False
+        self.all_menu_button.clicked.connect(self._toggle_navigation)
+        self._apply_navigation_visibility()
+
+    def _open_treatments(self, customer_id: Any) -> None:
+        target = self.pages.widget(self._page_by_key["treatments"])
+        current = self.pages.currentWidget()
+        if not isinstance(target, TreatmentPage) or customer_id is None:
+            return
+        if isinstance(current, CustomerPage) and not current.confirm_leave():
+            return
+        if target.open_customer(customer_id):
+            self.navigation_menu.setCurrentRow(self._page_by_key["treatments"])
+
+    def _navigate(self, index: int) -> None:
+        current = self.pages.currentWidget()
+        if (
+            index != self.pages.currentIndex()
+            and isinstance(current, (CustomerPage, TreatmentPage, DocumentPage, FinancePage))
+            and not current.confirm_leave()
+        ):
+            self.navigation_menu.blockSignals(True)
+            self.navigation_menu.setCurrentRow(self.pages.currentIndex())
+            self.navigation_menu.blockSignals(False)
+            return
+        self.pages.setCurrentIndex(index)
+
+    def closeEvent(self, event: QCloseEvent) -> None:
+        for index in range(self.pages.count()):
+            page = self.pages.widget(index)
+            if (
+                isinstance(page, (CustomerPage, TreatmentPage, DocumentPage, FinancePage))
+                and not page.confirm_leave()
+            ):
+                event.ignore()
+                return
+        super().closeEvent(event)
+
+    def _toggle_navigation(self) -> None:
+        self._expanded_navigation = not self._expanded_navigation
+        self._apply_navigation_visibility()
+
+    def _apply_navigation_visibility(self) -> None:
+        primary = {
+            "dashboard",
+            "crm",
+            "schedule",
+            "treatments",
+            "documents",
+            "files",
+            "reports",
+            "settings",
+        }
+        for index, menu in enumerate(MENU_CATALOG):
+            self.navigation_menu.item(index).setHidden(
+                not self._expanded_navigation and menu.key not in primary
+            )
+        self.all_menu_button.setText("간단히 보기" if self._expanded_navigation else "전체 메뉴")
 
     @staticmethod
     def _description(key: str) -> str:
@@ -200,21 +334,191 @@ class _BoundCustomerClient:
     def list_customers(self, organization_id: Any) -> Any:
         return self._client.list_customers(organization_id, self._session)
 
-    def create_customer(
-        self, organization_id: Any, name: str, email: str | None, phone: str | None, notes: str
-    ) -> Any:
-        return self._client.create_customer(
-            organization_id, self._session, name, email, phone, notes
-        )
+    def create_customer_record(self, organization_id: Any, values: dict[str, object]) -> Any:
+        return self._client.create_customer_record(organization_id, self._session, values)
 
     def update_customer(
-        self, organization_id: Any, customer_id: Any, values: dict[str, str | None]
+        self, organization_id: Any, customer_id: Any, values: dict[str, object]
     ) -> Any:
         return self._client.update_customer(organization_id, self._session, customer_id, values)
 
-    def delete_customer(self, organization_id: Any, customer_id: Any) -> bool:
-        self._client.delete_customer(organization_id, self._session, customer_id)
-        return True
+    def list_customer_activities(self, organization_id: Any, customer_id: Any) -> Any:
+        return self._client.list_customer_activities(organization_id, self._session, customer_id)
+
+    def create_customer_activity(
+        self, organization_id: Any, customer_id: Any, values: dict[str, object]
+    ) -> Any:
+        return self._client.create_customer_activity(
+            organization_id, self._session, customer_id, values
+        )
+
+    def list_customer_photos(self, organization_id: Any, customer_id: Any) -> Any:
+        return self._client.list_customer_photos(organization_id, self._session, customer_id)
+
+    def upload_customer_photo(
+        self,
+        organization_id: Any,
+        customer_id: Any,
+        original_name: str,
+        content: bytes,
+        content_type: str,
+        caption: str = "",
+    ) -> Any:
+        return self._client.upload_customer_photo(
+            organization_id,
+            self._session,
+            customer_id,
+            original_name,
+            content,
+            content_type,
+            caption,
+        )
+
+    def download_customer_photo(
+        self, organization_id: Any, customer_id: Any, photo_id: Any
+    ) -> bytes:
+        return self._client.download_customer_photo(
+            organization_id, self._session, customer_id, photo_id
+        )
+
+
+class _BoundTreatmentClient(_BoundCustomerClient):
+    def list_document_consent_events(
+        self,
+        organization_id: Any,
+        customer_id: Any,
+        treatment_id: Any,
+        document_id: Any,
+    ) -> Any:
+        return self._client.list_document_consent_events(
+            organization_id, self._session, customer_id, treatment_id, document_id
+        )
+
+    def record_document_consent_event(
+        self,
+        organization_id: Any,
+        customer_id: Any,
+        treatment_id: Any,
+        document_id: Any,
+        payload: Any,
+    ) -> Any:
+        return self._client.record_document_consent_event(
+            organization_id, self._session, customer_id, treatment_id, document_id, payload
+        )
+
+    def list_document_templates(self, organization_id: Any) -> Any:
+        return self._client.list_document_templates(organization_id, self._session)
+
+    def preview_treatment_document(
+        self,
+        organization_id: Any,
+        customer_id: Any,
+        treatment_id: Any,
+        template_id: Any,
+    ) -> Any:
+        return self._client.preview_treatment_document(
+            organization_id,
+            self._session,
+            customer_id,
+            treatment_id,
+            template_id,
+        )
+
+    def issue_treatment_document(
+        self,
+        organization_id: Any,
+        customer_id: Any,
+        treatment_id: Any,
+        payload: Any,
+    ) -> Any:
+        return self._client.issue_treatment_document(
+            organization_id,
+            self._session,
+            customer_id,
+            treatment_id,
+            payload,
+        )
+
+    def list_issued_treatment_documents(
+        self,
+        organization_id: Any,
+        customer_id: Any,
+        treatment_id: Any,
+    ) -> Any:
+        return self._client.list_issued_treatment_documents(
+            organization_id,
+            self._session,
+            customer_id,
+            treatment_id,
+        )
+
+    def preview_treatment_sale_draft(
+        self,
+        organization_id: Any,
+        customer_id: Any,
+        treatment_id: Any,
+        values: Any,
+    ) -> Any:
+        return self._client.preview_treatment_sale_draft(
+            organization_id,
+            self._session,
+            customer_id,
+            treatment_id,
+            values,
+        )
+
+    def create_treatment_sale_draft(
+        self,
+        organization_id: Any,
+        customer_id: Any,
+        treatment_id: Any,
+        payload: Any,
+    ) -> Any:
+        return self._client.create_treatment_sale_draft(
+            organization_id,
+            self._session,
+            customer_id,
+            treatment_id,
+            payload,
+        )
+
+    def list_treatment_sale_drafts(
+        self,
+        organization_id: Any,
+        customer_id: Any = None,
+        treatment_id: Any = None,
+    ) -> Any:
+        return self._client.list_treatment_sale_drafts(
+            organization_id,
+            self._session,
+            customer_id,
+            treatment_id,
+        )
+
+    def mutate_treatment(
+        self, organization_id: Any, customer_id: Any, record_id: Any, values: Any
+    ) -> Any:
+        return self._client.mutate_treatment(
+            organization_id, self._session, customer_id, record_id, values
+        )
+
+    def list_treatment_events(self, organization_id: Any, customer_id: Any, record_id: Any) -> Any:
+        return self._client.list_treatment_events(
+            organization_id, self._session, customer_id, record_id
+        )
+
+    def list_treatments(self, organization_id: Any, customer_id: Any) -> Any:
+        return self._client.list_treatments(organization_id, self._session, customer_id)
+
+    def create_treatment(self, organization_id: Any, customer_id: Any, values: Any) -> Any:
+        return self._client.create_treatment(organization_id, self._session, customer_id, values)
+
+    def update_treatment(
+        self, organization_id: Any, customer_id: Any, record_id: Any, values: Any
+    ) -> Any:
+        return self._client.update_treatment(
+            organization_id, self._session, customer_id, record_id, values
+        )
 
 
 class _BoundTaskClient:
@@ -261,6 +565,16 @@ class _BoundDocumentClient:
     def list_document_templates(self, organization_id: Any) -> Any:
         return self._client.list_document_templates(organization_id, self._session)
 
+    def mutate_document_template(self, organization_id: Any, template_id: Any, payload: Any) -> Any:
+        return self._client.mutate_document_template(
+            organization_id, self._session, template_id, payload
+        )
+
+    def list_document_template_versions(self, organization_id: Any, template_id: Any) -> Any:
+        return self._client.list_document_template_versions(
+            organization_id, self._session, template_id
+        )
+
     def list_documents(self, organization_id: Any) -> Any:
         return self._client.list_documents(organization_id, self._session)
 
@@ -277,6 +591,9 @@ class _BoundFinanceClient:
 
     def __init__(self, client: Any, session: Any) -> None:
         self._client, self._session = client, session
+
+    def list_treatment_sale_drafts(self, organization_id: Any) -> Any:
+        return self._client.list_treatment_sale_drafts(organization_id, self._session)
 
     def list_transactions(
         self, organization_id: Any, transaction_type: Any, from_date: Any, to_date: Any
