@@ -10,11 +10,16 @@ from typing import Literal
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QComboBox,
+    QFrame,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
+    QLayout,
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QTableWidget,
+    QVBoxLayout,
     QWidget,
 )
 
@@ -25,17 +30,17 @@ BannerState = Literal["loading", "empty", "error"]
 class DesignTokens:
     """Product palette and spacing values used by common components."""
 
-    primary = "#2563eb"
-    primary_hover = "#1d4ed8"
-    surface = "#ffffff"
-    background = "#f7f8fa"
-    text = "#111827"
-    muted_text = "#6b7280"
-    border = "#e5e7eb"
-    danger = "#dc2626"
-    success = "#16a34a"
-    radius = 8
-    spacing = 12
+    primary = "#B98B68"
+    primary_hover = "#8E684F"
+    surface = "#FFFDF9"
+    background = "#F7F3ED"
+    text = "#403A35"
+    muted_text = "#8D8378"
+    border = "#E4D9CD"
+    danger = "#B9786D"
+    success = "#7E9B78"
+    radius = 12
+    spacing = 16
 
 
 class StatusBanner(QLabel):
@@ -155,7 +160,7 @@ def install_component_styles(widget: QWidget) -> None:
         f"""
         #status-banner, #toast {{ padding: 10px 14px; border-radius: {DesignTokens.radius}px; }}
         #status-banner[state='loading'], #status-banner[state='empty'] {{
-            background: #eff6ff; color: {DesignTokens.primary};
+            background: #EEF2F6; color: {DesignTokens.primary};
         }}
         #status-banner[state='error'], #toast[level='error'] {{
             background: #fef2f2; color: {DesignTokens.danger};
@@ -165,3 +170,29 @@ def install_component_styles(widget: QWidget) -> None:
         #secondary-button:hover {{ background: #e2e8f0; }}
         """
     )
+
+
+def surface_panel(title: str, content: QLayout) -> QFrame:
+    """Group a form or a list without changing ownership of its controls."""
+    frame = QFrame()
+    frame.setObjectName("surface-panel")
+    box = QVBoxLayout(frame)
+    box.setContentsMargins(20, 18, 20, 18)
+    box.setSpacing(14)
+    if title:
+        heading = QLabel(title)
+        heading.setObjectName("section-heading")
+        box.addWidget(heading)
+    box.addLayout(content)
+    return frame
+
+
+def polish_table(table: QTableWidget) -> None:
+    """Give operational tables readable rows and use the available width."""
+    table.setShowGrid(False)
+    table.setAlternatingRowColors(True)
+    table.setWordWrap(False)
+    table.verticalHeader().hide()
+    table.verticalHeader().setDefaultSectionSize(44)
+    table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+    table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)

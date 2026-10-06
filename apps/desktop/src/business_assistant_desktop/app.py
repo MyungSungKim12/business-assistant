@@ -7,7 +7,7 @@ from pathlib import Path
 import httpx
 from business_assistant_common.entitlements import EntitlementSet
 from dotenv import load_dotenv
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QFont, QFontDatabase
 from PySide6.QtWidgets import QApplication
 
@@ -25,6 +25,9 @@ def create_application(argv: Sequence[str] | None = None) -> QApplication:
     if isinstance(existing_application, QApplication):
         application = existing_application
     else:
+        QApplication.setHighDpiScaleFactorRoundingPolicy(
+            Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
+        )
         application = QApplication(list(argv) if argv is not None else [])
 
     application.setOrganizationName("Business Assistant")
@@ -40,9 +43,13 @@ def create_application(argv: Sequence[str] | None = None) -> QApplication:
             application.setProperty("product-font-loaded", True)
     if not application.styleSheet():
         application.setStyle("Fusion")
-        font = QFont("Pretendard", 10)
+        font = QFont("Pretendard")
+        font.setPixelSize(14)
+        # Keep Windows' native outline rasterisation and snap small Korean glyphs
+        # to the device pixel grid. Forcing PreferAntialias makes 125/150% text
+        # look soft on some ClearType configurations.
         font.setHintingPreference(QFont.HintingPreference.PreferFullHinting)
-        font.setStyleStrategy(QFont.StyleStrategy.PreferAntialias)
+        font.setStyleStrategy(QFont.StyleStrategy.PreferDefault)
         application.setFont(font)
         application.setStyleSheet(application_stylesheet())
     return application

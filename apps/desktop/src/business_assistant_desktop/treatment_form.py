@@ -20,6 +20,7 @@ def valid_date(value: str) -> str:
 class TreatmentForm(QWidget):
     def __init__(self, can_manage: bool) -> None:
         super().__init__()
+        self.setObjectName("treatment-form")
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         fields = QFormLayout()

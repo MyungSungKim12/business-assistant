@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -18,6 +19,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+from business_assistant_desktop.ui_components import polish_table, surface_panel
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,8 +73,11 @@ class TaskPage(QWidget):
         self._client = client
         self._organization_id = organization_id
         self._tasks: list[Task] = []
+        self._selected_id: UUID | None = None
+        self._filter_index = 0
+        self._baseline: tuple = ()
 
-        heading = QLabel("업무")
+        heading = QLabel("일정·할 일")
         heading.setObjectName("page-title")
         self.status_filter = QComboBox()
         self.status_filter.addItems([label for label, _ in _STATUSES])
@@ -107,34 +113,74 @@ class TaskPage(QWidget):
         form.addRow("상태", self.status_input)
         form.addRow("우선순위", self.priority_input)
         self.save_button = QPushButton("업무 저장")
+        self.save_button.setProperty("role", "primary")
         self.delete_button = QPushButton("선택 업무 삭제")
+        self.delete_button.setProperty("role", "danger")
         self.save_button.clicked.connect(self._save)
         self.delete_button.clicked.connect(self._delete)
         actions = QHBoxLayout()
         actions.addWidget(self.save_button)
         actions.addWidget(self.delete_button)
         self.error_label = QLabel()
+        self.error_label.setObjectName("error")
         self.error_label.setWordWrap(True)
-        self.error_label.setStyleSheet("color: #b91c1c")
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(32, 28, 32, 28)
+        layout.setContentsMargins(24, 24, 24, 20)
+        layout.setSpacing(18)
         layout.addLayout(toolbar)
-        layout.addWidget(self.task_table)
-        layout.addLayout(form)
-        layout.addLayout(actions)
+        polish_table(self.task_table)
+        layout.addWidget(self.task_table, 1)
+        editor = QVBoxLayout()
+        form.setSpacing(10)
+        editor.addLayout(form)
+        editor.addLayout(actions)
+        layout.addWidget(surface_panel("업무 작성 · 수정", editor))
         layout.addWidget(self.error_label)
+        self._baseline = self._draft()
         self.refresh()
 
+    def _draft(self) -> tuple:
+        return (
+            self.title_input.text(),
+            self.description_input.toPlainText(),
+            self.due_input.text(),
+            self.status_input.currentIndex(),
+            self.priority_input.currentIndex(),
+        )
+
+    def confirm_leave(self) -> bool:
+        if self._draft() == self._baseline:
+            return True
+        result = QMessageBox.question(
+            self,
+            "작성 중인 업무",
+            "저장하지 않은 업무 변경을 버릴까요?",
+            QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel,
+        )
+        if result != QMessageBox.StandardButton.Discard:
+            return False
+        self._baseline = self._draft()
+        return True
+
     def refresh(self) -> None:
+        if not self.confirm_leave():
+            self.status_filter.blockSignals(True)
+            self.status_filter.setCurrentIndex(self._filter_index)
+            self.status_filter.blockSignals(False)
+            return
         status = _STATUSES[self.status_filter.currentIndex()][1]
         try:
-            self._tasks = self._client.list_tasks(self._organization_id, status)
+            tasks = self._client.list_tasks(self._organization_id, status)
         except Exception:
-            self._tasks = []
             self.error_label.setText("업무를 불러오지 못했습니다.")
             return
+        self._tasks = tasks
+        self._selected_id = None
+        self._filter_index = self.status_filter.currentIndex()
         self.error_label.clear()
+        self.task_table.blockSignals(True)
         self.task_table.setRowCount(0)
         for task in self._tasks:
             row = self.task_table.rowCount()
@@ -148,16 +194,38 @@ class TaskPage(QWidget):
             for column, value in enumerate(values):
                 self.task_table.setItem(row, column, QTableWidgetItem(value))
 
+        self.task_table.blockSignals(False)
+        self.title_input.clear()
+        self.description_input.clear()
+        self.due_input.clear()
+        self.status_input.setCurrentIndex(0)
+        self.priority_input.setCurrentIndex(1)
+        self._baseline = self._draft()
+
     def _load_selected(self) -> None:
         row = self.task_table.currentRow()
         if row < 0 or row >= len(self._tasks):
             return
         task = self._tasks[row]
+        if task.id == self._selected_id:
+            return
+        if not self.confirm_leave():
+            self.task_table.blockSignals(True)
+            previous = next((i for i, t in enumerate(self._tasks) if t.id == self._selected_id), -1)
+            if previous >= 0:
+                self.task_table.selectRow(previous)
+            else:
+                self.task_table.clearSelection()
+                self.task_table.setCurrentCell(-1, -1)
+            self.task_table.blockSignals(False)
+            return
+        self._selected_id = task.id
         self.title_input.setText(task.title)
         self.description_input.setPlainText(task.description)
         self.due_input.setText(task.due_at or "")
         self.status_input.setCurrentIndex(_value_index(_STATUSES[1:], task.status))
         self.priority_input.setCurrentIndex(_value_index(_PRIORITIES, task.priority))
+        self._baseline = self._draft()
 
     def _save(self) -> None:
         title = self.title_input.text().strip()
@@ -187,6 +255,7 @@ class TaskPage(QWidget):
         except Exception:
             self.error_label.setText("업무 저장에 실패했습니다.")
             return
+        self._baseline = self._draft()
         self.refresh()
 
     def _delete(self) -> None:
@@ -199,6 +268,7 @@ class TaskPage(QWidget):
         except Exception:
             self.error_label.setText("업무 삭제에 실패했습니다.")
             return
+        self._baseline = self._draft()
         self.refresh()
 
 

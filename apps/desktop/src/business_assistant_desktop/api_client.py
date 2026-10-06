@@ -1,5 +1,6 @@
 """HTTP boundary between the desktop application and the Business Assistant API."""
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal, InvalidOperation
@@ -11,6 +12,7 @@ import httpx
 from business_assistant_common.entitlements import EntitlementSet
 
 from business_assistant_desktop.session import Session
+from business_assistant_desktop.upload_transfer import UploadCancelled, upload_chunks
 
 
 @dataclass(frozen=True, slots=True)
@@ -191,6 +193,10 @@ class ApiClient:
         self._base_url = base_url.rstrip("/")
         self._client = client
 
+    @property
+    def recovery_origin(self) -> str:
+        return self._base_url
+
     def login(self, email: str, password: str) -> Session:
         """Authenticate with the API and keep the returned tokens in the caller's session."""
         response = self._client.post(
@@ -348,7 +354,12 @@ class ApiClient:
         content: bytes,
         content_type: str,
         caption: str = "",
+        *,
+        on_progress: Callable[[int, int], None] | None = None,
+        is_cancelled: Callable[[], bool] | None = None,
     ) -> CustomerPhoto:
+        if is_cancelled and is_cancelled():
+            raise UploadCancelled()
         response = self._client.post(
             f"{self._base_url}/api/v1/organizations/{organization_id}/customers/{customer_id}/photos/upload-url",
             headers=_auth_header(session),
@@ -362,11 +373,29 @@ class ApiClient:
         response.raise_for_status()
         payload = _response_object(response)
         signed_url = _required_string(payload, "signed_url")
-        upload = self._client.put(
-            signed_url, content=content, headers={"Content-Type": content_type}
-        )
-        upload.raise_for_status()
-        return _customer_photo_from_payload(_object(payload.get("photo")))
+        photo = _customer_photo_from_payload(_object(payload.get("photo")))
+        try:
+            upload = self._client.put(
+                signed_url,
+                content=upload_chunks(content, on_progress, is_cancelled),
+                headers={"Content-Type": content_type, "Content-Length": str(len(content))},
+            )
+            upload.raise_for_status()
+        except Exception as exc:
+            try:
+                cleanup = self._client.delete(
+                    f"{self._base_url}/api/v1/organizations/{organization_id}"
+                    f"/customers/{customer_id}/photos/{photo.id}",
+                    headers=_auth_header(session),
+                )
+                cleanup.raise_for_status()
+            except Exception:
+                raise RuntimeError(
+                    "전송 결과를 확인하지 못했고 사진 기록 정리도 실패했습니다. "
+                    "사진 목록을 새로고침해 확인해 주세요."
+                ) from exc
+            raise
+        return photo
 
     def download_customer_photo(
         self, organization_id: UUID, session: Session, customer_id: UUID, photo_id: UUID
@@ -680,6 +709,223 @@ class ApiClient:
         if not isinstance(payload, list):
             raise ValueError("Expected sale draft list")
         return [_object(item) for item in payload]
+
+    def list_customer_visits(
+        self,
+        organization_id: UUID,
+        session: Session,
+        customer_id: UUID | None = None,
+        status: str | None = None,
+    ) -> list[dict[str, object]]:
+        params = {}
+        if customer_id is not None:
+            params["customer_id"] = str(customer_id)
+        if status is not None:
+            params["status"] = status
+        response = self._client.get(
+            f"{self._base_url}/api/v1/organizations/{organization_id}/visits",
+            headers=_auth_header(session),
+            params=params,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if not isinstance(payload, list):
+            raise ValueError("Expected visit list")
+        return [_object(item) for item in payload]
+
+    def list_sale_cart_drafts(
+        self,
+        organization_id: UUID,
+        session: Session,
+    ) -> list[dict[str, object]]:
+        response = self._client.get(
+            f"{self._base_url}/api/v1/organizations/{organization_id}/sale-cart-drafts",
+            headers=_auth_header(session),
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if not isinstance(payload, list):
+            raise ValueError("Expected sale cart draft list")
+        return [_object(item) for item in payload]
+
+    def create_customer_visit(
+        self,
+        organization_id: UUID,
+        session: Session,
+        customer_id: UUID,
+        operation_id: UUID,
+    ) -> dict[str, object]:
+        return self._sale_cart_request(
+            "POST",
+            organization_id,
+            session,
+            f"customers/{customer_id}/visits",
+            {"operation_id": str(operation_id)},
+        )
+
+    def get_sale_cart(
+        self, organization_id: UUID, session: Session, visit_id: UUID
+    ) -> dict[str, object]:
+        return self._sale_cart_request(
+            "GET", organization_id, session, f"visits/{visit_id}/sale-cart"
+        )
+
+    def add_treatment_draft_to_cart(
+        self,
+        organization_id: UUID,
+        session: Session,
+        visit_id: UUID,
+        draft_id: UUID,
+        expected_version: int,
+        operation_id: UUID,
+    ) -> dict[str, object]:
+        return self._sale_cart_request(
+            "POST",
+            organization_id,
+            session,
+            f"visits/{visit_id}/sale-cart/lines/treatment-draft",
+            {
+                "draft_id": str(draft_id),
+                "expected_version": expected_version,
+                "operation_id": str(operation_id),
+            },
+        )
+
+    def update_sale_cart_line(
+        self,
+        organization_id: UUID,
+        session: Session,
+        visit_id: UUID,
+        line_id: UUID,
+        expected_version: int,
+        operation_id: UUID,
+        values: dict[str, object],
+    ) -> dict[str, object]:
+        return self._sale_cart_request(
+            "PATCH",
+            organization_id,
+            session,
+            f"visits/{visit_id}/sale-cart/lines/{line_id}",
+            {
+                **values,
+                "expected_version": expected_version,
+                "operation_id": str(operation_id),
+            },
+        )
+
+    def remove_sale_cart_line(
+        self,
+        organization_id: UUID,
+        session: Session,
+        visit_id: UUID,
+        line_id: UUID,
+        expected_version: int,
+        operation_id: UUID,
+        reason: str,
+    ) -> dict[str, object]:
+        return self._sale_cart_request(
+            "POST",
+            organization_id,
+            session,
+            f"visits/{visit_id}/sale-cart/lines/{line_id}/remove",
+            {
+                "reason": reason,
+                "expected_version": expected_version,
+                "operation_id": str(operation_id),
+            },
+        )
+
+    def restore_sale_cart_line(
+        self,
+        organization_id: UUID,
+        session: Session,
+        visit_id: UUID,
+        line_id: UUID,
+        expected_version: int,
+        operation_id: UUID,
+    ) -> dict[str, object]:
+        return self._sale_cart_request(
+            "POST",
+            organization_id,
+            session,
+            f"visits/{visit_id}/sale-cart/lines/{line_id}/restore",
+            {"expected_version": expected_version, "operation_id": str(operation_id)},
+        )
+
+    def review_sale_cart(
+        self,
+        organization_id: UUID,
+        session: Session,
+        visit_id: UUID,
+        expected_version: int,
+        operation_id: UUID,
+        ready: bool,
+    ) -> dict[str, object]:
+        return self._sale_cart_request(
+            "POST",
+            organization_id,
+            session,
+            f"visits/{visit_id}/sale-cart/review",
+            {
+                "ready": ready,
+                "expected_version": expected_version,
+                "operation_id": str(operation_id),
+            },
+        )
+
+    def cancel_customer_visit(
+        self,
+        organization_id: UUID,
+        session: Session,
+        visit_id: UUID,
+        expected_version: int,
+        operation_id: UUID,
+    ) -> dict[str, object]:
+        return self._sale_cart_request(
+            "POST",
+            organization_id,
+            session,
+            f"visits/{visit_id}/cancel",
+            {"expected_version": expected_version, "operation_id": str(operation_id)},
+        )
+
+    def _sale_cart_request(
+        self,
+        method: str,
+        organization_id: UUID,
+        session: Session,
+        path: str,
+        payload: dict[str, object] | None = None,
+    ) -> dict[str, object]:
+        response = self._client.request(
+            method,
+            f"{self._base_url}/api/v1/organizations/{organization_id}/{path}",
+            headers=_auth_header(session),
+            json=payload,
+        )
+        response.raise_for_status()
+        return _response_object(response)
+
+    def get_visit_payments(
+        self,
+        organization_id: UUID,
+        session: Session,
+        visit_id: UUID,
+    ) -> dict[str, object]:
+        return self._sale_cart_request(
+            "GET", organization_id, session, f"visits/{visit_id}/payments"
+        )
+
+    def record_visit_payment(
+        self,
+        organization_id: UUID,
+        session: Session,
+        visit_id: UUID,
+        payload: dict[str, object],
+    ) -> dict[str, object]:
+        return self._sale_cart_request(
+            "POST", organization_id, session, f"visits/{visit_id}/payments", payload
+        )
 
     def mutate_document_template(
         self,

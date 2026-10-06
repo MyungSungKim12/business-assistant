@@ -64,3 +64,5 @@ TRT-001 상담 초안·주의 확인과 DOC-001 동의서·서식 버전 관리�
 2026-09-28: DOC-004 현장 손서명·외부 교부 확인·철회 이력 코드를 추가했다. 격리 DB63개와 Ruff 통과. Python/Qt/실환경 검증은 대기다. [사용·검증 안내](document-consent-release.md).
 
 2026-09-29: TRT-003 / SALE-001 시술 명세·동의 상태의 불변 결제 초안과 매출·지출 조회를 구현했다. 정상 실행이 가능해져 서버/common348, desktop159, 격리 DB75 검증 통과. 서버 health 및 데스크톱 로그인 창 기동 확인. 실환경 저장·전체 장바구니·수납은 미완료로 in-progress 유지. [사용·검증 안내](treatment-sale-drafts-release.md).
+
+2026-10-06: SALE-001 안정화 및 SALE-002의 현금·카드·이체 수납 기록·부분 수금·재무 수입 연결 구현. 두 기능 in-progress 유지, 보조 환경의 검증 범위와 SQL024~026 적용 순서는 [수납 적용 안내](visit-payments-release.md)를 확인한다.

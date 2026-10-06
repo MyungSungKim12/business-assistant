@@ -101,29 +101,15 @@ class TreatmentPage(QWidget):
         self.is_loading, self.is_saving = False, False
         self._pending_customer: UUID | None = None
         self.setObjectName("treatment-workspace")
-        self.setStyleSheet("""
-            QWidget#treatment-workspace {background:#f8f7f4; color:#292e37;}
-            QFrame#treatment-pane {background:white; border:1px solid #e7e2dc; border-radius:10px;}
-            QLabel {border:0; background:transparent;}
-            QLabel#treatment-title {font-size:24px; font-weight:700;}
-            QLabel#section-heading {font-size:16px; font-weight:600;}
-            QListWidget, QTableWidget {background:white; border:0; color:#292e37;}
-            QListWidget::item {padding:14px 7px; border-bottom:1px solid #f0ece7;}
-            QListWidget::item:selected {background:#ede4d9; color:#292e37;}
-            QTableWidget::item:selected {background:#ede4d9; color:#292e37;}
-            QHeaderView::section {background:#f3f0ec; padding:8px; border:0; color:#62594f;}
-            QPushButton {min-height: 16px; padding:8px; background:#faf8f5;
-                border:1px solid #ded4c8;
-                border-radius:8px; color:#35312d;}
-            QPushButton#treatment-save {background:#242c38; color:white; border:0;}
-            QPushButton:disabled {color:#aaa; background:#f1efec;}
-        """)
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(20, 22, 20, 18)
+        layout.setContentsMargins(24, 24, 24, 20)
+        layout.setSpacing(12)
         heading = QLabel("시술관리")
         heading.setObjectName("treatment-title")
         layout.addWidget(heading)
-        layout.addWidget(QLabel("고객별 시술 기록과 다음 방문 계획을 한곳에서 관리하세요."))
+        subtitle = QLabel("고객별 상담부터 시술 완료까지, 하나의 기록으로 연결하세요.")
+        subtitle.setObjectName("page-subtitle")
+        layout.addWidget(subtitle)
         self.lifecycle = TreatmentLifecycle()
         layout.addWidget(self.lifecycle)
         layout.addSpacing(12)
@@ -141,7 +127,7 @@ class TreatmentPage(QWidget):
             return frame, box
 
         left, customer_box = pane("고객 선택")
-        left.setFixedWidth(210)
+        left.setFixedWidth(196)
         self.customer_search = QLineEdit()
         self.customer_search.setPlaceholderText("이름 · 연락처 검색")
         customer_box.addWidget(self.customer_search)
@@ -176,6 +162,8 @@ class TreatmentPage(QWidget):
         self.history_table.verticalHeader().hide()
         self.history_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.history_table.setWordWrap(False)
+        self.history_table.setShowGrid(False)
+        self.history_table.verticalHeader().setDefaultSectionSize(44)
         self.history_table.setAlternatingRowColors(True)
         history_box.addWidget(self.history_table, 1)
         self.retry_button = QPushButton("새로고침")

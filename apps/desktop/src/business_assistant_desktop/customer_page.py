@@ -2,11 +2,12 @@
 
 from collections.abc import Callable
 from pathlib import Path
+from threading import Event
 from typing import Any, Protocol
 from uuid import UUID
 
 from PySide6.QtCore import QObject, QRunnable, Qt, QThreadPool, Signal, Slot
-from PySide6.QtGui import QPixmap
+from PySide6.QtGui import QPixmap, QResizeEvent
 from PySide6.QtWidgets import (
     QComboBox,
     QFileDialog,
@@ -15,6 +16,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMessageBox,
+    QProgressBar,
     QPushButton,
     QScrollArea,
     QTableWidget,
@@ -29,6 +31,7 @@ from business_assistant_desktop.customer_activity_panel import CustomerActivityP
 from business_assistant_desktop.customer_form import CustomerForm
 from business_assistant_desktop.customer_widgets import CUSTOMER_STYLE, PhotoTile, label
 from business_assistant_desktop.icons import icon, set_icon
+from business_assistant_desktop.upload_transfer import UploadCancelled
 
 
 class CustomerClient(Protocol):
@@ -56,6 +59,7 @@ class CustomerClient(Protocol):
         content: bytes,
         content_type: str,
         caption: str = "",
+        **transfer_options: Any,
     ) -> CustomerPhoto: ...
     def download_customer_photo(
         self, organization_id: UUID, customer_id: UUID, photo_id: UUID
@@ -64,6 +68,7 @@ class CustomerClient(Protocol):
 
 class _PhotoSignals(QObject):
     finished = Signal(object)
+    progress = Signal(object)
 
 
 class _PhotoRequest(QRunnable):
@@ -102,17 +107,22 @@ class CustomerPage(QWidget):
         self._customers: list[Customer] = []
         self._selected_id: UUID | None = None
         self.customer_cards: list[QPushButton] = []
+        self._card_columns = 3
         self.setObjectName("customer-workspace")
         self.setStyleSheet(CUSTOMER_STYLE)
         header = QHBoxLayout()
-        header.addWidget(label("고객관리", "workspace-title"))
+        titles = QVBoxLayout()
+        titles.setSpacing(5)
+        titles.addWidget(label("고객관리", "workspace-title"))
+        titles.addWidget(label("고객의 방문과 상담을 한눈에", "muted"))
+        header.addLayout(titles)
         header.addSpacing(10)
-        header.addWidget(label("고객의 방문과 상담을 한눈에", "muted"))
         header.addStretch()
         if not can_manage:
             header.addWidget(label("조회 전용 · 수정은 관리자 권한이 필요합니다", "muted"))
         self.clear_form_button = QPushButton("고객 등록")
-        set_icon(self.clear_form_button, "mdi6.plus")
+        self.clear_form_button.setProperty("role", "primary")
+        set_icon(self.clear_form_button, "mdi6.plus", "#ffffff")
         header.addWidget(self.clear_form_button)
 
         self.search_input = QLineEdit()
@@ -137,7 +147,6 @@ class CustomerPage(QWidget):
         self.clear_button.setAccessibleName("검색 조건 초기화")
         toolbar = QHBoxLayout()
         toolbar.setSpacing(8)
-        toolbar.addWidget(self.search_input, 4)
         toolbar.addWidget(self.sort_combo, 1)
         toolbar.addWidget(self.filter_combo, 1)
         toolbar.addWidget(self.clear_button)
@@ -162,30 +171,38 @@ class CustomerPage(QWidget):
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QScrollArea.Shape.NoFrame)
         scroll.setWidget(self._cards_host)
-        scroll.setMinimumHeight(320)
+        scroll.setMinimumHeight(150)
         self.customer_table = QTableWidget(0, 1)
         self.customer_table.setVisible(False)
         grid_panel = QWidget()
         grid_panel.setObjectName("customer-grid")
         grid_layout = QVBoxLayout(grid_panel)
-        grid_layout.setContentsMargins(10, 10, 10, 10)
+        grid_layout.setContentsMargins(14, 14, 14, 14)
+        grid_layout.addWidget(self.search_input)
         grid_layout.addLayout(toolbar)
         grid_layout.addWidget(self.result_count)
         grid_layout.addWidget(self.empty_label)
         grid_layout.addWidget(scroll, 1)
 
         self.info_panel = self._build_info_tab()
-        self.info_panel.setObjectName("info-panel")
+        self.info_panel.setObjectName("customer-form")
+        self.info_panel.setMinimumHeight(310)
         self.save_button = QPushButton("정보 저장")
         self.save_button.setObjectName("save-customer")
         set_icon(self.save_button, "mdi6.content-save-outline", "#ffffff")
-        info_layout = self.info_panel.layout()
-        assert info_layout is not None
+        info_container = QWidget()
+        info_container.setObjectName("info-panel")
+        info_layout = QVBoxLayout(info_container)
+        info_layout.setContentsMargins(10, 8, 10, 10)
+        info_scroll = QScrollArea()
+        info_scroll.setWidgetResizable(True)
+        info_scroll.setWidget(self.info_panel)
+        info_layout.addWidget(info_scroll, 1)
         info_layout.addWidget(self.save_button)
         left = QVBoxLayout()
         left.setSpacing(10)
-        left.addWidget(grid_panel, 3)
-        left.addWidget(self.info_panel, 2)
+        left.addWidget(grid_panel, 2)
+        left.addWidget(info_container, 2)
 
         detail = QWidget()
         detail.setObjectName("detail-panel")
@@ -231,7 +248,7 @@ class CustomerPage(QWidget):
         self.previous_photo = QPushButton("‹")
         self.next_photo = QPushButton("›")
         for button in (self.previous_photo, self.next_photo):
-            button.setFixedWidth(28)
+            button.setFixedWidth(30)
             button.setObjectName("photo-navigation")
             photo_heading.addWidget(button)
         self.previous_photo.clicked.connect(lambda: self._step_photo(-1))
@@ -265,10 +282,10 @@ class CustomerPage(QWidget):
         detail_layout.addWidget(self.treatment_button)
         body = QHBoxLayout()
         body.setSpacing(12)
-        body.addLayout(left, 66)
-        body.addWidget(detail, 34)
+        body.addLayout(left, 65)
+        body.addWidget(detail, 35)
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setContentsMargins(24, 24, 24, 20)
         layout.setSpacing(12)
         layout.addLayout(header)
         layout.addWidget(self.loading_label)
@@ -281,6 +298,10 @@ class CustomerPage(QWidget):
         self._photo_generation = 0
         self._photo_workers: set[_PhotoRequest] = set()
         self._photo_loading = False
+        self._upload_cancel = Event()
+        self._photo_uploading = False
+        self._photo_upload_worker: _PhotoRequest | None = None
+        self._pending_photo: tuple[UUID, str, bytes, str, str] | None = None
         self._photo_cache: dict[UUID, tuple[list[CustomerPhoto], list[bytes]]] = {}
         self._photo_index = 0
         self._render_photos(())
@@ -325,6 +346,23 @@ class CustomerPage(QWidget):
         set_icon(self.add_photo_button, "mdi6.image-plus-outline")
         self.add_photo_button.clicked.connect(self._add_photo)
         layout.addWidget(self.add_photo_button, 0, Qt.AlignmentFlag.AlignLeft)
+        self.upload_status = label("", "muted", True)
+        self.upload_progress = QProgressBar()
+        self.upload_progress.setRange(0, 100)
+        self.upload_progress.hide()
+        self.cancel_upload_button = QPushButton("업로드 취소")
+        self.cancel_upload_button.hide()
+        self.cancel_upload_button.clicked.connect(self._cancel_photo_upload)
+        self.reload_photos_button = QPushButton("사진 새로고침")
+        self.reload_photos_button.clicked.connect(self._retry_photo_load)
+        layout.addWidget(self.reload_photos_button)
+        layout.addWidget(self.upload_status)
+        layout.addWidget(self.upload_progress)
+        layout.addWidget(self.cancel_upload_button)
+        self.photo_retry_button = QPushButton("업로드 다시 시도")
+        self.photo_retry_button.setVisible(False)
+        self.photo_retry_button.clicked.connect(self._retry_photo_upload)
+        layout.addWidget(self.photo_retry_button, 0, Qt.AlignmentFlag.AlignLeft)
         layout.addStretch()
         return tab
 
@@ -392,7 +430,7 @@ class CustomerPage(QWidget):
             self.customer_table.setItem(row, 0, table_item)
             card = self._make_card(customer)
             self.customer_cards.append(card)
-            self._cards_layout.addWidget(card, row // 3, row % 3)
+            self._cards_layout.addWidget(card, row // self._card_columns, row % self._card_columns)
         self.customer_table.blockSignals(False)
         self.empty_label.setVisible(not visible)
         archived = sum(c.status == "archived" for c in self._customers)
@@ -400,6 +438,19 @@ class CustomerPage(QWidget):
             f"검색 {len(visible)}명  ·  전체 {len(self._customers)}명  ·  "
             f"활성 {len(self._customers) - archived}명  ·  보관 {archived}명"
         )
+
+    def resizeEvent(self, event: QResizeEvent) -> None:
+        super().resizeEvent(event)
+        columns = 2 if self.width() < 1050 else 3
+        if columns == self._card_columns:
+            return
+        self._card_columns = columns
+        for card in self.customer_cards:
+            self._cards_layout.removeWidget(card)
+        for column in range(3):
+            self._cards_layout.setColumnStretch(column, 1 if column < columns else 0)
+        for index, card in enumerate(self.customer_cards):
+            self._cards_layout.addWidget(card, index // columns, index % columns)
 
     def _make_card(self, customer: Customer) -> QPushButton:
         card = QPushButton()
@@ -584,9 +635,13 @@ class CustomerPage(QWidget):
         worker.signals.finished.connect(self._photos_loaded, Qt.ConnectionType.QueuedConnection)
         QThreadPool.globalInstance().start(worker)
 
+    def _retry_photo_load(self) -> None:
+        if self._selected_id is not None and not self._photo_loading:
+            self._load_customer_photos(self._selected_id)
+
     def _fetch_customer_photo_data(
         self, customer_id: UUID
-    ) -> tuple[list[CustomerPhoto], list[bytes]]:
+    ) -> tuple[list[CustomerPhoto], list[bytes], int]:
         records = self._client.list_customer_photos(self._organization_id, customer_id)
         valid_records: list[CustomerPhoto] = []
         image_data: list[bytes] = []
@@ -600,7 +655,7 @@ class CustomerPage(QWidget):
                     image_data.append(data)
             except Exception:
                 continue
-        return valid_records, image_data
+        return valid_records, image_data, len(records) - len(valid_records)
 
     @Slot(object)
     def _photos_loaded(self, outcome: tuple[_PhotoRequest, Any, Exception | None]) -> None:
@@ -614,10 +669,13 @@ class CustomerPage(QWidget):
             self._render_photos(())
             self._show_error("고객 사진을 불러오지 못했습니다. 다시 시도해 주세요.")
             return
-        records, image_data = result
-        if self._selected_id is not None:
+        records, image_data, failed = result
+        if self._selected_id is not None and not failed:
             self._photo_cache[self._selected_id] = (records, image_data)
         self._display_photo_data(records, image_data)
+        if failed:
+            self.photo_caption.setText(f"사진 {failed}개 조회 실패")
+            self._show_error("일부 사진을 불러오지 못했습니다. 사진 새로고침으로 다시 시도하세요.")
 
     def _display_photo_data(self, records: list[CustomerPhoto], image_data: list[bytes]) -> None:
         pixmaps: list[QPixmap] = []
@@ -632,7 +690,7 @@ class CustomerPage(QWidget):
         )
 
     def _add_photo(self) -> None:
-        if not self._can_manage or self._selected_id is None:
+        if not self._can_manage or self._selected_id is None or self._photo_uploading:
             return
         path, _ = QFileDialog.getOpenFileName(
             self, "고객 사진 선택", "", "이미지 파일 (*.jpg *.jpeg *.png *.webp)"
@@ -652,21 +710,116 @@ class CustomerPage(QWidget):
             content = Path(path).read_bytes()
             if not content or len(content) > 10 * 1024 * 1024:
                 raise ValueError("사진 크기는 10MB 이하이어야 합니다.")
-            self._client.upload_customer_photo(
-                self._organization_id,
+            self._pending_photo = (
                 self._selected_id,
                 Path(path).name,
                 content,
                 content_type,
+                path,
             )
-            self._photo_cache.pop(self._selected_id, None)
-            self._load_customer_photos(self._selected_id)
-            self.error_label.clear()
-            self.error_label.hide()
-        except Exception:
-            self._show_error(
-                "사진 등록에 실패했습니다. 파일과 권한을 확인한 뒤 다시 시도해 주세요."
+            self._start_photo_upload()
+        except ValueError as exc:
+            self._show_error(str(exc))
+        except OSError:
+            self._show_error("사진 파일을 읽지 못했습니다. 파일이 열려 있지 않은지 확인해 주세요.")
+
+    def _start_photo_upload(self) -> None:
+        if self._photo_uploading or self._pending_photo is None:
+            return
+        customer_id, name, content, content_type, _ = self._pending_photo
+        self._photo_uploading = True
+        self._upload_cancel.clear()
+        self.upload_progress.setValue(0)
+        self.upload_progress.show()
+        self.cancel_upload_button.show()
+        self.cancel_upload_button.setEnabled(True)
+        customer_name = next((c.name for c in self._customers if c.id == customer_id), "고객")
+        self.upload_status.setText(f"{customer_name} · {name} · 업로드 준비 중")
+        self.add_photo_button.setEnabled(False)
+        self.photo_retry_button.setVisible(False)
+        self.photo_caption.setText("사진 업로드 중…")
+        worker = _PhotoRequest(
+            self._photo_generation,
+            lambda: self._client.upload_customer_photo(
+                self._organization_id,
+                customer_id,
+                name,
+                content,
+                content_type,
+                on_progress=lambda sent, total: worker.signals.progress.emit((worker, sent, total)),
+                is_cancelled=self._upload_cancel.is_set,
+            ),
+        )
+        self._photo_upload_worker = worker
+        worker.signals.progress.connect(
+            self._photo_upload_progress, Qt.ConnectionType.QueuedConnection
+        )
+        worker.signals.finished.connect(
+            self._photo_upload_finished, Qt.ConnectionType.QueuedConnection
+        )
+        QThreadPool.globalInstance().start(worker)
+
+    def _cancel_photo_upload(self) -> None:
+        if self._photo_uploading:
+            self._upload_cancel.set()
+            self.cancel_upload_button.setEnabled(False)
+            self.upload_status.setText("취소 요청 중 · 진행 중인 통신이 끝나면 결과를 확인합니다.")
+
+    @Slot(object)
+    def _photo_upload_progress(self, outcome: tuple[_PhotoRequest, int, int]) -> None:
+        worker, sent, total = outcome
+        if worker is not self._photo_upload_worker or self._upload_cancel.is_set():
+            return
+        self.upload_progress.setValue(int(sent * 100 / max(total, 1)))
+        if sent == total:
+            self.upload_status.setText("전송 완료 · 서버 응답 확인 중")
+
+    def _retry_photo_upload(self) -> None:
+        if (
+            self._selected_id is not None
+            and self._pending_photo is not None
+            and self._pending_photo[0] == self._selected_id
+        ):
+            self._start_photo_upload()
+
+    @Slot(object)
+    def _photo_upload_finished(self, outcome: tuple[_PhotoRequest, Any, Exception | None]) -> None:
+        worker, _, error = outcome
+        if worker is not self._photo_upload_worker:
+            return
+        self._photo_upload_worker = None
+        self._photo_uploading = False
+        self.upload_progress.hide()
+        self.cancel_upload_button.hide()
+        self.add_photo_button.setEnabled(self._can_manage and self._selected_id is not None)
+        if error is not None:
+            self.upload_status.setText(
+                "업로드를 취소했습니다. 선택한 파일은 다시 시도할 수 있습니다."
+                if isinstance(error, UploadCancelled)
+                else str(error) or "사진 업로드 실패"
             )
+            if self._pending_photo and self._pending_photo[0] == self._selected_id:
+                self.photo_caption.setText(
+                    "사진 업로드 취소" if isinstance(error, UploadCancelled) else "사진 업로드 실패"
+                )
+            self.photo_retry_button.setVisible(
+                bool(self._pending_photo and self._pending_photo[0] == self._selected_id)
+            )
+            if not isinstance(error, UploadCancelled):
+                self._show_error(
+                    "사진 등록에 실패했습니다. 업로드 상태와 대상 고객을 확인해 주세요."
+                )
+            return
+        customer_id = self._pending_photo[0] if self._pending_photo else self._selected_id
+        self.upload_status.setText("사진 업로드 완료")
+        self._pending_photo = None
+        self.photo_retry_button.setVisible(False)
+        self.error_label.clear()
+        self.error_label.hide()
+        if customer_id is not None:
+            self._photo_cache.pop(customer_id, None)
+            if customer_id == self._selected_id:
+                self._load_customer_photos(customer_id)
 
     def _select_from_table(self) -> None:
         rows = self.customer_table.selectionModel().selectedRows()
@@ -798,6 +951,16 @@ class CustomerPage(QWidget):
         return False
 
     def _update_form_state(self) -> None:
+        self.add_photo_button.setEnabled(
+            self._can_manage and self._selected_id is not None and not self._photo_uploading
+        )
+        self.photo_retry_button.setVisible(
+            bool(
+                not self._photo_uploading
+                and self._pending_photo
+                and self._pending_photo[0] == self._selected_id
+            )
+        )
         self.save_button.setEnabled(self._can_manage and not self._saving)
         self.delete_button.setEnabled(
             self._can_manage and self._selected_id is not None and not self._saving

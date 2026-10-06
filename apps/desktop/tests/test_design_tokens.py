@@ -2,8 +2,12 @@ from business_assistant_desktop.design_tokens import COLORS, application_stylesh
 
 
 def test_design_tokens_cover_core_product_states() -> None:
-    assert COLORS["canvas"] == "#FAF9F8"
-    assert COLORS["primary"] == "#B79C80"
+    assert COLORS["canvas"] == "#F7F3ED"
+    assert COLORS["surface"] == "#FFFDF9"
+    assert COLORS["nav"] == "#E8DED2"
+    assert COLORS["text"] == "#403A35"
+    assert COLORS["primary"] == "#B98B68"
+    assert COLORS["border"] == "#E4D9CD"
     assert all(name in COLORS for name in ("success", "warning", "danger"))
 
 
@@ -36,3 +40,4 @@ def test_global_typography_and_combobox_use_modern_product_style() -> None:
     assert "QComboBox QAbstractItemView" in stylesheet
     assert "QComboBox:hover" in stylesheet
     assert "QComboBox:focus" in stylesheet
+    assert "#summary-card { background: #FFFDF9" in stylesheet

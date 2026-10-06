@@ -95,7 +95,10 @@ class SalesDraftDialog(QDialog):
         self.setWindowTitle("시술 명세 → 결제 초안")
         self.resize(760, 760)
         layout = QVBoxLayout(self)
-        heading = QLabel("실제 청구할 시술 내용을 검토하세요.")
+        layout.setContentsMargins(24, 24, 24, 20)
+        layout.setSpacing(12)
+        heading = QLabel("시술 결제 초안")
+        heading.setObjectName("page-title")
         layout.addWidget(heading)
         explanation = QLabel(
             "초안 전달은 수납·매출 확정이 아닙니다. 같은 시술에서는 하나의 초안만 생성됩니다."
@@ -121,6 +124,7 @@ class SalesDraftDialog(QDialog):
         self.partial_reason.setMaximumHeight(66)
         self.partial_reason.setPlaceholderText("중단 시 실제 수행 범위와 청구 사유 필수")
         form = QFormLayout()
+        form.setSpacing(12)
         form.addRow("청구 항목", self.description)
         form.addRow("검토 금액", self.amount)
         form.addRow("연결할 발행본", self.documents)
@@ -135,6 +139,7 @@ class SalesDraftDialog(QDialog):
         self.confirmed = QCheckBox("실제 수행 항목·검토 금액·동의 상태와 예외 사유를 확인했습니다.")
         layout.addWidget(self.confirmed)
         self.create_button = QPushButton("결제 초안으로 전달")
+        self.create_button.setProperty("role", "primary")
         layout.addWidget(self.create_button)
         self.status = QLabel()
         self.status.setTextFormat(Qt.TextFormat.PlainText)
@@ -403,6 +408,8 @@ class SalesDraftInbox(QDialog):
         self.resize(900, 650)
         self.setModal(True)
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(24, 24, 24, 20)
+        layout.setSpacing(12)
         layout.addWidget(
             QLabel("시술에서 전달한 검토 초안입니다. 수입 합계와 수납 실적에는 포함하지 않습니다.")
         )

@@ -18,7 +18,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from business_assistant_desktop.sales_draft_dialog import SalesDraftInbox
+from business_assistant_desktop.sale_cart_page import SaleCartWorkspace
+from business_assistant_desktop.ui_components import polish_table, surface_panel
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,11 +65,14 @@ _TYPES: list[tuple[str, str | None]] = [("전체", None), ("수입", "income"), 
 class FinancePage(QWidget):
     """Display filtered transactions and totals for one organization."""
 
-    def __init__(self, client: FinanceClient, organization_id: UUID) -> None:
+    def __init__(
+        self, client: FinanceClient, organization_id: UUID, *, can_manage: bool = True
+    ) -> None:
         super().__init__()
         self._client = client
         self._organization_id = organization_id
-        self._draft_inbox: SalesDraftInbox | None = None
+        self._can_manage = can_manage
+        self._draft_inbox: SaleCartWorkspace | None = None
 
         heading = QLabel("매출·지출")
         heading.setObjectName("page-title")
@@ -81,10 +85,12 @@ class FinancePage(QWidget):
         refresh_button = QPushButton("조회")
         refresh_button.clicked.connect(self.refresh)
         toolbar = QHBoxLayout()
-        toolbar.addWidget(heading)
-        self.drafts_button = QPushButton("시술 결제 초안")
+        header = QHBoxLayout()
+        header.addWidget(heading)
+        header.addStretch()
+        self.drafts_button = QPushButton("결제 장바구니")
         self.drafts_button.clicked.connect(self._show_drafts)
-        toolbar.addWidget(self.drafts_button)
+        header.addWidget(self.drafts_button)
         toolbar.addStretch()
         toolbar.addWidget(QLabel("유형"))
         toolbar.addWidget(self.type_filter)
@@ -101,7 +107,8 @@ class FinancePage(QWidget):
         totals.addWidget(self.income_total_label)
         totals.addWidget(self.expense_total_label)
         totals.addWidget(self.net_total_label)
-        totals.addStretch()
+        for total in (self.income_total_label, self.expense_total_label, self.net_total_label):
+            total.setObjectName("summary-card")
 
         self.transaction_table = QTableWidget(0, 5)
         self.transaction_table.setHorizontalHeaderLabels(
@@ -112,10 +119,13 @@ class FinancePage(QWidget):
         self.status_label.setWordWrap(True)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(32, 28, 32, 28)
-        layout.addLayout(toolbar)
+        layout.setContentsMargins(24, 24, 24, 20)
+        layout.setSpacing(18)
+        layout.addLayout(header)
+        layout.addWidget(surface_panel("거래 내역 조회", toolbar))
         layout.addLayout(totals)
-        layout.addWidget(self.transaction_table)
+        polish_table(self.transaction_table)
+        layout.addWidget(self.transaction_table, 1)
         layout.addWidget(self.status_label)
         self.refresh()
 
@@ -123,7 +133,12 @@ class FinancePage(QWidget):
         if self._draft_inbox is not None and self._draft_inbox.isVisible():
             self._draft_inbox.raise_()
             return
-        self._draft_inbox = SalesDraftInbox(self._client, self._organization_id, parent=self)
+        self._draft_inbox = SaleCartWorkspace(
+            self._client,
+            self._organization_id,
+            can_manage=self._can_manage,
+            parent=self,
+        )
         self._draft_inbox.show()
 
     def confirm_leave(self) -> bool:

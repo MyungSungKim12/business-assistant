@@ -135,6 +135,8 @@ class DocumentIssuanceDialog(QDialog):
         self.setModal(True)
         self.resize(940, 720)
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(24, 24, 24, 20)
+        layout.setSpacing(12)
         heading = QLabel("고객·시술 문서")
         heading.setObjectName("page-title")
         layout.addWidget(heading)

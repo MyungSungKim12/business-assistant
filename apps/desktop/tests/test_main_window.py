@@ -33,7 +33,7 @@ def test_main_window_shows_all_catalog_menus_with_unavailable_features_prepared(
 
     assert enabled_labels == ["홈 대시보드", "계정·구독", "환경설정"]
     assert len(prepared_items) == 13
-    assert all(item.text().endswith(" (준비 중)") for item in prepared_items)
+    assert all("사용 권한이 필요합니다" in item.toolTip() for item in prepared_items)
 
 
 def test_main_window_enables_entitled_protected_menu_without_prepared_suffix(qtbot) -> None:  # type: ignore[no-untyped-def]

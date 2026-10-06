@@ -19,6 +19,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from business_assistant_desktop.ui_components import surface_panel
+
 
 @dataclass(frozen=True, slots=True)
 class FileAsset:
@@ -71,6 +73,7 @@ class FilePage(QWidget):
         self.selected_file_label = QLabel("선택된 파일 없음")
         self.select_button = QPushButton("파일 선택")
         self.upload_button = QPushButton("업로드")
+        self.upload_button.setProperty("role", "primary")
         self.download_button = QPushButton("다운로드")
         self.archive_button = QPushButton("보관")
         self.archive_button.setEnabled(can_manage)
@@ -89,10 +92,11 @@ class FilePage(QWidget):
         self.status_label.setWordWrap(True)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(32, 28, 32, 28)
+        layout.setContentsMargins(24, 24, 24, 20)
+        layout.setSpacing(18)
         layout.addLayout(toolbar)
         layout.addWidget(self.file_list)
-        layout.addLayout(actions)
+        layout.addWidget(surface_panel("파일 업로드 · 다운로드", actions))
         layout.addWidget(self.status_label)
         self.refresh()
 

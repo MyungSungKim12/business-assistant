@@ -64,17 +64,22 @@ def local_time(value: object) -> str:
 class TreatmentLifecycle(QWidget):
     def __init__(self) -> None:
         super().__init__()
+        self.setObjectName("treatment-lifecycle")
         box = QVBoxLayout(self)
         box.setContentsMargins(0, 0, 0, 0)
         row = QHBoxLayout()
         self.state_label = QLabel("새 기록 · 저장 후 시술을 시작할 수 있습니다.")
         self.state_label.setWordWrap(True)
         self.state_label.setMinimumWidth(0)
-        row.addWidget(self.state_label, 1)
+        box.addWidget(self.state_label)
         self.start_button = QPushButton("시작")
+        self.start_button.setObjectName("treatment-start")
         self.complete_button = QPushButton("완료")
+        self.complete_button.setObjectName("treatment-complete")
         self.cancel_button = QPushButton("중단")
+        self.cancel_button.setObjectName("treatment-cancel")
         self.correct_button = QPushButton("정정")
+        self.correct_button.setObjectName("treatment-correct")
         self.events_button = QPushButton("변경 이력")
         self.consultation_button = QPushButton("상담 기록")
         self.documents_button = QPushButton("문서 발행·이력")
@@ -89,8 +94,9 @@ class TreatmentLifecycle(QWidget):
             self.correct_button,
             self.events_button,
         ):
-            button.setFixedHeight(34)
+            button.setMinimumHeight(20)
             row.addWidget(button)
+        row.addStretch()
         box.addLayout(row)
         self.reason_input = QLineEdit()
         self.reason_input.setPlaceholderText("정정 사유를 입력하세요 (필수)")

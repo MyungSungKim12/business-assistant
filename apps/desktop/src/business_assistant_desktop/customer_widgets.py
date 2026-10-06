@@ -67,80 +67,30 @@ class PhotoTile(QWidget):
 
 
 CUSTOMER_STYLE = """
-#customer-workspace { background: #faf9f8; }
-#customer-workspace QWidget { font-family: "Pretendard"; font-size: 14px; color: #34343a; }
-#customer-workspace QLabel { background: transparent; border: none; padding: 0; }
-#customer-workspace #workspace-title { font-size: 25px; font-weight: 700; }
-#customer-workspace #muted { color: #70685f; font-size: 13px; }
-#customer-workspace #section-title { font-size: 14px; font-weight: 600; }
-#customer-workspace #profile-name { font-size: 18px; font-weight: 700; }
-#customer-workspace #customer-grid {
- background: #f3f0ec; border: 1px solid #eeecea; border-radius: 12px; }
-#customer-workspace #info-panel, #customer-workspace #detail-panel {
- background: #fff; border: 1px solid #e7e2dc; border-radius: 12px; }
-#customer-workspace QLineEdit, #customer-workspace QComboBox,
-#customer-workspace QTextEdit { background: white; border: 1px solid #e1dedb;
- border-radius: 7px; padding: 5px 9px; min-height: 22px; selection-background-color: #bca48a; }
-#customer-workspace #info-panel QLineEdit, #customer-workspace #info-panel QComboBox {
- min-height: 20px; padding: 3px 9px; }
-#customer-workspace QLineEdit:focus, #customer-workspace QTextEdit:focus { border-color: #c3a27d; }
-#customer-workspace QComboBox { padding-right: 28px; }
-#customer-workspace QComboBox::drop-down { border: 0; width: 26px; }
-#customer-workspace QPushButton { min-height: 22px; padding: 6px 12px; border-radius: 7px;
- background: #faf8f5; border: 1px solid #e4dbd2; color: #393737; font-weight: 500; }
-#customer-workspace QPushButton:hover { background: #e5d8ca; }
-#customer-workspace QPushButton#photo-navigation { padding: 0; min-height: 32px; }
-#customer-workspace QPushButton#save-customer { background: #222a36; color: white; border: 0; }
-#customer-workspace QPushButton#save-customer:hover { background: #394354; }
-#customer-workspace QPushButton#treatment-customer-card {
- background: #fff; border: 1px solid #eeecea;
- border-radius: 10px; padding: 0; text-align: left; min-height: 150px; }
-#customer-workspace QPushButton#treatment-customer-card:hover { border-color: #c7ae92; }
-#customer-workspace QPushButton#treatment-customer-card[selected="true"] {
- border: 1px solid #b59775; background: #fcf8f2; }
-#customer-workspace #card-name { font-size: 15px; font-weight: 600; }
-#customer-workspace #tag { background: #f0ebe5; border-radius: 8px; padding: 2px 7px;
- color: #665c51; font-size: 12px; }
-#customer-workspace #card-visit { color: #70685f; font-size: 12px; }
-#customer-workspace #card-contact { color: #505862; font-size: 13px; }
-#customer-workspace #history-content { background: #faf8f5; padding: 12px;
- border-radius: 8px; color: #3b414a; }
-#customer-workspace QTabWidget QWidget { background: white; }
-#customer-workspace QTabWidget::pane { border: 0; background: white; }
-#customer-workspace QTabBar::tab { background: #f6f4f2; border: 0;
- border-bottom: 3px solid transparent; padding: 8px 18px; color: #79726c; }
-#customer-workspace QTabBar::tab:selected { border-bottom-color: #303641; color: #303641; }
+#customer-workspace { background: #F7F3ED; }
+#customer-workspace #profile-name { font-size: 20px; font-weight: 700; }
+#customer-grid, #info-panel, #detail-panel {
+ background: #FFFDF9; border: 1px solid #E4D9CD; border-radius: 14px; }
+#info-panel QLineEdit, #info-panel QComboBox { padding: 4px 8px; }
+#photo-navigation { padding: 0; min-height: 28px; }
+QPushButton#treatment-customer-card {
+ background: #FFFDF9; border: 1px solid #E4D9CD;
+ border-radius: 10px; padding: 0; text-align: left; min-height: 146px; }
+QPushButton#treatment-customer-card:hover { background: #F2EAE1; border-color: #B98B68; }
+QPushButton#treatment-customer-card[selected="true"] {
+ border: 2px solid #B98B68; background: #F7EEE5; }
+QPushButton#treatment-customer-card:focus { border-color: #8E684F; }
+#card-name { font-size: 16px; font-weight: 600; }
+#tag { background: #F2EAE1; border-radius: 6px; padding: 3px 7px;
+ color: #75685D; font-size: 12px; }
+#card-visit { color: #8D8378; font-size: 12px; }
+#card-contact { color: #75685D; font-size: 13px; }
+#history-content { background: #F2EAE1; padding: 14px; border-radius: 8px; color: #5E5147; }
 #customer-workspace QScrollArea, #customer-workspace QScrollArea > QWidget > QWidget {
  background: transparent; border: 0; }
-#customer-workspace QScrollBar:vertical { background: transparent; width: 5px; }
-#customer-workspace QScrollBar::handle:vertical {
- background: #d8cdc2; min-height: 25px; border-radius: 2px; }
-#customer-workspace QScrollBar::add-line:vertical,
-#customer-workspace QScrollBar::sub-line:vertical {
- height: 0; }
-#customer-workspace #timeline { background: white;
- border-left: 1px solid #d9c1a5; padding-left: 12px; }
-#customer-workspace #error { color: #a44437; }
+#timeline { background: #FFFDF9; border-left: 2px solid #E4D9CD; padding-left: 12px; }
 """
 
 
 class SidebarPanel(QFrame):
-    """Fine gold curves echo the reference artwork without a bitmap background."""
-
-    def paintEvent(self, event: QPaintEvent) -> None:
-        super().paintEvent(event)
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setPen(QColor("#a38663"))
-        for offset in (0, 26):
-            path = QPainterPath()
-            path.moveTo(-20, self.height() - 220 - offset)
-            path.cubicTo(
-                16,
-                self.height() - 140,
-                120,
-                self.height() - 160,
-                self.width() + 10,
-                self.height() - 46 + offset,
-            )
-            painter.drawPath(path)
+    """Quiet navigation surface; decoration never competes with menu labels."""

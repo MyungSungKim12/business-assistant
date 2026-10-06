@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 )
 
 from business_assistant_desktop.template_manager import STATUS, TemplateManager
+from business_assistant_desktop.ui_components import surface_panel
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,17 +103,22 @@ class DocumentPage(QWidget):
         form.addRow("템플릿", self.template_combo)
         form.addRow("본문", self.content_input)
         self.create_button = QPushButton("초안 작성")
+        self.create_button.setProperty("role", "primary")
         self.create_button.setEnabled(can_manage)
         self.create_button.clicked.connect(self._create)
         self.status_label = QLabel()
         self.status_label.setWordWrap(True)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(32, 28, 32, 28)
+        layout.setContentsMargins(24, 24, 24, 20)
+        layout.setSpacing(18)
         layout.addLayout(toolbar)
-        layout.addLayout(lists)
-        layout.addLayout(form)
-        layout.addWidget(self.create_button)
+        layout.addWidget(surface_panel("보관함", lists), 1)
+        editor = QVBoxLayout()
+        form.setSpacing(12)
+        editor.addLayout(form)
+        editor.addWidget(self.create_button)
+        layout.addWidget(surface_panel("새 문서 작성", editor))
         layout.addWidget(self.status_label)
         self.refresh()
 

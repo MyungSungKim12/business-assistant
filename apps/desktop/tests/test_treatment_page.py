@@ -4,6 +4,7 @@ from threading import Event
 from uuid import uuid4
 
 from business_assistant_desktop.api_client import Customer, Treatment
+from business_assistant_desktop.treatment_lifecycle import TreatmentLifecycle
 from business_assistant_desktop.treatment_page import TreatmentPage
 from PySide6.QtWidgets import QMessageBox
 
@@ -249,6 +250,10 @@ def test_menu_navigation_close_and_customer_shortcut(qtbot, monkeypatch):
     window.navigation_menu.setCurrentRow(0)
     assert window.pages.currentIndex() == 0
     assert not w.has_unsaved_changes()
+    # The helper registered this page independently before it was reparented.
+    # Detach it so window destruction cannot delete it before qtbot cleanup.
+    window.pages.removeWidget(w)
+    w.setParent(None)
 
 
 def test_bound_treatment_client_preserves_session():
@@ -283,3 +288,11 @@ def test_shortcut_refreshes_customers_created_after_page_load(qtbot):
     assert w.open_customer(customer.id)
     qtbot.waitUntil(lambda: not w.is_loading)
     assert w.selected_customer_id == customer.id
+
+
+def test_treatment_lifecycle_uses_named_status_surface(qtbot) -> None:  # type: ignore[no-untyped-def]
+    lifecycle = TreatmentLifecycle()
+    qtbot.addWidget(lifecycle)
+    assert lifecycle.objectName() == "treatment-lifecycle"
+    assert lifecycle.start_button.objectName() == "treatment-start"
+    assert lifecycle.complete_button.objectName() == "treatment-complete"

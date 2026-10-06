@@ -81,13 +81,17 @@ class ConsultationDialog(QDialog):
         self.resize(600, 620)
         self.setModal(True)
         layout = QVBoxLayout(self)
-        heading = QLabel("상담 목표와 예정 관리 내용을 기록하세요.")
+        layout.setContentsMargins(24, 24, 24, 20)
+        layout.setSpacing(12)
+        heading = QLabel("상담 기록")
+        heading.setObjectName("page-title")
         layout.addWidget(heading)
         self.cautions_label = QLabel(
             f"피부 타입: {customer.skin_type or '미등록'}\n"
             f"고민: {', '.join(customer.concerns) or '미등록'}\n"
             f"알레르기·주의사항: {customer.allergies or '미등록 · 상담 시 확인'}"
         )
+        self.cautions_label.setObjectName("caution-panel")
         self.cautions_label.setWordWrap(True)
         self.cautions_label.setTextFormat(Qt.TextFormat.PlainText)
         layout.addWidget(self.cautions_label)
@@ -135,6 +139,7 @@ class ConsultationDialog(QDialog):
         actions = QHBoxLayout()
         self.close_button = QPushButton("닫기")
         self.save_button = QPushButton("상담 초안 저장")
+        self.save_button.setProperty("role", "primary")
         self.save_button.setEnabled(self._editable)
         actions.addWidget(self.close_button)
         actions.addWidget(self.save_button)

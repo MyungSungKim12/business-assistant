@@ -166,6 +166,7 @@ async def create_upload_url(
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> SignedPhotoResponse:
     photo_id = uuid4()
+    created = False
     path = f"{organization_id}/{customer_id}/{photo_id}-{_safe_name(request.original_name)}"
     try:
         photo = await repository.create_photo(
@@ -181,9 +182,15 @@ async def create_upload_url(
                 "caption": request.caption,
             },
         )
+        created = True
         signed_url = await storage.create_upload_url(settings.file_bucket, path)
         return SignedPhotoResponse(photo=_response(photo), signed_url=signed_url, expires_in=600)
     except RepositoryUnavailableError:
+        if created:
+            try:
+                await repository.archive_photo(organization_id, customer_id, photo_id)
+            except RepositoryUnavailableError:
+                logger.exception("Failed to archive incomplete photo: photo_id=%s", photo_id)
         logger.exception("Customer photo upload preparation failed: customer_id=%s", customer_id)
         raise HTTPException(503, "Customer photo service unavailable") from None
 

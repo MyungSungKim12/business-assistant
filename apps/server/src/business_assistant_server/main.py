@@ -14,6 +14,7 @@ from business_assistant_server.api.files import router as file_router
 from business_assistant_server.api.finance import router as finance_router
 from business_assistant_server.api.health import router as health_router
 from business_assistant_server.api.organizations import router as organization_router
+from business_assistant_server.api.sale_carts import router as sale_cart_router
 from business_assistant_server.api.tasks import router as task_router
 from business_assistant_server.api.template_versions import router as template_version_router
 from business_assistant_server.api.treatment_documents import router as treatment_document_router
@@ -21,6 +22,7 @@ from business_assistant_server.api.treatment_sale_drafts import (
     router as treatment_sale_draft_router,
 )
 from business_assistant_server.api.treatments import router as treatment_router
+from business_assistant_server.api.visit_payments import router as visit_payment_router
 
 
 def create_app() -> FastAPI:
@@ -39,6 +41,8 @@ def create_app() -> FastAPI:
     app.include_router(template_version_router, prefix="/api/v1")
     app.include_router(treatment_document_router, prefix="/api/v1")
     app.include_router(treatment_sale_draft_router, prefix="/api/v1")
+    app.include_router(sale_cart_router, prefix="/api/v1")
+    app.include_router(visit_payment_router, prefix="/api/v1")
     app.include_router(document_consent_router, prefix="/api/v1")
     app.include_router(finance_router, prefix="/api/v1")
     app.include_router(file_router, prefix="/api/v1")

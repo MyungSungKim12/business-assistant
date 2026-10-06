@@ -11,7 +11,6 @@ from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import (
     QDialog,
     QFormLayout,
-    QHBoxLayout,
     QLabel,
     QLineEdit,
     QPushButton,
@@ -113,34 +112,43 @@ class LoginDialog(QDialog):
         self._worker: AuthenticationWorker | None = None
         self._authentication_succeeded = False
         self.setWindowTitle("Business Assistant 로그인")
-        self.setMinimumWidth(440)
+        self.setMinimumWidth(480)
 
         self.email_input = QLineEdit()
         self.email_input.setObjectName("email-input")
+        self.email_input.setPlaceholderText("name@example.com")
+        self.email_input.setAccessibleName("이메일")
         self.password_input = QLineEdit()
         self.password_input.setObjectName("password-input")
+        self.password_input.setPlaceholderText("비밀번호를 입력하세요")
+        self.password_input.setAccessibleName("비밀번호")
         self.password_input.setEchoMode(QLineEdit.EchoMode.Password)
         self.login_button = QPushButton("로그인")
         self.login_button.setProperty("role", "primary")
         self.login_button.setDefault(True)
-        self.signup_button = QPushButton("가입")
+        self.signup_button = QPushButton("새 계정 만들기")
         self.loading_label = QLabel()
         self.error_label = QLabel()
         self.error_label.setWordWrap(True)
 
         form = QFormLayout()
+        form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapAllRows)
         form.addRow("이메일", self.email_input)
         form.addRow("비밀번호", self.password_input)
-        buttons = QHBoxLayout()
+        buttons = QVBoxLayout()
         buttons.addWidget(self.login_button)
         buttons.addWidget(self.signup_button)
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(36, 36, 36, 28)
+        layout.setContentsMargins(40, 44, 40, 36)
         layout.setSpacing(18)
         title = QLabel("매장의 하루를, 한곳에서")
         title.setObjectName("page-title")
         subtitle = QLabel("고객의 첫 방문부터 시술과 매장 운영까지")
         subtitle.setObjectName("page-subtitle")
+        brand = QLabel("BUSINESS ASSISTANT")
+        brand.setObjectName("page-subtitle")
+        layout.addWidget(brand)
+        layout.addSpacing(16)
         layout.addWidget(title)
         layout.addWidget(subtitle)
         layout.addSpacing(8)
@@ -148,6 +156,7 @@ class LoginDialog(QDialog):
         layout.addLayout(form)
         layout.addLayout(buttons)
         layout.addWidget(self.loading_label)
+        self.error_label.setObjectName("error")
         layout.addWidget(self.error_label)
 
         self.login_button.clicked.connect(self._login)

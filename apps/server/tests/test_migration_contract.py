@@ -14,6 +14,7 @@ FILES_PATH = PROJECT_ROOT / "migrations" / "009_file_assets.sql"
 GRANTS_PATH = PROJECT_ROOT / "migrations" / "010_authenticated_grants.sql"
 ORG_POLICY_PATH = PROJECT_ROOT / "migrations" / "011_organization_insert_policy.sql"
 ORG_RPC_PATH = PROJECT_ROOT / "migrations" / "012_create_organization_rpc.sql"
+VISIT_SALE_CART_PATH = PROJECT_ROOT / "migrations" / "024_visit_sale_carts.sql"
 _SUBSCRIPTION_POLICY_STATEMENT_PATTERN = re.compile(
     r"\bcreate\s+policy\b(?:(?!;)[\s\S])*?\bon\s+public\.subscriptions\b"
     r"(?:(?!;)[\s\S])*?;",
@@ -74,6 +75,41 @@ def _read_org_policy_migration() -> str:
 
 def _read_org_rpc_migration() -> str:
     return ORG_RPC_PATH.read_text(encoding="utf-8").lower()
+
+
+def _read_visit_sale_cart_migration() -> str:
+    return VISIT_SALE_CART_PATH.read_text(encoding="utf-8").lower()
+
+
+def test_visit_sale_cart_schema_is_scoped_versioned_and_auditable() -> None:
+    migration = _read_visit_sale_cart_migration()
+    for table in ("customer_visits", "sale_carts", "sale_cart_lines", "sale_cart_operations"):
+        assert f"create table public.{table}" in migration
+        assert f"alter table public.{table} enable row level security" in migration
+    assert "version bigint not null default 1" in migration
+    assert "status text not null default 'active'" in migration
+    assert "source_type text not null" in migration
+    assert "source_snapshot jsonb not null" in migration
+    assert "sale_cart_lines_active_source" in migration
+
+
+def test_visit_sale_cart_mutations_are_rpc_only_and_role_checked() -> None:
+    migration = _read_visit_sale_cart_migration()
+    for function in (
+        "create_customer_visit",
+        "add_treatment_draft_to_cart",
+        "mutate_sale_cart_line",
+        "review_sale_cart",
+        "cancel_customer_visit",
+    ):
+        assert f"create function public.{function}" in migration
+        assert f"revoke all on function public.{function}" in migration
+    assert "array['owner', 'admin']::text[]" in migration
+    assert "grant select on public.customer_visits" in migration
+    assert "grant select on public.sale_carts" in migration
+    assert "grant select on public.sale_cart_lines" in migration
+    assert "grant select on public.sale_cart_operations" in migration
+    assert "grant insert" not in migration
 
 
 def test_files_migration_defines_org_scoped_metadata_and_storage_rls() -> None:

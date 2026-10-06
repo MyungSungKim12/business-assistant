@@ -6,6 +6,7 @@ from uuid import UUID, uuid4
 
 from business_assistant_desktop.api_client import Customer
 from business_assistant_desktop.customer_page import CustomerPage
+from business_assistant_desktop.customer_widgets import CUSTOMER_STYLE
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QMessageBox
 
@@ -56,6 +57,28 @@ def make_page(qtbot, client=None, **kwargs):
     page = CustomerPage(client, ORGANIZATION_ID, **kwargs)
     qtbot.addWidget(page)
     return page, client
+
+
+def test_resize_keeps_unsaved_profile_and_card_selection(qtbot):
+    from business_assistant_desktop.app import create_application
+
+    create_application([])
+    page, client = make_page(qtbot)
+    page._select_customer(client.customers[0])
+    page.info_panel.fields["name"].setText("아직 저장하지 않은 이름")
+    page.resize(1236, 880)
+    page.show()
+    qtbot.waitUntil(lambda: page.isVisible())
+    card = page.customer_cards[0]
+    page.resize(896, 680)
+    assert page.info_panel.fields["name"].text() == "아직 저장하지 않은 이름"
+    assert page.info_panel.is_dirty()
+    assert page.customer_cards[0] is card
+    assert card.property("selected")
+    assert page.save_button.isVisible()
+    assert page.save_button.geometry().bottom() <= page.save_button.parentWidget().height()
+    assert client.updated_values == []
+    page.info_panel.mark_clean()
 
 
 def test_page_loads_and_searches_formatted_phone_without_hyphens(qtbot):
@@ -233,6 +256,31 @@ def test_customer_photo_loading_runs_off_the_ui_thread(qtbot):
     qtbot.waitUntil(lambda: not page._photo_loading, timeout=3000)
 
 
+def test_customer_photo_upload_failure_preserves_file_for_exact_retry(qtbot, monkeypatch):
+    class UploadClient(FakeClient):
+        attempts = 0
+
+        def upload_customer_photo(self, *args, **kwargs):
+            self.attempts += 1
+            if self.attempts == 1:
+                raise RuntimeError("offline")
+            return object()
+
+    client = UploadClient()
+    page, _ = make_page(qtbot, client)
+    customer = client.customers[0]
+    page._select_customer(customer)
+    page._pending_photo = (customer.id, "face.jpg", b"jpeg", "image/jpeg", "face.jpg")
+    page._start_photo_upload()
+    qtbot.waitUntil(lambda: not page._photo_uploading, timeout=3000)
+    assert not page.photo_retry_button.isHidden()
+    assert page._pending_photo is not None
+    page.photo_retry_button.click()
+    qtbot.waitUntil(lambda: not page._photo_uploading, timeout=3000)
+    assert client.attempts == 2
+    assert page._pending_photo is None
+
+
 def test_reference_layout_keeps_three_column_cards(qtbot):
     client = FakeClient()
     client.customers = [Customer(uuid4(), f"고객 {i}") for i in range(6)]
@@ -342,3 +390,68 @@ def test_bound_customer_adapter_keeps_session_and_organization():
     assert all(call[0] == ORGANIZATION_ID and call[1] is session for call in calls)
     assert calls[1][2] == customer_id
     assert calls[3][3] == {"status": "archived"}
+
+
+def test_customer_workspace_uses_warm_beige_surface_tokens() -> None:
+    assert "#F7F3ED" in CUSTOMER_STYLE
+    assert "#FFFDF9" in CUSTOMER_STYLE
+    assert "#B98B68" in CUSTOMER_STYLE
+    assert "#E4D9CD" in CUSTOMER_STYLE
+    assert "#F5F6F8" not in CUSTOMER_STYLE
+
+
+def test_upload_cancel_keeps_file_and_recovers_controls(qtbot):
+    from threading import Event
+
+    from business_assistant_desktop.upload_transfer import UploadCancelled
+
+    entered, release = Event(), Event()
+
+    class UploadClient(FakeClient):
+        def upload_customer_photo(self, *args, on_progress, is_cancelled):
+            entered.set()
+            assert release.wait(3)
+            if is_cancelled():
+                raise UploadCancelled()
+            on_progress(4, 4)
+            return object()
+
+    client = UploadClient()
+    page, _ = make_page(qtbot, client)
+    customer = client.customers[0]
+    page._select_customer(customer)
+    page._pending_photo = (customer.id, "face.jpg", b"jpeg", "image/jpeg", "face.jpg")
+    page._start_photo_upload()
+    try:
+        qtbot.waitUntil(entered.is_set)
+        assert not page.add_photo_button.isEnabled()
+        page.cancel_upload_button.click()
+        assert not page.cancel_upload_button.isEnabled()
+    finally:
+        release.set()
+    qtbot.waitUntil(lambda: not page._photo_uploading)
+    assert "취소" in page.upload_status.text()
+    assert page._pending_photo is not None
+    assert page.add_photo_button.isEnabled()
+    assert not page.photo_retry_button.isHidden()
+    assert page.upload_progress.isHidden()
+
+
+def test_photo_download_failure_is_not_cached_as_empty(qtbot):
+    from types import SimpleNamespace
+
+    class UnavailablePhotoClient(FakeClient):
+        def list_customer_photos(self, organization_id, customer_id):
+            return [SimpleNamespace(id=uuid4(), caption="")]
+
+        def download_customer_photo(self, *args):
+            raise RuntimeError("offline")
+
+    client = UnavailablePhotoClient()
+    page, _ = make_page(qtbot, client)
+    customer = client.customers[0]
+    page._select_customer(customer)
+    qtbot.waitUntil(lambda: not page._photo_loading)
+    assert "조회 실패" in page.photo_caption.text()
+    assert customer.id not in page._photo_cache
+    assert "일부 사진" in page.error_label.text()

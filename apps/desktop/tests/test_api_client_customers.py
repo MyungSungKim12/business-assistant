@@ -223,3 +223,39 @@ def test_customer_photo_list_parses_payload() -> None:
             PHOTO_PAYLOAD["created_at"],
         )
     ]
+
+
+@pytest.mark.parametrize("cleanup_status", [200, 503])
+def test_failed_photo_upload_archives_only_its_record(cleanup_status):
+    requests = []
+
+    def respond(request):
+        requests.append(request)
+        if request.method == "POST":
+            return httpx.Response(
+                201, json={"photo": PHOTO_PAYLOAD, "signed_url": "https://upload.test/signed"}
+            )
+        if request.method == "PUT":
+            return httpx.Response(503)
+        assert request.method == "DELETE"
+        assert request.url.path.endswith(f"/customers/{CUSTOMER}/photos/{PHOTO_ID}")
+        return httpx.Response(cleanup_status)
+
+    api = ApiClient("https://api.test", httpx.Client(transport=httpx.MockTransport(respond)))
+    expected = httpx.HTTPStatusError if cleanup_status == 200 else RuntimeError
+    with pytest.raises(expected):
+        api.upload_customer_photo(ORG, SESSION, CUSTOMER, "face.jpg", b"jpeg", "image/jpeg")
+    assert [r.method for r in requests] == ["POST", "PUT", "DELETE"]
+
+
+def test_cancel_before_upload_creates_no_record():
+    from business_assistant_desktop.upload_transfer import UploadCancelled
+
+    def unexpected(request):
+        raise AssertionError("No request expected")
+
+    api = ApiClient("https://api.test", httpx.Client(transport=httpx.MockTransport(unexpected)))
+    with pytest.raises(UploadCancelled):
+        api.upload_customer_photo(
+            ORG, SESSION, CUSTOMER, "face.jpg", b"jpeg", "image/jpeg", is_cancelled=lambda: True
+        )

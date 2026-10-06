@@ -2,6 +2,6 @@
   "name": "business-assistant-db-tests",
   "private": true,
   "type": "module",
-  "scripts": { "test": "node treatment-lifecycle.mjs && node treatment-consultation.mjs && node document-versions.mjs && node document-issuance.mjs && node document-consent.mjs && node treatment-sale-drafts.mjs", "test:consultation": "node treatment-consultation.mjs", "test:documents": "node document-versions.mjs", "test:issuance": "node document-issuance.mjs", "test:consent": "node document-consent.mjs", "test:sale-drafts": "node treatment-sale-drafts.mjs" },
+  "scripts": { "test": "node treatment-lifecycle.mjs && node treatment-consultation.mjs && node document-versions.mjs && node document-issuance.mjs && node document-consent.mjs && node treatment-sale-drafts.mjs && node visit-sale-carts.mjs && node visit-payments.mjs", "test:consultation": "node treatment-consultation.mjs", "test:documents": "node document-versions.mjs", "test:issuance": "node document-issuance.mjs", "test:consent": "node document-consent.mjs", "test:sale-drafts": "node treatment-sale-drafts.mjs", "test:visit-sale-carts": "node visit-sale-carts.mjs", "test:visit-payments": "node visit-payments.mjs" },
   "devDependencies": { "@electric-sql/pglite": "0.5.8" }
 }

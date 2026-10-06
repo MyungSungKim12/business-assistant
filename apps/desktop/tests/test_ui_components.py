@@ -63,5 +63,5 @@ def test_confirm_action_returns_message_box_result(qtbot, monkeypatch) -> None: 
 
 
 def test_design_tokens_expose_product_palette() -> None:
-    assert DesignTokens.primary == "#2563eb"
-    assert DesignTokens.surface == "#ffffff"
+    assert DesignTokens.primary == "#B98B68"
+    assert DesignTokens.surface == "#FFFDF9"

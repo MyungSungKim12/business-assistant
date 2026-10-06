@@ -67,6 +67,8 @@ class TemplateManager(QDialog):
         self.setModal(True)
         self.resize(980, 700)
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(24, 24, 24, 20)
+        layout.setSpacing(12)
         heading = QLabel("동의서·서식 관리")
         heading.setObjectName("page-title")
         layout.addWidget(heading)
@@ -94,6 +96,7 @@ class TemplateManager(QDialog):
         self.history.addItem("현재 버전", None)
         right.addWidget(self.history)
         form = QFormLayout()
+        form.setSpacing(12)
         self.name = QLineEdit()
         self.name.setMaxLength(200)
         self.description = QTextEdit()
@@ -138,6 +141,10 @@ class TemplateManager(QDialog):
             ("retire", "폐기"),
         ]:
             button = QPushButton(label)
+            if action in {"save", "publish"}:
+                button.setProperty("role", "primary")
+            elif action == "retire":
+                button.setProperty("role", "danger")
             button.clicked.connect(lambda _checked=False, action=action: self.mutate(action))
             actions.addWidget(button)
             self.buttons[action] = button
