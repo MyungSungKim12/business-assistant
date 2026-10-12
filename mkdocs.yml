@@ -1,0 +1,135 @@
+site_name: Business Assistant 가이드
+site_description: 뷰티 매장 고객·시술 운영과 ERP 업무를 연결하는 Business Assistant 사용 가이드
+site_url: https://myungsungkim12.github.io/business-assistant/
+repo_url: https://github.com/MyungSungKim12/business-assistant
+repo_name: MyungSungKim12/business-assistant
+edit_uri: edit/main/docs/
+docs_dir: docs
+site_dir: site
+use_directory_urls: true
+strict: true
+exclude_docs: |
+  /0*.md
+  superpowers/**
+not_in_nav: |
+  screenshots/**
+
+theme:
+  name: material
+  language: ko
+  font: false
+  logo: guide/assets/images/brand-mark.svg
+  favicon: guide/assets/images/favicon.svg
+  icon:
+    repo: fontawesome/brands/github
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: business-light
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-night
+        name: 어두운 화면으로 전환
+    - media: "(prefers-color-scheme: dark)"
+      scheme: business-dark
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-sunny
+        name: 밝은 화면으로 전환
+  features:
+    - announce.dismiss
+    - content.action.edit
+    - content.code.copy
+    - content.tabs.link
+    - navigation.footer
+    - navigation.indexes
+    - navigation.instant
+    - navigation.path
+    - navigation.sections
+    - navigation.top
+    - search.highlight
+    - search.share
+    - search.suggest
+    - toc.follow
+
+plugins:
+  - search:
+      lang: ko
+
+markdown_extensions:
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+
+extra_css:
+  - guide/assets/stylesheets/extra.css
+
+extra_javascript:
+  - guide/assets/javascripts/extra.js
+
+extra:
+  generator: false
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/MyungSungKim12/business-assistant
+      name: GitHub 저장소
+
+copyright: Business Assistant · 프로젝트 상태는 제품 계획 문서를 기준으로 합니다.
+
+nav:
+  - 가이드 홈: index.md
+  - 시작하기:
+      - 빠른 시작: guide/getting-started/quick-start.md
+      - 화면 구성과 기본 조작: guide/getting-started/interface.md
+  - 화면 사용법:
+      - 고객관리: guide/user-guide/customers.md
+      - 시술관리: guide/user-guide/treatments.md
+      - 문서 자동화: guide/user-guide/documents.md
+      - 장바구니·결제·회원권: guide/user-guide/sales-payments.md
+      - 일정·파일·매출지출: guide/user-guide/tasks-files-finance.md
+      - 전체 메뉴 상태: guide/user-guide/menu-status.md
+  - 업무별 따라 하기:
+      - 고객 등록부터 결제까지: guide/workflows/customer-to-payment.md
+      - 환불·취소·미확인 복구: guide/workflows/refunds-and-recovery.md
+  - 운영자 가이드:
+      - Supabase와 SQL 적용: guide/admin/supabase.md
+      - 권한·보안·운영 점검: guide/admin/permissions-and-operations.md
+  - 개발자 가이드:
+      - 구조와 데이터 흐름: guide/developer/architecture.md
+      - Git 브랜치와 worktree: guide/developer/git-worktree.md
+      - 테스트·문서·배포: guide/developer/testing-and-release.md
+  - 문제 해결: guide/troubleshooting.md
+  - 제품 계획:
+      - 계획 인덱스: product/README.md
+      - 단계별 로드맵: product/roadmap.md
+      - 기능 인수 점검: product/functional-release-check-2026-10-08.md
+      - 변경 이력: product/changelog.md
+      - 품질 기준: product/quality-gates.md
+      - 디자인 시스템: product/design-system.md
+      - 일 마감·미수 구현 기록: product/sale-daily-settlement-release.md

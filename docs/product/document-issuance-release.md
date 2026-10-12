@@ -56,4 +56,4 @@ uv run ruff format --check .
 - `npm test --prefix scripts/db-tests`: 50개 묶음 통과(시술15 + 상담12 + 서식10 + 발행13). 실제 migration 019를 격리 PostgreSQL/PGlite에서 실행했다. 실제 운영 DB·전체 migration 체인·동시 다중 연결·JWT 검증은 아니다.
 - 발행 테스트: 정확한 미리보기, 금액 0/누락 구분, 알 수 없는 치환자/형식/길이 제한, 단일 치환, 원본 변경 거절, 재시도, 역할·조직 경계, 직접 쓰기 금지, 폐기 후 과거 발행본/재시도 보존, 원천 삭제 제한.
 - Ruff check 및 format 검사 통과. 별도 읽기 전용 검토에서 중요한 결함 발견 없음. 회사 PC 정책으로 Python pytest/mypy·Qt 육안 확인은 미실행이며 신규 화면 캡처도 없다. 기존 실행 결과를 이번 변경의 검증으로 사용하지 않는다.
-- 작성일 9월22일의 [구현 계획](../superpowers/plans/2026-09-22-document-issuance.md)을 9월23일 이어서 마무리했다. 별도 커밋·배포·실데이터 변경 없음.
+- 작성일 9월22일의 [구현 계획](https://github.com/MyungSungKim12/business-assistant/blob/main/docs/superpowers/plans/2026-09-22-document-issuance.md)을 9월23일 이어서 마무리했다. 별도 커밋·배포·실데이터 변경 없음.

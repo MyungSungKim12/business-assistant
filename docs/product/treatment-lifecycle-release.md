@@ -7,7 +7,7 @@
 ## 적용 파일과 순서
 
 1. 적용 대상 조직/환경을 확인하고 DB 백업 및 기존 migration 적용 상태를 확인한다. 기존 시술 테이블이 있는 migration 014까지의 스키마가 필요하다. 015는 데모 시드이므로 운영 적용의 선행 조건이 아니다.
-2. 기존 클라이언트 쓰기를 중지할 점검 시간에 [016_treatment_lifecycle.sql](../../migrations/016_treatment_lifecycle.sql)을 한 번 적용한다. 파일 자체는 begin/commit 트랜잭션이다. 기존 시술은 legacy로 표시하고 시각/과거 이력을 만들어내지 않는다.
+2. 기존 클라이언트 쓰기를 중지할 점검 시간에 [016_treatment_lifecycle.sql](https://github.com/MyungSungKim12/business-assistant/blob/main/migrations/016_treatment_lifecycle.sql)을 한 번 적용한다. 파일 자체는 begin/commit 트랜잭션이다. 기존 시술은 legacy로 표시하고 시각/과거 이력을 만들어내지 않는다.
 3. 새 서버와 새 데스크톱을 함께 재시작한다. 구버전 PATCH는 expected_version 누락 시 409가 되며 직접 treatment_records UPDATE/DELETE는 차단된다.
 4. 별도 검증 고객으로 등록→시작→완료→사유 있는 정정→변경 이력을 확인한다. 운영 고객 데이터로 스모크 테스트하지 않는다.
 5. 읽기 회원과 다른 조직 계정으로 읽기/쓰기 경계를 확인하고, 두 클라이언트에서 같은 버전을 변경해 뒤의 요청이 409인지 확인한다. 토큰·시크릿은 캡처/문서/로그에 넣지 않는다.
@@ -36,7 +36,7 @@ uv run ruff format --check .
 uv run --package business-assistant-desktop mypy apps/desktop/src apps/server/src packages/common/src
 ```
 
-결과: desktop 117, server/common 143, 격리 PostgreSQL 15개 검증 통과. Ruff/format/mypy(64개 소스) 통과. DB 검증은 실제 PostgreSQL을 실행하는 PGlite이며 auth/조직 fixture를 사용한다. 실제 Supabase JWT/PostgREST·전체 migration 체인·동시 다중 연결 경합·Security Advisor 실행은 별도 검증이 필요하다. 자세한 DB 재현은 [DB 테스트 안내](../../scripts/db-tests/README.md).
+결과: desktop 117, server/common 143, 격리 PostgreSQL 15개 검증 통과. Ruff/format/mypy(64개 소스) 통과. DB 검증은 실제 PostgreSQL을 실행하는 PGlite이며 auth/조직 fixture를 사용한다. 실제 Supabase JWT/PostgREST·전체 migration 체인·동시 다중 연결 경합·Security Advisor 실행은 별도 검증이 필요하다. 자세한 DB 재현은 [DB 테스트 안내](https://github.com/MyungSungKim12/business-assistant/blob/main/scripts/db-tests/README.md).
 
 화면: [1280×800](../screenshots/treatment-lifecycle.png), [1100×720 정정 모드](../screenshots/treatment-lifecycle-1100.png). 실제 고객과 무관한 명시적 데모다.
 

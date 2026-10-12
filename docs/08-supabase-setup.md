@@ -71,7 +71,7 @@ Supabase Dashboard의 SQL Editor 또는 팀에서 사용하는 Supabase CLI 마�
 
 적용 대상이 개발 프로젝트인지 먼저 확인합니다. SQL은 `profiles`, `organizations`,
 `memberships`, 상품·기능·구독 테이블과 기본 BASIC, STANDARD, PRO 권한 데이터를
-만듭니다. 상세 내용은 [마이그레이션 안내](../migrations/README.md)를 확인하세요.
+만듭니다. 상세 내용은 [마이그레이션 안내](https://github.com/MyungSungKim12/business-assistant/blob/main/migrations/README.md)를 확인하세요.
 
 모든 `public` 애플리케이션 테이블에는 RLS를 활성화합니다. RLS는 publishable key를
 사용하는 클라이언트의 조직 간 데이터 접근을 제한하는 최후의 경계입니다. RLS를 끄거나

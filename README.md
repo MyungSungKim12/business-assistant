@@ -8,6 +8,8 @@
 
 메뉴별 기능·화면·업무 규칙·실패 처리·인수 조건은 [제품 계획 인덱스](docs/product/README.md)에서 관리합니다.
 
+처음 사용하는 직원, 매장 운영자와 개발자는 [프로젝트 통합 가이드](docs/index.md)에서 화면별 사용법과 실행·운영 절차를 확인할 수 있습니다. 이 문서는 MkDocs 사이트로 검색할 수 있으며 GitHub Pages 자동 배포 구성을 포함합니다.
+
 - [고객관리 상세 계획](docs/product/menus/02-customers.md)
 - [단계별 로드맵](docs/product/roadmap.md)
 - [변경 및 검증 이력](docs/product/changelog.md)
@@ -35,6 +37,25 @@ powershell -ExecutionPolicy Bypass -File scripts/run-desktop.ps1
 ```
 
 처음 개발하는 경우에는 [개발 환경 안내](docs/05-development-guide.md)를 먼저 읽으세요.
+
+## 통합 가이드 사이트
+
+문서 전용 가상환경을 만든 뒤 로컬에서 확인합니다. 앱 서버가 8000번 포트를 사용하므로 문서 사이트는 8001번으로 실행하는 예시입니다.
+
+```powershell
+py -m venv .venv-docs
+.\.venv-docs\Scripts\python.exe -m pip install -r requirements-docs.txt
+powershell -ExecutionPolicy Bypass -File .\scripts\docs\validate-guide.ps1
+.\.venv-docs\Scripts\python.exe -m mkdocs serve -a 127.0.0.1:8001
+```
+
+배포 전 엄격 빌드는 다음과 같이 확인합니다.
+
+```powershell
+.\.venv-docs\Scripts\python.exe -m mkdocs build --strict
+```
+
+pull request에서는 문서 빌드만 검사하고, `main` 브랜치에 반영되면 `.github/workflows/docs-pages.yml`이 GitHub Pages용 사이트를 생성합니다. 저장소의 Pages Source는 **GitHub Actions**로 설정해야 합니다.
 
 ## 프로젝트 목표
 

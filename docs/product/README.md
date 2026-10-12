@@ -23,6 +23,10 @@
 
 [데스크톱 디자인 기준 및 UI-001 진행](design-system.md): 공통 글꼴·컴포넌트 및 고객/시술 화면의 상품성 개선.
 
+[상품형 UI 전략](ui-product-strategy.md): Codex·Claude식 앱 셸, 정보 밀도, 상세 패널과 공통 상태 표현 기준.
+
+[2026-10-08 기능 인수 점검](functional-release-check-2026-10-08.md): 1~6 우선순위의 로컬 증거, 신규 SQL 순서, 실제 화면 인수와 미완료 범위.
+
 [문서](modules/documents.md), [미디어](modules/media.md), [가져오기·내보내기](modules/import-export.md), [자동화](modules/automation.md), [AI](modules/ai.md), [알림](modules/notifications.md), [외부 연동](modules/integrations.md), [설정·권한·구독](modules/settings.md), [다지점](modules/multi-branch.md).
 
 ## 문서 운영 규칙
@@ -39,7 +43,7 @@
 
 [로드맵](roadmap.md)의 순서로 고객 → 예약 → 시술 → 결제 → 회원권·재고 → 정산 → 분석을 연결한다. 지원 모듈은 소비 메뉴보다 먼저 필요한 최소 기능을 제공한다. 회원권 차감, 재고 감소, 매출 확정처럼 여러 메뉴에 걸친 변경은 각각 독립 저장으로 흩어 놓지 않고 일관된 업무 전환으로 설계한다.
 
-기존 [제품 개요](../01-product-overview.md), [아키텍처](../02-architecture.md), [메뉴 모듈](../03-menu-modules.md), [구현 로드맵](../06-implementation-roadmap.md)은 범용 앱의 배경과 기술 설명이다. 이 디렉터리는 뷰티 매장 제품의 상세 요구사항과 검증 추적을 담당한다. 기존 README의 구현 완료 문구를 상용 업무 완료의 증거로 사용하지 않는다.
+기존 [제품 개요](https://github.com/MyungSungKim12/business-assistant/blob/main/docs/01-product-overview.md), [아키텍처](https://github.com/MyungSungKim12/business-assistant/blob/main/docs/02-architecture.md), [메뉴 모듈](https://github.com/MyungSungKim12/business-assistant/blob/main/docs/03-menu-modules.md), [구현 로드맵](https://github.com/MyungSungKim12/business-assistant/blob/main/docs/06-implementation-roadmap.md)은 범용 앱의 배경과 기술 설명이다. 이 디렉터리는 뷰티 매장 제품의 상세 요구사항과 검증 추적을 담당한다. 기존 README의 구현 완료 문구를 상용 업무 완료의 증거로 사용하지 않는다.
 
 2026-09-17 읽기 확인: `apps/desktop/src/business_assistant_desktop/menu_catalog.py`에는 15개 범용 메뉴가 있다. 고객·활동·시술 관련 API 소스가 있으나 이번 문서 작성에서는 API 실행, 데이터베이스 접근, 실환경 검증을 수행하지 않았다. 일정 권한 코드는 기존 설명의 `task.basic`과 카탈로그의 `schedule.basic`이 달라 통합 시 계약을 확인해야 한다. 목표 12개 메뉴의 권한 코드는 기존 코드에 임의로 매핑하지 않고 설정 모듈에서 결정한다.
 
@@ -49,14 +53,22 @@
 - 계획·적용 문서 26개: 12개 메뉴, 9개 공통 모듈, 인덱스/로드맵/품질/변경 이력과 시술 적용 안내. 고유 기능 ID 123개.
 - CRM-001~007: 로컬 구현/검증 완료. [검증 근거와 제한](menus/02-customers.md)을 확인한다.
 - 고객관리 이후 기능은 각 문서의 planned 상태를 유지한다. 모든 메뉴를 구현한 것이 아니다.
-- [고객관리 실행 계획](../superpowers/plans/2026-09-17-customer-stage1.md), [코드 작업 규칙](../../AGENTS.md).
+- [고객관리 실행 계획](https://github.com/MyungSungKim12/business-assistant/blob/main/docs/superpowers/plans/2026-09-17-customer-stage1.md), [코드 작업 규칙](https://github.com/MyungSungKim12/business-assistant/blob/main/AGENTS.md).
 - 실제 고객 데이터나 외부 발송 없이 독립 화면 확인: `.venv/Scripts/python.exe scripts/preview-customer.py`.
 
-- 2026-09-18: TRT-007 시술 기록 워크스페이스 로컬 검증 완료. 상세 범위·검증·후속 제한은 [시술관리](menus/04-consultations-treatments.md#trt-007-검증-기록--2026-09-18)를 참고한다.
+- 2026-09-18: TRT-007 시술 기록 워크스페이스 로컬 검증 완료. 상세 범위·검증·후속 제한은 [시술관리](menus/04-consultations-treatments.md#trt-007-2026-09-18)를 참고한다.
 
 - 2026-09-18: TRT-002 상태·정정 이력 로컬 검증 완료. 운영 반영은 [시술 적용 안내](treatment-lifecycle-release.md)의 migration/서버/앱 동시 적용 순서를 따른다.
 
 ## 최신 순차 진행 — 2026-09-22
+
+2026-10-08: SALE-003 상품 수량 일부 반품·원영수증 환불·선반품 고려 전체 취소 재고 복원을 로컬 구현했다. 031 적용, 실 Supabase·Windows 화면 인수 대기. 다음 우선 작업은 SALE-004 할인 규칙이다. [고객 상품 반품 적용 안내](customer-product-returns-release.md).
+
+2026-10-08 추가: SALE-004 수동 정액·비율 할인, 서버 재계산, 첫 수납 전 잠금, 변경 이력과 반품 할인 배분을 로컬 구현했다. Supabase 적용은 031 다음 032 순서이며 실환경 인수는 대기다. 다음 P0은 SALE-005 일 마감·미수 목록이다. [할인 적용 안내](sale-cart-discounts-release.md).
+
+2026-10-08 추가: SALE-005 1차 범위로 일 마감·미수 목록·관리자 승인 정정 기록을 로컬 구현했다. 운영 DB에는 030까지 적용했다고 보고받았으며 신규 적용 순서는 031 → 032 → 033이다. 실환경 검증 대기. [일 마감 적용 안내](sale-daily-settlement-release.md).
+
+2026-10-12 최신 사용자 보고: 031~036 SQL은 모두 실행했다. 현재 작업 환경에 서비스 키가 없어 독립 확인은 대기 중이다. 다음 로컬 구현 SQL은 037 예약 담당자 근무시간·휴무다. 기능별 검증 범위와 미완료 항목은 [예약](menus/03-appointments.md), [회원권](menus/06-memberships-packages.md), [직원](menus/08-staff-commissions.md), [손익](menus/09-expenses-settlement-profit.md)에 기록한다.
 
 TRT-001 상담 초안·주의 확인과 DOC-001 동의서·서식 버전 관리는 코드 구현 완료, Python·Qt·실환경 검증 대기(in-progress)다. 격리 DB 검증은 37개 묶음 통과했다. [서식 적용 안내](document-versions-release.md)에 호환성 변경과 다른 PC 검증 명령을 기록했다. 기존 9월 18일 실행 결과를 새 변경의 검증으로 해석하지 않는다.
 

@@ -37,7 +37,7 @@ template_id/version, document_id, customer_id, source_id, status, issued_at, sig
 
 ## DOC-001 구현 기록 — 2026-09-22
 
-담당 Codex, 미커밋. [실행 계획](../../superpowers/plans/2026-09-22-document-versions.md).
+담당 Codex, 미커밋. [실행 계획](https://github.com/MyungSungKim12/business-assistant/blob/main/docs/superpowers/plans/2026-09-22-document-versions.md).
 초안 저장·게시·새 버전·폐기·불변 게시본 조회를 기존 문서 메뉴에 연결했다.
 관리자 쓰기/회원 읽기, 조직 경계, revision 충돌, operation_id 재시도, 비동기 편집기와 실패 입력 보존을 구현했다.
 게시 상태인 현재 서식만 문서 작성 선택에 표시한다. 새 버전 작성 중 이전 게시본은 조회 가능하나 선택 대상에서는 제외한다.

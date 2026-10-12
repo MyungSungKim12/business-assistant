@@ -1,5 +1,6 @@
 .env
 .venv/
+.venv-docs/
 __pycache__/
 *.py[cod]
 .pytest_cache/
@@ -10,6 +11,7 @@ coverage.xml
 htmlcov/
 build/
 dist/
+site/
 *.egg-info/
 .idea/
 .vscode/
@@ -18,3 +20,4 @@ dist/
 *.sqlite3
 *.db
 .worktrees/
+.superpowers/
