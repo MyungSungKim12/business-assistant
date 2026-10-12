@@ -40,3 +40,55 @@
 - `026_sale_cart_hardening_upgrade.sql`: 이전 024 적용 DB에도 엄격한 입력/권한/재시도/조회/잠금 보완을 반영한다. 함수 교체만 수행하며 방문·영수 기록을 다시 만들지 않는다.
 - 신규 DB는 024 → 025 → 026, 이미 024 적용한 DB는 025 → 026 순서다. 적용한 테이블 생성 SQL을 다시 실행하지 않는다. SQL 적용 후 서버/앱을 함께 업데이트한다.
 - 실제 운영 DB에는 자동 적용하지 않았다. [상세 인수/제한](../docs/product/visit-payments-release.md).
+
+### 2026-10-07 상품·회원권 판매와 사용
+
+- `027_catalog_sales.sql`: 상품·회원권 마스터, 입고·출고 원장, 완납 시 회원권 발급.
+- `028_wallet_usage.sql`: 시술 항목별 금액권/횟수권 차감, 불변 사용 원장, 현금 수납과 합산한 미수금 계산.
+- 024~026 적용 DB에는 027 → 028 순서로 실행하고 같은 버전의 서버·앱을 재시작한다. 운영 DB에는 자동 적용하지 않았다.
+- [상품 판매 적용 안내](../docs/product/catalog-sales-release.md), [회원권 사용 적용 안내](../docs/product/wallet-usage-release.md).
+
+### 2026-10-07 환불·취소 반대 원장
+
+- `029_payment_refunds.sql`: 원영수증 부분/전체 환불, 회원권 사용 취소, 환불 재무 지출, 전체 취소의 상품 재고·미사용 발급 회원권 반대 원장.
+- 027 → 028 이후 029를 적용하고 같은 버전의 서버·앱을 재시작한다. [환불 적용 안내](../docs/product/refund-reversal-release.md).
+
+### 2026-10-08 재고 반품·폐기·실사 조정
+
+- `030_inventory_stock_controls.sql`: 상품 재고 원장에 입고/판매/환불/거래처 반품/폐기/실사 조정 유형을 기록하고, 권한·조직·버전·재고 음수·중복 요청을 검사하는 원자적 조정 RPC를 추가한다.
+- 027~029 다음에 030을 적용하고 같은 버전의 서버와 앱을 재시작한다. 운영 DB에는 자동 적용하지 않았다. [사용 및 적용 안내](../docs/product/inventory-stock-controls-release.md).
+
+### 2026-10-08 고객 상품 부분 반품
+
+- `031_customer_product_returns.sql`: 고객 판매 상품 일부 반품·원영수증 환불·재입고/폐기 원장을 한 트랜잭션에 묶고, 이후 전체 취소 시 반품된 상품 수량의 중복 재입고를 막는다.
+- 030 다음에 031을 적용하고 같은 버전의 서버와 데스크톱을 재시작한다. 사용자는 030 적용 완료를 보고했으며 031 운영 DB 적용은 미실행이다. [사용·검증 안내](../docs/product/customer-product-returns-release.md).
+
+### 2026-10-08 장바구니 할인
+
+- `032_sale_cart_discounts.sql`: 첫 수납 전 owner/admin 수동 고정액·비율 할인, immutable 변경 이력, 장바구니 재계산 및 할인 반품액 배분을 추가한다.
+- 사용자는 030 적용 완료를 보고했다. 따라서 031 → 032 순서로 실행하고 서버·데스크톱을 재시작한다. 031/032 운영 DB 적용 여부는 아직 확인하지 않았다. [반품 적용 안내](../docs/product/customer-product-returns-release.md), [할인 적용 안내](../docs/product/sale-cart-discounts-release.md).
+
+### 2026-10-08 일 마감·미수 목록
+
+- `033_sale_daily_closings.sql`: 한국 시간 영업일 기준 수단별 수납·환불, 미수금, 현금 시재 대사, 권한 제한 마감과 append-only 정정 이력. 마감된 날짜에는 해당 날짜로 귀속되는 추가 수납·환불을 막는다.
+- 사용자는 031 → 032 → 033 순서로 모두 실행했다고 보고했다. 독립 실DB 검증은 아직 수행하지 못했다. [사용·검증 안내](../docs/product/sale-daily-settlement-release.md).
+
+### 2026-10-08 예약 기본 운영
+
+- `034_appointments.sql`: 직원·서비스 기본 마스터, 예약 슬롯/상태, 직원 버퍼 충돌, 방문·장바구니 연결.
+- 사용자 보고상 031~033은 실행 완료. 이후 **034만** SQL Editor에서 실행하고 서버·데스크톱을 같은 버전으로 재시작한다. 이 작업에서는 운영 DB에 실행하지 않았다. [기능 및 제한](../docs/product/menus/03-appointments.md#2026-10-08-구현검증-기록).
+
+### 2026-10-08 회원권 정지·재개·연장
+
+- `035_wallet_lifecycle.sql`: 관리자 사유·버전·멱등 ID로 정지·재개·연장을 기록하고, 정지 중 사용을 차단한다.
+- 034 이후 035 순서로 실행한다. 운영 DB 자동 적용은 하지 않았다. [제한 및 근거](../docs/product/menus/06-memberships-packages.md).
+
+### 2026-10-08 운영 수지·담당 매출 근거
+
+- `036_management_preview.sql`: 관리자 전용 읽기 보고서. 확정 이익·수당이 아니며 제외된 원가를 함께 반환한다.
+- 035 다음 036 순서로 실행한다. 운영 DB 자동 적용은 하지 않았다. [직원 범위](../docs/product/menus/08-staff-commissions.md) · [손익 범위](../docs/product/menus/09-expenses-settlement-profit.md).
+
+## 037 예약 담당자 근무시간·휴무
+
+- `037_appointment_availability.sql`: 담당자별 요일 근무시간과 휴무를 버전·작업 ID로 관리하고, 근무시간 밖 또는 휴무와 겹치는 예약을 DB에서 차단한다.
+- 사용자는 036까지 적용했다고 보고했다. 현재 소스의 다음 적용 SQL은 **037 하나**이며, 서버와 데스크톱도 같은 소스로 재시작해야 한다. 운영 DB 자동 적용은 하지 않았다. [예약 범위](../docs/product/menus/03-appointments.md).
