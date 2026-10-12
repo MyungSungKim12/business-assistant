@@ -9,6 +9,8 @@ export const customerSchema = z.object({ id: z.uuid(), organization_id: z.uuid()
 export const customersSchema = z.array(customerSchema);
 export const customerActivitySchema = z.object({ id:z.uuid(), organization_id:z.uuid(), customer_id:z.uuid(), activity_type:z.string(), title:z.string(), description:z.string(), occurred_at:z.string() });
 export const customerActivitiesSchema = z.array(customerActivitySchema);
+export const customerPhotoSchema=z.object({id:z.uuid(),organization_id:z.uuid(),customer_id:z.uuid(),original_name:z.string(),storage_path:z.string(),content_type:z.string(),size_bytes:z.number(),caption:z.string(),created_at:z.string()});
+export const customerPhotosSchema=z.array(customerPhotoSchema); export const signedPhotoSchema=z.object({photo:customerPhotoSchema,signed_url:z.string().url(),expires_in:z.number()});
 
 export type AuthUser = z.infer<typeof userSchema>;
 export type Session = z.infer<typeof sessionSchema>;
@@ -16,3 +18,4 @@ export type Organization = z.infer<typeof organizationSchema>;
 export type Entitlement = z.infer<typeof entitlementSchema>;
 export type Customer = z.infer<typeof customerSchema>;
 export type CustomerActivity = z.infer<typeof customerActivitySchema>;
+export type CustomerPhoto=z.infer<typeof customerPhotoSchema>; export type SignedPhoto=z.infer<typeof signedPhotoSchema>;
