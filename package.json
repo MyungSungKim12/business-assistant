@@ -1,0 +1,13 @@
+{
+  "name": "business-assistant-workspace",
+  "private": true,
+  "packageManager": "pnpm@11.19.0",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "react:dev": "pnpm --filter @business-assistant/desktop-react dev",
+    "react:test": "pnpm --recursive --if-present test",
+    "react:build": "pnpm --filter @business-assistant/desktop-react build"
+  }
+}

@@ -21,3 +21,8 @@ site/
 *.db
 .worktrees/
 .superpowers/
+node_modules/
+.vite/
+apps/desktop-react/dist/
+apps/desktop-react/src-tauri/target/
+*.tsbuildinfo
