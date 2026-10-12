@@ -1,0 +1,22 @@
+:root {
+  --surface-app: #f7f3ed;
+  --surface-panel: #fffdf9;
+  --surface-muted: #efe7dd;
+  --border: #ddd2c5;
+  --text: #332f2b;
+  --text-muted: #746b63;
+  --accent: #a96f4f;
+  --accent-hover: #925d41;
+  --selection: #e9d7c8;
+  --success: #3f765a;
+  --warning: #9a681d;
+  --error: #ad493f;
+  --focus: #8f5b40;
+  --font-size-body: 13px;
+  --font-size-small: 12px;
+  --font-size-title: 21px;
+  --data-row-height: 34px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --shadow-dialog: 0 18px 48px rgb(57 43 33 / 18%);
+}

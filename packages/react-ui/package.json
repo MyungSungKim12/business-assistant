@@ -4,8 +4,10 @@
   "version": "0.1.0",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./base.css": "./src/base.css"
   },
+  "sideEffects": ["*.css"],
   "scripts": {
     "test": "vitest"
   },
