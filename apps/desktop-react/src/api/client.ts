@@ -2,7 +2,7 @@ import type { z } from 'zod';
 
 import type { Platform } from '../platform/types';
 import { ApiError, apiError } from './errors';
-import { customerSchema, customersSchema, entitlementSchema, organizationsSchema, sessionSchema, type Customer, type Entitlement, type Organization, type Session } from './schemas';
+import { customerActivitySchema, customerActivitiesSchema, customerSchema, customersSchema, entitlementSchema, organizationsSchema, sessionSchema, type Customer, type CustomerActivity, type Entitlement, type Organization, type Session } from './schemas';
 import type { HttpRequest, HttpResponse } from './transport';
 
 export class ApiClient {
@@ -48,6 +48,9 @@ export class ApiClient {
   createCustomer(organizationId: string, input: Omit<Customer, 'id'|'organization_id'>): Promise<Customer> { return this.authed({ method: 'POST', path: `/organizations/${organizationId}/customers`, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) }, customerSchema); }
   updateCustomer(organizationId: string, customerId: string, patch: Partial<Omit<Customer, 'id'|'organization_id'>>): Promise<Customer> { return this.authed({ method: 'PATCH', path: `/organizations/${organizationId}/customers/${customerId}`, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch) }, customerSchema); }
   archiveCustomer(organizationId: string, customerId: string): Promise<Customer> { return this.authed({ method: 'DELETE', path: `/organizations/${organizationId}/customers/${customerId}`, headers: {} }, customerSchema); }
+  listCustomerActivities(organizationId:string, customerId:string):Promise<CustomerActivity[]> { return this.authed({method:'GET',path:`/organizations/${organizationId}/customers/${customerId}/activities`,headers:{}},customerActivitiesSchema); }
+  createCustomerActivity(organizationId:string, customerId:string, input:{activity_type:string;title:string;description:string;occurred_at:string|null}):Promise<CustomerActivity>{return this.authed({method:'POST',path:`/organizations/${organizationId}/customers/${customerId}/activities`,headers:{'Content-Type':'application/json'},body:JSON.stringify(input)},customerActivitySchema);}
+  async deleteCustomerActivity(organizationId:string,customerId:string,activityId:string):Promise<void>{await this.authedVoid({method:'DELETE',path:`/organizations/${organizationId}/customers/${customerId}/activities/${activityId}`,headers:{}});}
 
   private async authed<T>(request: HttpRequest, schema: z.ZodType<T>): Promise<T> {
     if (!this.accessToken) throw new ApiError(401, 'NOT_AUTHENTICATED', '로그인이 필요합니다.', false);
@@ -58,6 +61,7 @@ export class ApiClient {
     }
     return this.parse(schema, response);
   }
+  private async authedVoid(request: HttpRequest): Promise<void> { if (!this.accessToken) throw new ApiError(401,'NOT_AUTHENTICATED','로그인이 필요합니다.',false); let response=await this.send({...request,headers:{...request.headers,Authorization:`Bearer ${this.accessToken}`}}); if(response.status===401){const session=await this.refreshOnce();response=await this.send({...request,headers:{...request.headers,Authorization:`Bearer ${session.access_token}`}});} if(response.status<200||response.status>=300)throw apiError(response.status,response.body); }
 
   private async refreshOnce(): Promise<Session> {
     if (!this.refreshInFlight) {
