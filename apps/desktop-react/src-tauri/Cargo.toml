@@ -1,0 +1,23 @@
+[package]
+name = "business-assistant-desktop-react"
+version = "0.1.0"
+description = "Business Assistant desktop client"
+edition = "2021"
+
+[lib]
+name = "business_assistant_desktop_react_lib"
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.2", features = [] }
+
+[dependencies]
+tauri = { version = "2.5", features = [] }
+tauri-plugin-autostart = "2.7"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+reqwest = { version = "0.12", default-features = false, features = ["native-tls", "json"] }
+keyring = { version = "3", default-features = false, features = ["windows-native"] }
+url = "2"
+rfd = "0.15"
+
