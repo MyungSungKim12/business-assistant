@@ -6,7 +6,7 @@ from typing import Literal, Protocol
 from uuid import UUID
 
 import httpx
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field, ValidationError
 
 from business_assistant_server.ports.repositories import (
     RepositoryConflictError,
@@ -37,6 +37,11 @@ class SaleCart(BaseModel):
     version: int
     subtotal: Decimal
     discount_total: Decimal
+    discount_kind: Literal["none", "amount", "percent"] = "none"
+    discount_value: Decimal = Field(default=Decimal(0), ge=0)
+    discount_reason: str = ""
+    discount_applied_by: UUID | None = None
+    discount_applied_at: str | None = None
     total_amount: Decimal
 
 
@@ -48,6 +53,7 @@ class SaleCartLine(BaseModel):
     source_id: UUID
     description_snapshot: str
     quantity: int
+    returned_quantity: int = Field(default=0, ge=0)
     unit_price: Decimal
     line_total: Decimal
     staff_id: UUID | None
@@ -63,6 +69,7 @@ class SaleCartBundle(BaseModel):
     visit: CustomerVisit
     cart: SaleCart
     lines: list[SaleCartLine]
+    discount_history: list[dict[str, object]] = Field(default_factory=list)
 
 
 class SaleCartRepository(Protocol):
@@ -103,6 +110,18 @@ class SaleCartRepository(Protocol):
         expected_version: int,
         operation_id: UUID,
         ready: bool,
+    ) -> SaleCartBundle: ...
+
+    async def apply_discount(
+        self,
+        organization_id: UUID,
+        visit_id: UUID,
+        kind: str,
+        value: str,
+        reason: str,
+        expected_version: int,
+        operation_id: UUID,
+        confirmed: bool,
     ) -> SaleCartBundle: ...
 
     async def cancel_visit(
@@ -237,6 +256,29 @@ class SupabaseSaleCartRepository:
             p_expected_version=expected_version,
             p_operation_id=str(operation_id),
             p_ready=ready,
+        )
+
+    async def apply_discount(
+        self,
+        organization_id: UUID,
+        visit_id: UUID,
+        kind: str,
+        value: str,
+        reason: str,
+        expected_version: int,
+        operation_id: UUID,
+        confirmed: bool,
+    ) -> SaleCartBundle:
+        return await self._rpc(
+            "apply_sale_cart_discount",
+            p_organization_id=str(organization_id),
+            p_visit_id=str(visit_id),
+            p_kind=kind,
+            p_value=value,
+            p_reason=reason,
+            p_expected_version=expected_version,
+            p_operation_id=str(operation_id),
+            p_confirmed=confirmed,
         )
 
     async def cancel_visit(

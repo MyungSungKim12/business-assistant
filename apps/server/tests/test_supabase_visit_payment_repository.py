@@ -84,3 +84,90 @@ def test_payment_write_preserves_request_identity_and_integer_strings():
         p_payments=payload()["payments"],
         p_confirmed=True,
     )
+
+
+def test_payment_snapshot_accepts_wallet_usage_as_paid_amount():
+    result = deepcopy(RESULT)
+    result.update(paid_amount="30000", outstanding_amount="70000", status="collecting")
+    result["receipts"] = [
+        {
+            "id": str(uuid4()),
+            "method": "wallet",
+            "amount": "30000",
+            "reference": "VIP 금액권 · 금액",
+            "received_at": "2026-10-07T10:00:00+09:00",
+            "operation_id": str(uuid4()),
+        }
+    ]
+    snapshot, _ = run_response(result)
+    assert snapshot.receipts[0].method == "wallet"
+    assert snapshot.outstanding_amount == 70000
+
+
+def test_refund_write_preserves_original_source_and_reason():
+    import json
+
+    source = uuid4()
+    calls = []
+
+    def serve(request):
+        calls.append(request)
+        return httpx.Response(200, json=RESULT)
+
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(serve)) as client:
+            repo = SupabaseVisitPaymentRepository(
+                "https://example.supabase.co", "public", "token", client
+            )
+            return await repo.refund_payment(
+                ORGANIZATION_ID, VISIT, source, "1000", "고객 요청", 3, OP, True
+            )
+
+    asyncio.run(run())
+    assert calls[0].url.path.endswith("/rpc/refund_visit_payment")
+    assert json.loads(calls[0].content) == dict(
+        p_organization_id=str(ORGANIZATION_ID),
+        p_visit_id=str(VISIT),
+        p_source_id=str(source),
+        p_amount="1000",
+        p_reason="고객 요청",
+        p_expected_cart_version=3,
+        p_operation_id=str(OP),
+        p_confirmed=True,
+    )
+
+
+def test_product_return_uses_one_atomic_rpc_with_receipt_and_stock_choice():
+    import json
+
+    line, receipt = uuid4(), uuid4()
+    calls = []
+
+    def serve(request):
+        calls.append(request)
+        return httpx.Response(200, json=RESULT)
+
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(serve)) as client:
+            repo = SupabaseVisitPaymentRepository(
+                "https://example.supabase.co", "public", "token", client
+            )
+            return await repo.return_product(
+                ORGANIZATION_ID, VISIT, line, receipt, 2, False, "2000", "손상", 3, OP, True
+            )
+
+    asyncio.run(run())
+    assert calls[0].url.path.endswith("/rpc/return_visit_product")
+    assert json.loads(calls[0].content) == dict(
+        p_organization_id=str(ORGANIZATION_ID),
+        p_visit_id=str(VISIT),
+        p_sale_line_id=str(line),
+        p_receipt_id=str(receipt),
+        p_quantity=2,
+        p_restock=False,
+        p_amount="2000",
+        p_reason="손상",
+        p_expected_cart_version=3,
+        p_operation_id=str(OP),
+        p_confirmed=True,
+    )

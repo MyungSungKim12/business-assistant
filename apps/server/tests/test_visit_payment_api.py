@@ -1,5 +1,5 @@
 import asyncio
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import httpx
 import pytest
@@ -40,8 +40,20 @@ class Repo:
             raise self.error
         return RESULT
 
+    async def refund_payment(self, *args):
+        self.calls.append(args)
+        if self.error:
+            raise self.error
+        return RESULT
 
-def send(method="POST", *, body=None, role="owner", features=None, repo=None):
+    async def return_product(self, *args):
+        self.calls.append(args)
+        if self.error:
+            raise self.error
+        return RESULT
+
+
+def send(method="POST", *, body=None, role="owner", features=None, repo=None, suffix=""):
     repo = repo or Repo()
 
     async def run():
@@ -56,7 +68,7 @@ def send(method="POST", *, body=None, role="owner", features=None, repo=None):
         ) as client:
             return await client.request(
                 method,
-                f"/api/v1/organizations/{ORGANIZATION_ID}/visits/{VISIT}/payments",
+                f"/api/v1/organizations/{ORGANIZATION_ID}/visits/{VISIT}/payments{suffix}",
                 headers={"Authorization": "Bearer owner-token"},
                 json=body,
             )
@@ -130,3 +142,59 @@ def test_conflict_is_safe_to_show():
     repo.error = RepositoryConflictError()
     response, _ = send(body=payload(), repo=repo)
     assert response.status_code == 409
+
+
+def test_refund_requires_source_reason_confirmation_and_manager():
+    source = uuid4()
+    body = dict(
+        source_id=str(source),
+        amount="30000",
+        reason="고객 요청",
+        expected_version=3,
+        operation_id=str(OP),
+        confirmed=True,
+    )
+    response, repo = send(body=body, suffix="/refunds")
+    assert response.status_code == 200
+    assert repo.calls == [(ORGANIZATION_ID, VISIT, source, "30000", "고객 요청", 3, OP, True)]
+    assert send(body=body, suffix="/refunds", role="member")[0].status_code == 403
+    for change in ({"amount": "0"}, {"reason": " "}, {"confirmed": False}):
+        response, repo = send(body={**body, **change}, suffix="/refunds")
+        assert response.status_code == 422
+        assert not repo.calls
+
+
+def test_product_return_requires_quantity_receipt_and_manager():
+    body = dict(
+        sale_line_id=str(uuid4()),
+        receipt_id=str(uuid4()),
+        quantity=1,
+        restock=True,
+        amount="12000",
+        reason="미개봉 반품",
+        expected_version=3,
+        operation_id=str(OP),
+        confirmed=True,
+    )
+    response, repo = send(body=body, suffix="/product-returns")
+    assert response.status_code == 200
+    assert repo.calls == [
+        (
+            ORGANIZATION_ID,
+            VISIT,
+            UUID(body["sale_line_id"]),
+            UUID(body["receipt_id"]),
+            1,
+            True,
+            "12000",
+            "미개봉 반품",
+            3,
+            OP,
+            True,
+        )
+    ]
+    assert send(body=body, suffix="/product-returns", role="member")[0].status_code == 403
+    for change in ({"quantity": 0}, {"restock": "yes"}, {"amount": "0"}, {"confirmed": False}):
+        response, repo = send(body={**body, **change}, suffix="/product-returns")
+        assert response.status_code == 422
+        assert not repo.calls

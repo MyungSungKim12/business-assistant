@@ -2,12 +2,12 @@
 
 from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Security
 from fastapi.security import HTTPAuthorizationCredentials
-from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator, model_validator
 
 from business_assistant_server.adapters.supabase_sale_carts import (
     CustomerVisit,
@@ -92,6 +92,37 @@ class RemoveLineRequest(VersionedOperationRequest):
 
 class ReviewCartRequest(VersionedOperationRequest):
     ready: StrictBool
+
+
+class ApplyDiscountRequest(VersionedOperationRequest):
+    kind: Literal["none", "amount", "percent"]
+    value: Annotated[str, Field(pattern=r"^(0|[1-9][0-9]{0,11})$")]
+    reason: Annotated[str, Field(min_length=1, max_length=1000)]
+    confirmed: StrictBool
+
+    @field_validator("reason")
+    @classmethod
+    def meaningful_reason(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Discount reason is required")
+        return value.strip()
+
+    @field_validator("value")
+    @classmethod
+    def valid_discount_value(cls, value: str) -> str:
+        return value
+
+    @model_validator(mode="after")
+    def validate_discount(self) -> "ApplyDiscountRequest":
+        if not self.confirmed:
+            raise ValueError("Discount confirmation is required")
+        if (
+            (self.kind == "none" and self.value != "0")
+            or (self.kind == "amount" and self.value == "0")
+            or (self.kind == "percent" and int(self.value) not in range(1, 100))
+        ):
+            raise ValueError("Invalid discount value")
+        return self
 
 
 def get_sale_cart_repository(
@@ -288,6 +319,30 @@ async def review_cart(
             request.expected_version,
             request.operation_id,
             request.ready,
+        )
+
+
+@router.post(
+    "/visits/{visit_id}/sale-cart/discount",
+    response_model=SaleCartBundle,
+    dependencies=[Depends(require_finance_management_role)],
+)
+async def apply_cart_discount(
+    organization_id: UUID,
+    visit_id: UUID,
+    request: ApplyDiscountRequest,
+    repository: Annotated[SaleCartRepository, Depends(get_sale_cart_repository)],
+) -> SaleCartBundle:
+    with _safe_errors():
+        return await repository.apply_discount(
+            organization_id,
+            visit_id,
+            request.kind,
+            request.value,
+            request.reason,
+            request.expected_version,
+            request.operation_id,
+            request.confirmed,
         )
 
 

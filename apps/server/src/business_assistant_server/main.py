@@ -2,7 +2,9 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from business_assistant_server.api.admin import router as admin_router
+from business_assistant_server.api.appointments import router as appointment_router
 from business_assistant_server.api.auth import router as auth_router
+from business_assistant_server.api.catalog import router as catalog_router
 from business_assistant_server.api.customer_activities import router as customer_activity_router
 from business_assistant_server.api.customer_photos import router as customer_photo_router
 from business_assistant_server.api.customers import router as customer_router
@@ -13,8 +15,10 @@ from business_assistant_server.api.entitlements import router as entitlement_rou
 from business_assistant_server.api.files import router as file_router
 from business_assistant_server.api.finance import router as finance_router
 from business_assistant_server.api.health import router as health_router
+from business_assistant_server.api.management import router as management_router
 from business_assistant_server.api.organizations import router as organization_router
 from business_assistant_server.api.sale_carts import router as sale_cart_router
+from business_assistant_server.api.sale_settlement import router as sale_settlement_router
 from business_assistant_server.api.tasks import router as task_router
 from business_assistant_server.api.template_versions import router as template_version_router
 from business_assistant_server.api.treatment_documents import router as treatment_document_router
@@ -37,12 +41,16 @@ def create_app() -> FastAPI:
     app.include_router(customer_photo_router, prefix="/api/v1")
     app.include_router(treatment_router, prefix="/api/v1")
     app.include_router(task_router, prefix="/api/v1")
+    app.include_router(appointment_router, prefix="/api/v1")
     app.include_router(document_router, prefix="/api/v1")
     app.include_router(template_version_router, prefix="/api/v1")
     app.include_router(treatment_document_router, prefix="/api/v1")
     app.include_router(treatment_sale_draft_router, prefix="/api/v1")
     app.include_router(sale_cart_router, prefix="/api/v1")
+    app.include_router(catalog_router, prefix="/api/v1")
     app.include_router(visit_payment_router, prefix="/api/v1")
+    app.include_router(sale_settlement_router, prefix="/api/v1")
+    app.include_router(management_router, prefix="/api/v1")
     app.include_router(document_consent_router, prefix="/api/v1")
     app.include_router(finance_router, prefix="/api/v1")
     app.include_router(file_router, prefix="/api/v1")

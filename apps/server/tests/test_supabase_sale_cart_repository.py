@@ -96,3 +96,31 @@ def test_list_and_get_are_organization_scoped() -> None:
         "p_visit_id": str(VISIT),
     }
     assert len(calls) == 3
+
+
+def test_manual_discount_rpc_preserves_type_reason_and_operation():
+    calls = []
+
+    def provider(request):
+        calls.append(request)
+        return httpx.Response(200, json=BUNDLE)
+
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(provider)) as client:
+            repo = SupabaseSaleCartRepository(
+                "https://example.supabase.co", "public", "token", client
+            )
+            return await repo.apply_discount(ORG, VISIT, "percent", "15", "첫 방문", 7, OP, True)
+
+    asyncio.run(run())
+    assert calls[0].url.path.endswith("/rpc/apply_sale_cart_discount")
+    assert json.loads(calls[0].content) == {
+        "p_organization_id": str(ORG),
+        "p_visit_id": str(VISIT),
+        "p_kind": "percent",
+        "p_value": "15",
+        "p_reason": "첫 방문",
+        "p_expected_version": 7,
+        "p_operation_id": str(OP),
+        "p_confirmed": True,
+    }

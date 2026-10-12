@@ -63,6 +63,37 @@ class RecordPaymentRequest(VersionedOperationRequest):
         return self
 
 
+class RefundPaymentRequest(VersionedOperationRequest):
+    source_id: UUID
+    amount: Annotated[str, Field(pattern=r"^[1-9][0-9]{0,11}$")]
+    reason: Annotated[str, Field(min_length=1, max_length=1000)]
+    confirmed: StrictBool
+
+    @model_validator(mode="after")
+    def confirm_and_strip(self) -> "RefundPaymentRequest":
+        self.reason = self.reason.strip()
+        if not self.confirmed or not self.reason:
+            raise ValueError("Refund confirmation and reason are required")
+        return self
+
+
+class ProductReturnRequest(VersionedOperationRequest):
+    sale_line_id: UUID
+    receipt_id: UUID
+    quantity: Annotated[int, Field(ge=1, le=999, strict=True)]
+    restock: StrictBool
+    amount: Annotated[str, Field(pattern=r"^[1-9][0-9]{0,11}$")]
+    reason: Annotated[str, Field(min_length=1, max_length=1000)]
+    confirmed: StrictBool
+
+    @model_validator(mode="after")
+    def confirm_and_strip(self) -> "ProductReturnRequest":
+        self.reason = self.reason.strip()
+        if not self.confirmed or not self.reason:
+            raise ValueError("Product return confirmation and reason are required")
+        return self
+
+
 def get_visit_payment_repository(
     settings: Annotated[Settings, Depends(get_settings)],
     authorization: Annotated[HTTPAuthorizationCredentials | None, Security(bearer_scheme)],
@@ -104,5 +135,56 @@ async def record_payment(
             request.expected_version,
             request.operation_id,
             [part.model_dump(mode="json") for part in request.payments],
+            request.confirmed,
+        )
+
+
+@router.post(
+    "/refunds",
+    response_model=VisitPayments,
+    dependencies=[Depends(require_finance_management_role)],
+)
+async def refund_payment(
+    organization_id: UUID,
+    visit_id: UUID,
+    request: RefundPaymentRequest,
+    repository: Annotated[SupabaseVisitPaymentRepository, Depends(get_visit_payment_repository)],
+) -> VisitPayments:
+    with _safe_errors():
+        return await repository.refund_payment(
+            organization_id,
+            visit_id,
+            request.source_id,
+            request.amount,
+            request.reason,
+            request.expected_version,
+            request.operation_id,
+            request.confirmed,
+        )
+
+
+@router.post(
+    "/product-returns",
+    response_model=VisitPayments,
+    dependencies=[Depends(require_finance_management_role)],
+)
+async def return_product(
+    organization_id: UUID,
+    visit_id: UUID,
+    request: ProductReturnRequest,
+    repository: Annotated[SupabaseVisitPaymentRepository, Depends(get_visit_payment_repository)],
+) -> VisitPayments:
+    with _safe_errors():
+        return await repository.return_product(
+            organization_id,
+            visit_id,
+            request.sale_line_id,
+            request.receipt_id,
+            request.quantity,
+            request.restock,
+            request.amount,
+            request.reason,
+            request.expected_version,
+            request.operation_id,
             request.confirmed,
         )

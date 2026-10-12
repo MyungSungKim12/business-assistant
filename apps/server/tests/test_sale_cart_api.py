@@ -108,6 +108,32 @@ class FakeSaleCartRepository:
         )
         return self.result
 
+    async def apply_discount(
+        self,
+        organization_id,
+        visit_id,
+        kind,
+        value,
+        reason,
+        expected_version,
+        operation_id,
+        confirmed,
+    ):
+        self.calls.append(
+            (
+                "discount",
+                organization_id,
+                visit_id,
+                kind,
+                value,
+                reason,
+                expected_version,
+                operation_id,
+                confirmed,
+            )
+        )
+        return self.result
+
     async def cancel_visit(self, organization_id, visit_id, expected_version, operation_id):
         self.calls.append(("cancel", organization_id, visit_id, expected_version, operation_id))
         return self.result
@@ -199,6 +225,40 @@ def test_create_and_mutations_forward_scope_version_and_operation() -> None:
             "staff_name": "담당자",
         },
     )
+
+
+def test_manual_discount_requires_confirmation_valid_value_and_manager():
+    body = dict(
+        kind="percent",
+        value="15",
+        reason="첫 방문",
+        expected_version=2,
+        operation_id=str(OPERATION_ID),
+        confirmed=True,
+    )
+    response, repo = request("POST", f"/visits/{VISIT_ID}/sale-cart/discount", body=body)
+    assert response.status_code == 200
+    assert repo.calls == [
+        ("discount", ORGANIZATION_ID, VISIT_ID, "percent", "15", "첫 방문", 2, OPERATION_ID, True)
+    ]
+    assert (
+        request("POST", f"/visits/{VISIT_ID}/sale-cart/discount", role="member", body=body)[
+            0
+        ].status_code
+        == 403
+    )
+    for change in (
+        {"value": "100"},
+        {"value": "101"},
+        {"value": "0"},
+        {"confirmed": False},
+        {"reason": " "},
+    ):
+        response, repo = request(
+            "POST", f"/visits/{VISIT_ID}/sale-cart/discount", body={**body, **change}
+        )
+        assert response.status_code == 422
+        assert not repo.calls
 
 
 def test_conflict_is_sanitized() -> None:
