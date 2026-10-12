@@ -2,7 +2,7 @@ import type { z } from 'zod';
 
 import type { Platform } from '../platform/types';
 import { ApiError, apiError } from './errors';
-import { entitlementSchema, organizationsSchema, sessionSchema, type Entitlement, type Organization, type Session } from './schemas';
+import { customerSchema, customersSchema, entitlementSchema, organizationsSchema, sessionSchema, type Customer, type Entitlement, type Organization, type Session } from './schemas';
 import type { HttpRequest, HttpResponse } from './transport';
 
 export class ApiClient {
@@ -43,6 +43,11 @@ export class ApiClient {
   getEntitlements(organizationId: string): Promise<Entitlement> {
     return this.authed({ method: 'GET', path: `/organizations/${organizationId}/entitlements`, headers: {} }, entitlementSchema);
   }
+
+  listCustomers(organizationId: string): Promise<Customer[]> { return this.authed({ method: 'GET', path: `/organizations/${organizationId}/customers`, headers: {} }, customersSchema); }
+  createCustomer(organizationId: string, input: Omit<Customer, 'id'|'organization_id'>): Promise<Customer> { return this.authed({ method: 'POST', path: `/organizations/${organizationId}/customers`, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) }, customerSchema); }
+  updateCustomer(organizationId: string, customerId: string, patch: Partial<Omit<Customer, 'id'|'organization_id'>>): Promise<Customer> { return this.authed({ method: 'PATCH', path: `/organizations/${organizationId}/customers/${customerId}`, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch) }, customerSchema); }
+  archiveCustomer(organizationId: string, customerId: string): Promise<Customer> { return this.authed({ method: 'DELETE', path: `/organizations/${organizationId}/customers/${customerId}`, headers: {} }, customerSchema); }
 
   private async authed<T>(request: HttpRequest, schema: z.ZodType<T>): Promise<T> {
     if (!this.accessToken) throw new ApiError(401, 'NOT_AUTHENTICATED', '로그인이 필요합니다.', false);
