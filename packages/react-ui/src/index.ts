@@ -1,4 +1,6 @@
 export const REACT_UI_VERSION = '0.1.0';
+export * from './components/DataGrid';
+export * from './components/gridWidths';
 export * from './components/ConfirmDialog';
 export * from './components/DateField';
 export * from './components/DateRangeField';
