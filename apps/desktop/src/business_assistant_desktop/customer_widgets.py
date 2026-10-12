@@ -83,9 +83,9 @@ QPushButton#treatment-customer-card:focus { border-color: #8E684F; }
 #card-name { font-size: 16px; font-weight: 600; }
 #tag { background: #F2EAE1; border-radius: 6px; padding: 3px 7px;
  color: #75685D; font-size: 12px; }
-#card-visit { color: #8D8378; font-size: 12px; }
+#card-visit { color: #756D65; font-size: 12px; }
 #card-contact { color: #75685D; font-size: 13px; }
-#history-content { background: #F2EAE1; padding: 14px; border-radius: 8px; color: #5E5147; }
+#history-content { background: #FFFDF9; padding: 14px; border-radius: 8px; color: #5E5147; }
 #customer-workspace QScrollArea, #customer-workspace QScrollArea > QWidget > QWidget {
  background: transparent; border: 0; }
 #timeline { background: #FFFDF9; border-left: 2px solid #E4D9CD; padding-left: 12px; }

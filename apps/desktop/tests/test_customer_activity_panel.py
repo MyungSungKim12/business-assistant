@@ -145,3 +145,18 @@ def test_pending_save_blocks_duplicate_and_customer_switch(qtbot):
     gate.set()
     qtbot.waitUntil(lambda: not widget.is_saving)
     assert len(client.calls) == 1
+
+
+def test_history_displays_markup_as_customer_text(qtbot):
+    widget, client = panel(qtbot)
+    widget.title_input.setText("<b>고객 입력</b>")
+    widget.description_input.setPlainText('<img src="https://invalid.test/photo">\n둘째 줄')
+    widget._save()
+    qtbot.waitUntil(lambda: not widget.is_saving)
+    from PySide6.QtGui import QTextDocument
+
+    document = QTextDocument()
+    document.setHtml(widget.history_label.text())
+    assert "<b>고객 입력</b>" in document.toPlainText()
+    assert '<img src="https://invalid.test/photo">' in document.toPlainText()
+    assert "<img src=" not in widget.history_label.text()

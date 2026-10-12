@@ -11,6 +11,7 @@ VISIT = UUID("33333333-3333-3333-3333-333333333333")
 CART = UUID("44444444-4444-4444-4444-444444444444")
 DRAFT = UUID("55555555-5555-5555-5555-555555555555")
 LINE = UUID("66666666-6666-6666-6666-666666666666")
+PRODUCT = UUID("77777777-7777-7777-7777-777777777777")
 
 
 def bundle(version=1, lines=None):
@@ -55,6 +56,20 @@ class Client:
         ]
         self.cart = bundle()
         self.operations = []
+        self.catalog = [
+            {
+                "id": str(PRODUCT),
+                "name": "보습 크림",
+                "kind": "product",
+                "sale_price": "30000",
+                "stock_quantity": 2,
+                "unit_name": "개",
+                "is_active": True,
+                "benefit_money": "0",
+                "benefit_count": 0,
+                "valid_days": None,
+            }
+        ]
 
     def list_customers(self, organization_id):
         return [SimpleNamespace(id=CUSTOMER, name="김고객", phone="010-1234-5678")]
@@ -64,6 +79,12 @@ class Client:
 
     def list_treatment_sale_drafts(self, organization_id):
         return self.drafts
+
+    def list_catalog_products(self, organization_id):
+        return self.catalog
+
+    def list_customer_wallets(self, organization_id, customer_id):
+        return []
 
     def get_sale_cart(self, organization_id, visit_id):
         return self.cart
@@ -107,6 +128,25 @@ class Client:
         self.cart = bundle(int(self.cart["cart"]["version"]) + 1, [line])
         return self.cart
 
+    def add_catalog_product_to_cart(
+        self, organization_id, visit_id, product_id, version, operation_id
+    ):
+        self.operations.append(("add_catalog", operation_id))
+        line = {
+            "id": str(LINE),
+            "source_id": str(product_id),
+            "source_type": "product",
+            "description_snapshot": "보습 크림",
+            "quantity": 1,
+            "unit_price": "30000",
+            "line_total": "30000",
+            "staff_name_snapshot": "",
+            "status": "active",
+            "removal_reason": "",
+        }
+        self.cart = bundle(version + 1, [line])
+        return self.cart
+
     def remove_sale_cart_line(self, *args):
         return self.cart
 
@@ -118,6 +158,18 @@ class Client:
             **self.cart,
             "cart": {**self.cart["cart"], "status": "ready", "version": version + 1},
         }
+        return self.cart
+
+    def apply_sale_cart_discount(self, organization_id, visit_id, payload):
+        self.operations.append(("discount", payload["operation_id"], dict(payload)))
+        self.cart = bundle(version=int(payload["expected_version"]) + 1, lines=self.cart["lines"])
+        self.cart["cart"].update(
+            discount_kind=payload["kind"],
+            discount_value=payload["value"],
+            discount_reason=payload["reason"],
+            discount_total="1800.00",
+            total_amount="10200.00",
+        )
         return self.cart
 
 
@@ -160,6 +212,20 @@ def test_read_only_member_cannot_mutate(qtbot):
     assert not page.add_draft_button.isEnabled()
     assert not page.review_button.isEnabled()
     assert not page.cancel_visit_button.isEnabled()
+
+
+def test_adds_catalog_product_and_hides_used_source(qtbot):
+    client = Client()
+    page = SaleCartWorkspace(client, ORG, can_manage=True)
+    qtbot.addWidget(page)
+    qtbot.waitUntil(lambda: not page.busy)
+    assert page.catalog_list.count() == 1
+    page.catalog_list.setCurrentRow(0)
+    qtbot.mouseClick(page.add_catalog_button, Qt.MouseButton.LeftButton)
+    qtbot.waitUntil(lambda: not page.busy)
+    assert client.operations[-1][0] == "add_catalog"
+    assert page.line_table.item(0, 0).text() == "보습 크림"
+    assert page.catalog_list.count() == 0
 
 
 def test_review_requires_a_nonempty_cart(qtbot):
@@ -282,6 +348,64 @@ def test_uncertain_request_keeps_editor_and_locks_navigation(qtbot, monkeypatch)
     page._retry_pending()
     qtbot.waitUntil(lambda: not page.busy)
     assert client.operations[-1] == client.operations[-2]
+
+
+def test_cart_discount_is_sent_with_current_version_and_confirmation(qtbot):
+    client = Client()
+    page = SaleCartWorkspace(client, ORG, can_manage=True)
+    qtbot.addWidget(page)
+    qtbot.waitUntil(lambda: not page.busy)
+    line = {
+        "id": str(LINE),
+        "source_id": str(DRAFT),
+        "description_snapshot": "피부 관리",
+        "quantity": 1,
+        "unit_price": "12000",
+        "line_total": "12000",
+        "staff_name_snapshot": "",
+        "status": "active",
+        "removal_reason": "",
+    }
+    page._render_bundle(bundle(4, [line]))
+    page._controls()
+    page.discount_kind.setCurrentIndex(page.discount_kind.findData("percent"))
+    page.discount_value.setText("15")
+    page.discount_reason.setText("첫 방문")
+    page.discount_confirmed.setChecked(True)
+    page._apply_discount()
+    qtbot.waitUntil(lambda: not page.busy)
+    request = client.operations[-1][2]
+    assert request["kind"] == "percent"
+    assert request["value"] == "15"
+    assert request["reason"] == "첫 방문"
+    assert request["expected_version"] == 4
+    assert request["confirmed"] is True
+
+
+def test_cart_discount_label_exposes_recent_change_history(qtbot):
+    page = SaleCartWorkspace(Client(), ORG, can_manage=True)
+    qtbot.addWidget(page)
+    qtbot.waitUntil(lambda: not page.busy)
+    data = bundle()
+    data["cart"].update(
+        discount_kind="percent",
+        discount_value="15",
+        discount_reason="첫 방문",
+        discount_total="1800",
+    )
+    data["discount_history"] = [
+        dict(
+            discount_kind="percent",
+            discount_value="15",
+            discount_total="1800",
+            reason="첫 방문",
+            created_at="2026-10-08T10:00:00+09:00",
+        )
+    ]
+    page._render_bundle(data)
+    assert "비율 15%" in page.discount_label.text()
+    assert "할인 변경 이력" in page.discount_label.toolTip()
+    assert "첫 방문" in page.discount_label.toolTip()
 
 
 def test_new_visit_does_not_fetch_cart_again(qtbot):

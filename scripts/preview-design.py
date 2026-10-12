@@ -26,7 +26,7 @@ window = MainWindow(
     EntitlementSet(
         frozenset(
             {
-                "schedule.basic",
+                "task.basic",
                 "document.template",
                 "finance.basic",
                 "files.basic",

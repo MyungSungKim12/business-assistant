@@ -1,7 +1,11 @@
 from copy import deepcopy
 from uuid import uuid4
 
-from business_assistant_desktop.visit_payment_dialog import VisitPaymentDialog
+from business_assistant_desktop.visit_payment_dialog import (
+    VisitPaymentDialog,
+    VisitProductReturnDialog,
+    VisitRefundDialog,
+)
 from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import QMessageBox
 
@@ -23,6 +27,14 @@ class Client:
             status="ready",
             receipts=[],
         )
+        self.cart = dict(cart={"version": 2}, lines=[])
+
+    def get_sale_cart(self, *args):
+        return deepcopy(self.cart)
+
+    def return_visit_product(self, org, visit, payload):
+        self.calls.append(deepcopy(payload))
+        return deepcopy(self.result)
 
     def get_visit_payments(self, *args):
         return deepcopy(self.result)
@@ -40,6 +52,29 @@ class Client:
         )
         return deepcopy(self.result)
 
+    def refund_visit_payment(self, org, visit, payload):
+        self.calls.append(deepcopy(payload))
+        amount = int(payload["amount"])
+        self.result.update(
+            paid_amount=str(100000 - amount),
+            outstanding_amount=str(amount),
+            refunded_amount=str(amount),
+            status="void",
+            cart_version=3,
+            refunds=[
+                {
+                    "id": str(uuid4()),
+                    "source_id": payload["source_id"],
+                    "source_kind": "receipt",
+                    "amount": str(amount),
+                    "reason": payload["reason"],
+                    "created_at": "2026-10-07T10:00:00+09:00",
+                    "operation_id": payload["operation_id"],
+                }
+            ],
+        )
+        return deepcopy(self.result)
+
 
 def dialog(qtbot, tmp_path, client=None, manage=True, identity="test-server/user-a"):
     store = QSettings(str(tmp_path / "recovery.ini"), QSettings.Format.IniFormat)
@@ -54,6 +89,116 @@ def dialog(qtbot, tmp_path, client=None, manage=True, identity="test-server/user
     qtbot.addWidget(page)
     qtbot.waitUntil(lambda: not page.busy)
     return page, store
+
+
+def test_product_return_screen_lists_only_remaining_quantities(qtbot, tmp_path):
+    client = Client()
+    client.cart = dict(
+        cart={"version": 2},
+        lines=[
+            dict(
+                id=str(uuid4()),
+                source_type="product",
+                status="active",
+                quantity=3,
+                returned_quantity=1,
+                unit_price="12000",
+                description_snapshot="크림",
+            ),
+            dict(
+                id=str(uuid4()),
+                source_type="treatment_draft",
+                status="active",
+                quantity=1,
+                returned_quantity=0,
+                unit_price="10000",
+                description_snapshot="시술",
+            ),
+        ],
+    )
+    client.result.update(status="void", cart_version=2)
+    client.result["receipts"] = [
+        dict(id=str(uuid4()), method="card", amount="36000", reference="승인123")
+    ]
+    store = QSettings(str(tmp_path / "returns.ini"), QSettings.Format.IniFormat)
+    page = VisitProductReturnDialog(
+        client, ORG, VISIT, can_manage=True, recovery_identity="test", recovery_store=store
+    )
+    qtbot.addWidget(page)
+    qtbot.waitUntil(lambda: not page.busy)
+    assert page.table.rowCount() == 1
+    assert page.table.item(0, 3).text() == "2"
+    assert page.line_select.count() == 1
+    assert page.receipt_select.count() == 1
+
+
+def test_product_return_persists_request_before_sending(qtbot, tmp_path):
+    client = Client()
+    line_id, receipt_id = uuid4(), uuid4()
+    client.cart = dict(
+        cart={"version": 2},
+        lines=[
+            dict(id=str(line_id), source_type="product", status="active", quantity=1,
+                returned_quantity=0,
+                unit_price="12000",
+                line_total="12000",
+                description_snapshot="크림",
+            )
+        ],
+    )
+    client.result["receipts"] = [
+        dict(id=str(receipt_id), method="card", amount="12000", reference="승인123")
+    ]
+    store = QSettings(str(tmp_path / "return-submit.ini"), QSettings.Format.IniFormat)
+    page = VisitProductReturnDialog(
+        client, ORG, VISIT, can_manage=True, recovery_identity="test", recovery_store=store
+    )
+    qtbot.addWidget(page)
+    qtbot.waitUntil(lambda: not page.busy)
+    page.amount_input.setText("12000")
+    page.reason_input.setText("미개봉 반품")
+    page.confirmed.setChecked(True)
+    page._save()
+    qtbot.waitUntil(lambda: len(client.calls) == 1 and not page.busy)
+    request = client.calls[0]
+    assert request["sale_line_id"] == str(line_id)
+    assert request["receipt_id"] == str(receipt_id)
+    assert request["quantity"] == 1
+    assert request["restock"] is True
+    assert request["amount"] == "12000"
+    assert request["confirmed"] is True
+
+
+def test_discounted_product_return_cannot_exceed_allocated_net_value(qtbot, tmp_path):
+    client = Client()
+    line_id, receipt_id = uuid4(), uuid4()
+    client.cart = dict(
+        cart={"version": 2},
+        lines=[
+            dict(
+                id=str(line_id), source_type="product", status="active", quantity=2,
+                returned_quantity=0, returned_refund_amount="0", returned_discount_amount="0",
+                discount_share="20", unit_price="100", line_total="200",
+                description_snapshot="크림",
+            )
+        ],
+    )
+    client.result["receipts"] = [
+        dict(id=str(receipt_id), method="card", amount="180", reference="승인123")
+    ]
+    store = QSettings(str(tmp_path / "discounted-return.ini"), QSettings.Format.IniFormat)
+    page = VisitProductReturnDialog(
+        client, ORG, VISIT, can_manage=True, recovery_identity="test", recovery_store=store
+    )
+    qtbot.addWidget(page)
+    qtbot.waitUntil(lambda: not page.busy)
+    page.quantity.setValue(1)
+    page.amount_input.setText("91")
+    page.reason_input.setText("반품")
+    page.confirmed.setChecked(True)
+    page._save()
+    assert client.calls == []
+    assert "상품 금액" in page.status_label.text()
 
 
 def test_split_receipt_updates_balance_and_clears_inputs(qtbot, tmp_path):
@@ -213,3 +358,42 @@ def test_failed_recovery_cleanup_keeps_retry_identity(qtbot):
     assert page._pending["operation_id"] == client.calls[0]["operation_id"]
     assert page._uncertain
     assert not page.save_button.isEnabled()
+
+
+def test_refund_dialog_records_original_receipt_with_reason(qtbot, tmp_path):
+    client = Client()
+    receipt_id = uuid4()
+    client.result.update(
+        paid_amount="100000",
+        outstanding_amount="0",
+        status="paid",
+        receipts=[
+            {
+                "id": str(receipt_id),
+                "method": "card",
+                "amount": "100000",
+                "reference": "approval-1",
+                "received_at": "2026-10-07T09:00:00+09:00",
+                "operation_id": str(uuid4()),
+            }
+        ],
+    )
+    store = QSettings(str(tmp_path / "refund.ini"), QSettings.Format.IniFormat)
+    page = VisitRefundDialog(
+        client,
+        ORG,
+        VISIT,
+        can_manage=True,
+        recovery_identity="identity",
+        recovery_store=store,
+    )
+    qtbot.addWidget(page)
+    qtbot.waitUntil(lambda: not page.busy)
+    page.amount_input.setText("30000")
+    page.reason_input.setText("고객 요청")
+    page.confirmed.setChecked(True)
+    page.save_button.click()
+    qtbot.waitUntil(lambda: not page.busy)
+    assert client.calls[-1]["source_id"] == str(receipt_id)
+    assert client.calls[-1]["reason"] == "고객 요청"
+    assert page.snapshot["refunded_amount"] == "30000"

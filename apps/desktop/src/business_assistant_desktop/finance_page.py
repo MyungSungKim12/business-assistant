@@ -18,7 +18,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from business_assistant_desktop.management_preview_dialog import ManagementPreviewDialog
 from business_assistant_desktop.sale_cart_page import SaleCartWorkspace
+from business_assistant_desktop.sale_settlement_dialog import SaleSettlementDialog
 from business_assistant_desktop.ui_components import polish_table, surface_panel
 
 
@@ -73,6 +75,7 @@ class FinancePage(QWidget):
         self._organization_id = organization_id
         self._can_manage = can_manage
         self._draft_inbox: SaleCartWorkspace | None = None
+        self._settlement_dialog: SaleSettlementDialog | None = None
 
         heading = QLabel("매출·지출")
         heading.setObjectName("page-title")
@@ -91,6 +94,13 @@ class FinancePage(QWidget):
         self.drafts_button = QPushButton("결제 장바구니")
         self.drafts_button.clicked.connect(self._show_drafts)
         header.addWidget(self.drafts_button)
+        self.settlement_button = QPushButton("미수·일 마감")
+        self.settlement_button.clicked.connect(self._show_settlement)
+        header.addWidget(self.settlement_button)
+        self.management_button = QPushButton("운영 수지·담당 매출")
+        self.management_button.setEnabled(can_manage)
+        self.management_button.clicked.connect(self._show_management)
+        header.addWidget(self.management_button)
         toolbar.addStretch()
         toolbar.addWidget(QLabel("유형"))
         toolbar.addWidget(self.type_filter)
@@ -140,6 +150,19 @@ class FinancePage(QWidget):
             parent=self,
         )
         self._draft_inbox.show()
+
+    def _show_settlement(self) -> None:
+        dialog = SaleSettlementDialog(
+            self._client,
+            self._organization_id,
+            can_manage=self._can_manage,
+            parent=self,
+        )
+        dialog.exec()
+
+    def _show_management(self) -> None:
+        if self._can_manage:
+            ManagementPreviewDialog(self._client, self._organization_id, self).exec()
 
     def confirm_leave(self) -> bool:
         return (

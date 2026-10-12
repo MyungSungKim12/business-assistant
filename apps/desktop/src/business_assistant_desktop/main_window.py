@@ -1,5 +1,6 @@
 """Product-style application shell and navigation."""
 
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from business_assistant_common.entitlements import EntitlementSet
@@ -11,6 +12,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QListWidget,
     QMainWindow,
+    QMenu,
     QPushButton,
     QSizePolicy,
     QStackedWidget,
@@ -21,9 +23,14 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from business_assistant_desktop.appointment_page import SchedulePage
 from business_assistant_desktop.customer_page import CustomerPage
 from business_assistant_desktop.customer_widgets import SidebarPanel
-from business_assistant_desktop.dashboard_page import DashboardPage
+from business_assistant_desktop.dashboard_page import (
+    DashboardPage,
+    count_today_appointments,
+    total_receivables,
+)
 from business_assistant_desktop.design_tokens import application_stylesheet
 from business_assistant_desktop.document_page import DocumentPage
 from business_assistant_desktop.file_page import FilePage
@@ -118,12 +125,30 @@ class MainWindow(QMainWindow):
         brand_row.addWidget(brand_mark)
         brand_row.addWidget(logo, 1)
         side_layout.addLayout(brand_row)
+        section = QLabel("워크스페이스")
+        section.setObjectName("sidebar-section")
+        side_layout.addWidget(section)
         side_layout.addWidget(self.navigation_menu, 1)
         self.all_menu_button = QPushButton("전체 메뉴")
         self.all_menu_button.setObjectName("all-menu-button")
         self.all_menu_button.setIcon(icon("mdi6.menu", "#b5aaa0"))
         side_layout.addWidget(self.all_menu_button)
-        footer = QLabel("BEAUTY & BUSINESS\n매장 운영을 더 간결하게")
+        self.account_button = QPushButton("계정·구독")
+        self.settings_button = QPushButton("환경설정")
+        for button, key, glyph in (
+            (self.account_button, "account", "mdi6.account-circle-outline"),
+            (self.settings_button, "settings", "mdi6.cog-outline"),
+        ):
+            button.setObjectName("sidebar-utility")
+            button.setCheckable(True)
+            button.setIcon(icon(glyph, "#756B61"))
+            button.clicked.connect(
+                lambda checked=False, key=key: self.navigation_menu.setCurrentRow(
+                    self._page_by_key[key]
+                )
+            )
+            side_layout.addWidget(button)
+        footer = QLabel("BEAUTY & BUSINESS")
         footer.setObjectName("sidebar-footer")
         side_layout.addWidget(footer)
         self.pages = QStackedWidget()
@@ -186,7 +211,14 @@ class MainWindow(QMainWindow):
             ):
                 organization_id = getattr(organization, "id", None)
                 if organization_id is not None:
-                    page = TaskPage(_BoundTaskClient(client, session), organization_id)
+                    page = SchedulePage(
+                        _BoundTaskClient(client, session),
+                        _BoundAppointmentClient(client, session),
+                        organization_id,
+                        _can_manage(organization),
+                        entitlements.has("crm.basic"),
+                    )
+                    page.appointments.treatment_requested.connect(self._open_treatments)
             elif (
                 menu.key == "documents"
                 and client is not None
@@ -233,10 +265,21 @@ class MainWindow(QMainWindow):
                         c.status == "active"
                         for c in client.list_customers(organization.id, session)
                     )
-                if entitlements.has("schedule.basic"):
+                if entitlements.has("task.basic"):
                     readers["schedule"] = lambda: sum(
                         t.status in {"open", "in_progress"}
                         for t in client.list_tasks(organization.id, session)
+                    )
+                    readers["appointments"] = lambda: count_today_appointments(
+                        client.list_appointments(organization.id, session)
+                    )
+                if entitlements.has("finance.basic"):
+                    readers["receivables"] = lambda: total_receivables(
+                        client.get_sale_daily_settlement(
+                            organization.id,
+                            session,
+                            datetime.now(timezone(timedelta(hours=9))).date(),
+                        )
                     )
                 if entitlements.has("files.basic"):
                     readers["files"] = lambda: sum(
@@ -259,10 +302,13 @@ class MainWindow(QMainWindow):
         context_name.setTextFormat(Qt.TextFormat.PlainText)
         context_name.setObjectName("context-name")
         context_row.addWidget(context_name)
+        self.context_path = QLabel("홈 대시보드")
+        self.context_path.setObjectName("context-path")
+        context_row.addWidget(self.context_path)
         context_row.addStretch()
-        context_hint = QLabel("고객과 매장의 모든 기록을 한곳에")
-        context_hint.setObjectName("context-label")
-        context_row.addWidget(context_hint)
+        self.context_status = QLabel("동기화 준비됨")
+        self.context_status.setObjectName("context-status")
+        context_row.addWidget(self.context_status)
         content_layout.setSpacing(0)
         content_layout.addWidget(context_bar)
         content_layout.addWidget(self.pages, 1)
@@ -273,7 +319,17 @@ class MainWindow(QMainWindow):
         self.navigation_menu.currentRowChanged.connect(self._navigate)
         self.navigation_menu.setCurrentRow(0)
         self._expanded_navigation = False
-        self.all_menu_button.clicked.connect(self._toggle_navigation)
+        self.secondary_menu = QMenu(self.all_menu_button)
+        for menu in MENU_CATALOG:
+            if menu.key in {"data", "automation", "ai", "notifications", "team", "integrations"}:
+                action = self.secondary_menu.addAction(menu.label)
+                action.setEnabled(menu.feature_code is None or entitlements.has(menu.feature_code))
+                action.triggered.connect(
+                    lambda checked=False, key=menu.key: self.navigation_menu.setCurrentRow(
+                        self._page_by_key[key]
+                    )
+                )
+        self.all_menu_button.setMenu(self.secondary_menu)
         self._apply_navigation_visibility()
 
     def _open_treatments(self, customer_id: Any) -> None:
@@ -281,7 +337,7 @@ class MainWindow(QMainWindow):
         current = self.pages.currentWidget()
         if not isinstance(target, TreatmentPage) or customer_id is None:
             return
-        if isinstance(current, CustomerPage) and not current.confirm_leave():
+        if isinstance(current, (CustomerPage, SchedulePage)) and not current.confirm_leave():
             return
         if target.open_customer(customer_id):
             self.navigation_menu.setCurrentRow(self._page_by_key["treatments"])
@@ -292,28 +348,48 @@ class MainWindow(QMainWindow):
             index != self.pages.currentIndex()
             and isinstance(
                 current,
-                (CustomerPage, TreatmentPage, DocumentPage, FinancePage, TaskPage),
+                (CustomerPage, TreatmentPage, DocumentPage, FinancePage, TaskPage, SchedulePage),
             )
             and not current.confirm_leave()
         ):
             self.navigation_menu.blockSignals(True)
             self.navigation_menu.setCurrentRow(self.pages.currentIndex())
             self.navigation_menu.blockSignals(False)
+            self.account_button.setChecked(
+                self.pages.currentIndex() == self._page_by_key["account"]
+            )
+            self.settings_button.setChecked(
+                self.pages.currentIndex() == self._page_by_key["settings"]
+            )
             return
         self.pages.setCurrentIndex(index)
+        self.account_button.setChecked(index == self._page_by_key["account"])
+        self.settings_button.setChecked(index == self._page_by_key["settings"])
+        self.context_path.setText(MENU_CATALOG[index].label)
+        self.context_status.setText("업무 공간" if index == 0 else "변경사항 자동 저장 준비")
         target = self.pages.currentWidget()
         if isinstance(target, DashboardPage):
             target.open_snapshot()
         for row, name in enumerate(self._navigation_icons):
             self.navigation_menu.item(row).setIcon(
-                icon(name, "#293C53" if row == index else "#C0CAD6")
+                icon(name, "#403A35" if row == index else "#756B61")
             )
 
     def closeEvent(self, event: QCloseEvent) -> None:
         for index in range(self.pages.count()):
             page = self.pages.widget(index)
             if (
-                isinstance(page, (CustomerPage, TreatmentPage, DocumentPage, FinancePage, TaskPage))
+                isinstance(
+                    page,
+                    (
+                        CustomerPage,
+                        TreatmentPage,
+                        DocumentPage,
+                        FinancePage,
+                        TaskPage,
+                        SchedulePage,
+                    ),
+                )
                 and not page.confirm_leave()
             ):
                 event.ignore()
@@ -340,7 +416,7 @@ class MainWindow(QMainWindow):
             self.navigation_menu.item(index).setHidden(
                 not self._expanded_navigation and menu.key not in primary
             )
-        self.all_menu_button.setText("간단히 보기" if self._expanded_navigation else "전체 메뉴")
+        self.all_menu_button.setText("부가 메뉴")
 
     @staticmethod
     def _description(key: str) -> str:
@@ -586,6 +662,73 @@ class _BoundTaskClient:
         return self._client.delete_task(organization_id, self._session, task_id)
 
 
+class _BoundAppointmentClient:
+    def __init__(self, client: Any, session: Any) -> None:
+        self._client, self._session = client, session
+
+    def list_customers(self, organization_id: Any) -> Any:
+        return self._client.list_customers(organization_id, self._session)
+
+    def list_appointments(self, organization_id: Any) -> Any:
+        return self._client.list_appointments(organization_id, self._session)
+
+    def list_appointment_staff(self, organization_id: Any) -> Any:
+        return self._client.list_appointment_staff(organization_id, self._session)
+
+    def list_appointment_services(self, organization_id: Any) -> Any:
+        return self._client.list_appointment_services(organization_id, self._session)
+
+    def create_appointment_staff(self, organization_id: Any, name: str) -> Any:
+        return self._client.create_appointment_staff(organization_id, self._session, name)
+
+    def create_appointment_service(
+        self, organization_id: Any, name: str, duration: int, buffer: int
+    ) -> Any:
+        return self._client.create_appointment_service(
+            organization_id, self._session, name, duration, buffer
+        )
+
+    def save_appointment(self, organization_id: Any, appointment_id: Any, payload: Any) -> Any:
+        return self._client.save_appointment(
+            organization_id, self._session, appointment_id, payload
+        )
+
+    def transition_appointment(
+        self, organization_id: Any, appointment_id: Any, payload: Any
+    ) -> Any:
+        return self._client.transition_appointment(
+            organization_id, self._session, appointment_id, payload
+        )
+
+    def get_appointment_staff_availability(
+        self, organization_id: Any, staff_id: Any
+    ) -> Any:
+        return self._client.get_appointment_staff_availability(
+            organization_id, self._session, staff_id
+        )
+
+    def replace_appointment_staff_hours(
+        self, organization_id: Any, staff_id: Any, payload: Any
+    ) -> Any:
+        return self._client.replace_appointment_staff_hours(
+            organization_id, self._session, staff_id, payload
+        )
+
+    def create_appointment_staff_time_off(
+        self, organization_id: Any, staff_id: Any, payload: Any
+    ) -> Any:
+        return self._client.create_appointment_staff_time_off(
+            organization_id, self._session, staff_id, payload
+        )
+
+    def cancel_appointment_staff_time_off(
+        self, organization_id: Any, staff_id: Any, time_off_id: Any, payload: Any
+    ) -> Any:
+        return self._client.cancel_appointment_staff_time_off(
+            organization_id, self._session, staff_id, time_off_id, payload
+        )
+
+
 class _BoundDocumentClient:
     """Adapt the session-aware HTTP client to the document page boundary."""
 
@@ -629,11 +772,46 @@ class _BoundFinanceClient:
     def list_treatment_sale_drafts(self, organization_id: Any) -> Any:
         return self._client.list_sale_cart_drafts(organization_id, self._session)
 
+    def list_catalog_products(self, organization_id: Any) -> Any:
+        return self._client.list_catalog_products(organization_id, self._session)
+
+    def save_catalog_product(self, organization_id: Any, product_id: Any, payload: Any) -> Any:
+        return self._client.save_catalog_product(
+            organization_id, self._session, product_id, payload
+        )
+
+    def receive_catalog_stock(self, organization_id: Any, product_id: Any, payload: Any) -> Any:
+        return self._client.receive_catalog_stock(
+            organization_id, self._session, product_id, payload
+        )
+
+    def add_catalog_product_to_cart(self, organization_id: Any, *args: Any) -> Any:
+        return self._client.add_catalog_product_to_cart(organization_id, self._session, *args)
+
+    def list_customer_wallets(self, organization_id: Any, customer_id: Any) -> Any:
+        return self._client.list_customer_wallets(organization_id, self._session, customer_id)
+
+    def manage_customer_wallet(
+        self, organization_id: Any, customer_id: Any, wallet_id: Any, payload: Any
+    ) -> Any:
+        return self._client.manage_customer_wallet(
+            organization_id, self._session, customer_id, wallet_id, payload
+        )
+
+    def use_customer_wallet(self, organization_id: Any, visit_id: Any, payload: Any) -> Any:
+        return self._client.use_customer_wallet(organization_id, self._session, visit_id, payload)
+
     def get_visit_payments(self, organization_id: Any, visit_id: Any) -> Any:
         return self._client.get_visit_payments(organization_id, self._session, visit_id)
 
+    def return_visit_product(self, organization_id: Any, visit_id: Any, payload: Any) -> Any:
+        return self._client.return_visit_product(organization_id, self._session, visit_id, payload)
+
     def record_visit_payment(self, organization_id: Any, visit_id: Any, payload: Any) -> Any:
         return self._client.record_visit_payment(organization_id, self._session, visit_id, payload)
+
+    def refund_visit_payment(self, organization_id: Any, visit_id: Any, payload: Any) -> Any:
+        return self._client.refund_visit_payment(organization_id, self._session, visit_id, payload)
 
     def list_customers(self, organization_id: Any) -> Any:
         return self._client.list_customers(organization_id, self._session)
@@ -670,6 +848,11 @@ class _BoundFinanceClient:
     def review_sale_cart(self, organization_id: Any, *args: Any) -> Any:
         return self._client.review_sale_cart(organization_id, self._session, *args)
 
+    def apply_sale_cart_discount(self, organization_id: Any, visit_id: Any, payload: Any) -> Any:
+        return self._client.apply_sale_cart_discount(
+            organization_id, self._session, visit_id, payload
+        )
+
     def cancel_customer_visit(self, organization_id: Any, *args: Any) -> Any:
         return self._client.cancel_customer_visit(organization_id, self._session, *args)
 
@@ -682,6 +865,24 @@ class _BoundFinanceClient:
 
     def get_finance_summary(self, organization_id: Any, from_date: Any, to_date: Any) -> Any:
         return self._client.get_finance_summary(organization_id, self._session, from_date, to_date)
+
+    def get_sale_daily_settlement(self, organization_id: Any, business_date: Any) -> Any:
+        return self._client.get_sale_daily_settlement(organization_id, self._session, business_date)
+
+    def get_management_preview(
+        self, organization_id: Any, from_date: Any, to_date: Any
+    ) -> Any:
+        return self._client.get_management_preview(
+            organization_id, self._session, from_date, to_date
+        )
+
+    def close_sale_day(self, organization_id: Any, business_date: Any, payload: Any) -> Any:
+        return self._client.close_sale_day(organization_id, self._session, business_date, payload)
+
+    def adjust_sale_day_close(self, organization_id: Any, business_date: Any, payload: Any) -> Any:
+        return self._client.adjust_sale_day_close(
+            organization_id, self._session, business_date, payload
+        )
 
 
 class _BoundFileClient:

@@ -58,7 +58,7 @@ if os.environ.get("QT_QPA_PLATFORM") == "offscreen":
 window = MainWindow(
     EntitlementSet(
         frozenset(
-            {"crm.basic", "schedule.basic", "document.template", "files.basic", "reports.basic"}
+            {"crm.basic", "task.basic", "document.template", "files.basic", "reports.basic"}
         )
     )
 )

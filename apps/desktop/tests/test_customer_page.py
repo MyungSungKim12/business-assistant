@@ -291,6 +291,7 @@ def test_reference_layout_keeps_three_column_cards(qtbot):
     cards = page.customer_cards
     assert cards[0].y() == cards[2].y()
     assert cards[3].y() > cards[0].y()
+    assert cards[3].y() > cards[0].y()
     qtbot.mouseClick(cards[2], Qt.MouseButton.LeftButton)
     assert page.profile_name.text() == "고객 2"
     assert page.name_input.text() == "고객 2"

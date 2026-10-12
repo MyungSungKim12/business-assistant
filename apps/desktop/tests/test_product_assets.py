@@ -5,11 +5,11 @@ ASSET_ROOT = Path(__file__).parents[1] / "src" / "business_assistant_desktop" / 
 
 def test_product_assets_include_all_fixed_fonts_and_ui_icons():
     expected = {
-        "Pretendard-Regular.ttf",
-        "Pretendard-Medium.ttf",
-        "Pretendard-SemiBold.ttf",
-        "Pretendard-Bold.ttf",
-        "Pretendard-LICENSE.txt",
+        "SUIT-Regular.ttf",
+        "SUIT-Medium.ttf",
+        "SUIT-SemiBold.ttf",
+        "SUIT-Bold.ttf",
+        "SUIT-LICENSE.txt",
         "chevron-down.svg",
         "check.svg",
     }

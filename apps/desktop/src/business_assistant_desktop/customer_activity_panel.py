@@ -2,6 +2,7 @@
 
 from collections.abc import Callable
 from datetime import UTC, datetime
+from html import escape
 from typing import TYPE_CHECKING, Any, Protocol
 from uuid import UUID
 
@@ -66,7 +67,7 @@ class CustomerActivityPanel(QWidget):
         self.is_loading = False
         layout = QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
-        layout.setSpacing(4)
+        layout.setSpacing(8)
         toolbar = QHBoxLayout()
         self.add_button = QPushButton("활동 추가")
         self.retry_button = QPushButton("다시 불러오기")
@@ -79,19 +80,19 @@ class CustomerActivityPanel(QWidget):
         layout.addWidget(self.status_label)
         self.history_label = QLabel()
         self.history_label.setObjectName("history-content")
-        self.history_label.setTextFormat(Qt.TextFormat.PlainText)
+        self.history_label.setTextFormat(Qt.TextFormat.RichText)
         self.history_label.setWordWrap(True)
         self.history_label.setAlignment(Qt.AlignmentFlag.AlignTop)
         self.history_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.history_scroll = QScrollArea()
         self.history_scroll.setWidgetResizable(True)
-        self.history_scroll.setMinimumHeight(36)
+        self.history_scroll.setMinimumHeight(110)
         self.history_scroll.setWidget(self.history_label)
         layout.addWidget(self.history_scroll, 1)
         self.composer = QWidget()
         form = QVBoxLayout(self.composer)
         form.setContentsMargins(0, 0, 0, 0)
-        form.setSpacing(3)
+        form.setSpacing(8)
         heading = QHBoxLayout()
         self.type_combo = QComboBox()
         self.type_combo.addItem("상담 메모", "note")
@@ -109,6 +110,7 @@ class CustomerActivityPanel(QWidget):
         self.description_input.setFixedHeight(48)
         form.addWidget(self.description_input)
         self.save_button = QPushButton("활동 저장")
+        self.save_button.setProperty("role", "primary")
         form.addWidget(self.save_button)
         layout.addWidget(self.composer)
         self.composer.hide()
@@ -244,10 +246,14 @@ class CustomerActivityPanel(QWidget):
             self._activities = result
         self._activities.sort(key=lambda activity: _timestamp(activity.occurred_at), reverse=True)
         self.history_label.setText(
-            "\n\n".join(
-                f"● {_display_time(activity.occurred_at)}\n"
-                f"{'시술 메모' if activity.activity_type == 'treatment' else '상담 메모'} · "
-                f"{activity.title}\n{activity.description}"
+            "".join(
+                '<p style="color:#756D65; font-size:12px; margin-top:0px;">'
+                f"{escape(_display_time(activity.occurred_at))} · "
+                f"{'시술 메모' if activity.activity_type == 'treatment' else '상담 메모'}</p>"
+                '<p style="font-weight:600; margin-top:6px; margin-bottom:6px;">'
+                f"{escape(activity.title)}</p>"
+                '<p style="line-height:150%; margin-bottom:16px;">'
+                f"{escape(activity.description).replace(chr(10), '<br>')}</p>"
                 for activity in self._activities
             )
         )

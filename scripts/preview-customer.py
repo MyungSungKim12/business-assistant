@@ -96,7 +96,7 @@ if __name__ == "__main__":
     window = MainWindow(
         EntitlementSet(
             frozenset(
-                {"crm.basic", "schedule.basic", "document.template", "files.basic", "reports.basic"}
+                {"crm.basic", "task.basic", "document.template", "files.basic", "reports.basic"}
             )
         )
     )

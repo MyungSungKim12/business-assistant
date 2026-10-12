@@ -4,7 +4,7 @@ from business_assistant_desktop.design_tokens import COLORS, application_stylesh
 def test_design_tokens_cover_core_product_states() -> None:
     assert COLORS["canvas"] == "#F7F3ED"
     assert COLORS["surface"] == "#FFFDF9"
-    assert COLORS["nav"] == "#E8DED2"
+    assert COLORS["nav"] == "#F0EBE4"
     assert COLORS["text"] == "#403A35"
     assert COLORS["primary"] == "#B98B68"
     assert COLORS["border"] == "#E4D9CD"
@@ -35,7 +35,7 @@ def test_navigation_selection_and_hover_have_distinct_visual_states() -> None:
 def test_global_typography_and_combobox_use_modern_product_style() -> None:
     stylesheet = application_stylesheet()
 
-    assert 'font-family: "Pretendard", "Segoe UI", "Malgun Gothic"' in stylesheet
+    assert 'font-family: "SUIT", "Segoe UI", "Malgun Gothic"' in stylesheet
     assert "QComboBox::drop-down" in stylesheet
     assert "QComboBox QAbstractItemView" in stylesheet
     assert "QComboBox:hover" in stylesheet

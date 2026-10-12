@@ -733,6 +733,146 @@ class ApiClient:
             raise ValueError("Expected visit list")
         return [_object(item) for item in payload]
 
+    def _appointment_list(
+        self,
+        organization_id: UUID,
+        session: Session,
+        endpoint: str,
+        params: dict[str, str] | None = None,
+    ) -> list[dict[str, object]]:
+        response = self._client.get(
+            f"{self._base_url}/api/v1/organizations/{organization_id}/{endpoint}",
+            headers=_auth_header(session),
+            params=params,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if not isinstance(payload, list):
+            raise ValueError("Expected appointment list")
+        return [_object(item) for item in payload]
+
+    def list_appointments(
+        self,
+        organization_id: UUID,
+        session: Session,
+        customer_id: UUID | None = None,
+    ) -> list[dict[str, object]]:
+        params = {"customer_id": str(customer_id)} if customer_id else None
+        return self._appointment_list(organization_id, session, "appointments", params)
+
+    def list_appointment_staff(
+        self, organization_id: UUID, session: Session
+    ) -> list[dict[str, object]]:
+        return self._appointment_list(organization_id, session, "appointment-staff")
+
+    def list_appointment_services(
+        self, organization_id: UUID, session: Session
+    ) -> list[dict[str, object]]:
+        return self._appointment_list(organization_id, session, "appointment-services")
+
+    def create_appointment_staff(
+        self, organization_id: UUID, session: Session, name: str
+    ) -> dict[str, object]:
+        return self._sale_cart_request(
+            "POST", organization_id, session, "appointment-staff", {"name": name}
+        )
+
+    def create_appointment_service(
+        self,
+        organization_id: UUID,
+        session: Session,
+        name: str,
+        duration_minutes: int,
+        buffer_minutes: int,
+    ) -> dict[str, object]:
+        return self._sale_cart_request(
+            "POST",
+            organization_id,
+            session,
+            "appointment-services",
+            {"name": name, "duration_minutes": duration_minutes, "buffer_minutes": buffer_minutes},
+        )
+
+    def save_appointment(
+        self,
+        organization_id: UUID,
+        session: Session,
+        appointment_id: UUID | None,
+        payload: dict[str, object],
+    ) -> dict[str, object]:
+        endpoint = f"appointments/{appointment_id}" if appointment_id else "appointments"
+        return self._sale_cart_request(
+            "PUT" if appointment_id else "POST", organization_id, session, endpoint, payload
+        )
+
+    def transition_appointment(
+        self,
+        organization_id: UUID,
+        session: Session,
+        appointment_id: UUID,
+        payload: dict[str, object],
+    ) -> dict[str, object]:
+        return self._sale_cart_request(
+            "POST", organization_id, session, f"appointments/{appointment_id}/transitions", payload
+        )
+
+    def get_appointment_staff_availability(
+        self, organization_id: UUID, session: Session, staff_id: UUID
+    ) -> dict[str, object]:
+        response = self._client.get(
+            f"{self._base_url}/api/v1/organizations/{organization_id}"
+            f"/appointment-staff/{staff_id}/availability",
+            headers=_auth_header(session),
+        )
+        response.raise_for_status()
+        return _object(response.json())
+
+    def replace_appointment_staff_hours(
+        self,
+        organization_id: UUID,
+        session: Session,
+        staff_id: UUID,
+        payload: dict[str, object],
+    ) -> dict[str, object]:
+        return self._sale_cart_request(
+            "PUT",
+            organization_id,
+            session,
+            f"appointment-staff/{staff_id}/working-hours",
+            payload,
+        )
+
+    def create_appointment_staff_time_off(
+        self,
+        organization_id: UUID,
+        session: Session,
+        staff_id: UUID,
+        payload: dict[str, object],
+    ) -> dict[str, object]:
+        return self._sale_cart_request(
+            "POST",
+            organization_id,
+            session,
+            f"appointment-staff/{staff_id}/time-off",
+            payload,
+        )
+
+    def cancel_appointment_staff_time_off(
+        self,
+        organization_id: UUID,
+        session: Session,
+        staff_id: UUID,
+        time_off_id: UUID,
+        payload: dict[str, object],
+    ) -> dict[str, object]:
+        return self._sale_cart_request(
+            "POST",
+            organization_id,
+            session,
+            f"appointment-staff/{staff_id}/time-off/{time_off_id}/cancel",
+            payload,
+        )
+
     def list_sale_cart_drafts(
         self,
         organization_id: UUID,
@@ -873,6 +1013,17 @@ class ApiClient:
             },
         )
 
+    def apply_sale_cart_discount(
+        self,
+        organization_id: UUID,
+        session: Session,
+        visit_id: UUID,
+        payload: dict[str, object],
+    ) -> dict[str, object]:
+        return self._sale_cart_request(
+            "POST", organization_id, session, f"visits/{visit_id}/sale-cart/discount", payload
+        )
+
     def cancel_customer_visit(
         self,
         organization_id: UUID,
@@ -906,6 +1057,138 @@ class ApiClient:
         response.raise_for_status()
         return _response_object(response)
 
+    def _catalog_list(
+        self, organization_id: UUID, session: Session, path: str
+    ) -> list[dict[str, object]]:
+        response = self._client.get(
+            f"{self._base_url}/api/v1/organizations/{organization_id}/{path}",
+            headers=_auth_header(session),
+        )
+        response.raise_for_status()
+        result = response.json()
+        if not isinstance(result, list) or any(not isinstance(row, dict) for row in result):
+            raise ValueError("Invalid catalog response")
+        return result
+
+    def list_catalog_products(
+        self, organization_id: UUID, session: Session
+    ) -> list[dict[str, object]]:
+        return self._catalog_list(organization_id, session, "catalog-products")
+
+    def save_catalog_product(
+        self,
+        organization_id: UUID,
+        session: Session,
+        product_id: UUID | None,
+        payload: dict[str, object],
+    ) -> dict[str, object]:
+        return self._sale_cart_request(
+            "PUT" if product_id else "POST",
+            organization_id,
+            session,
+            f"catalog-products/{product_id}" if product_id else "catalog-products",
+            payload,
+        )
+
+    def receive_catalog_stock(
+        self,
+        organization_id: UUID,
+        session: Session,
+        product_id: UUID,
+        payload: dict[str, object],
+    ) -> dict[str, object]:
+        return self._sale_cart_request(
+            "POST",
+            organization_id,
+            session,
+            f"catalog-products/{product_id}/stock-receipts",
+            payload,
+        )
+
+    def change_catalog_stock(
+        self,
+        organization_id: UUID,
+        session: Session,
+        product_id: UUID,
+        payload: dict[str, object],
+    ) -> dict[str, object]:
+        return self._sale_cart_request(
+            "POST",
+            organization_id,
+            session,
+            f"catalog-products/{product_id}/stock-adjustments",
+            payload,
+        )
+
+    def list_catalog_stock_ledger(
+        self, organization_id: UUID, session: Session, product_id: UUID
+    ) -> list[dict[str, object]]:
+        return self._catalog_list(
+            organization_id,
+            session,
+            f"catalog-products/{product_id}/stock-ledger",
+        )
+
+    def add_catalog_product_to_cart(
+        self,
+        organization_id: UUID,
+        session: Session,
+        visit_id: UUID,
+        product_id: UUID,
+        expected_version: int,
+        operation_id: UUID,
+    ) -> dict[str, object]:
+        return self._sale_cart_request(
+            "POST",
+            organization_id,
+            session,
+            f"visits/{visit_id}/sale-cart/lines/catalog-product",
+            {
+                "product_id": str(product_id),
+                "expected_version": expected_version,
+                "operation_id": str(operation_id),
+            },
+        )
+
+    def list_customer_wallets(
+        self,
+        organization_id: UUID,
+        session: Session,
+        customer_id: UUID,
+    ) -> list[dict[str, object]]:
+        return self._catalog_list(organization_id, session, f"customers/{customer_id}/wallets")
+
+    def manage_customer_wallet(
+        self,
+        organization_id: UUID,
+        session: Session,
+        customer_id: UUID,
+        wallet_id: UUID,
+        payload: dict[str, object],
+    ) -> dict[str, object]:
+        return self._sale_cart_request(
+            "POST",
+            organization_id,
+            session,
+            f"customers/{customer_id}/wallets/{wallet_id}/lifecycle",
+            payload,
+        )
+
+    def use_customer_wallet(
+        self,
+        organization_id: UUID,
+        session: Session,
+        visit_id: UUID,
+        payload: dict[str, object],
+    ) -> dict[str, object]:
+        return self._sale_cart_request(
+            "POST",
+            organization_id,
+            session,
+            f"visits/{visit_id}/wallet-usages",
+            payload,
+        )
+
     def get_visit_payments(
         self,
         organization_id: UUID,
@@ -925,6 +1208,28 @@ class ApiClient:
     ) -> dict[str, object]:
         return self._sale_cart_request(
             "POST", organization_id, session, f"visits/{visit_id}/payments", payload
+        )
+
+    def refund_visit_payment(
+        self,
+        organization_id: UUID,
+        session: Session,
+        visit_id: UUID,
+        payload: dict[str, object],
+    ) -> dict[str, object]:
+        return self._sale_cart_request(
+            "POST", organization_id, session, f"visits/{visit_id}/payments/refunds", payload
+        )
+
+    def return_visit_product(
+        self,
+        organization_id: UUID,
+        session: Session,
+        visit_id: UUID,
+        payload: dict[str, object],
+    ) -> dict[str, object]:
+        return self._sale_cart_request(
+            "POST", organization_id, session, f"visits/{visit_id}/payments/product-returns", payload
         )
 
     def mutate_document_template(
@@ -1025,6 +1330,60 @@ class ApiClient:
         )
         response.raise_for_status()
         return _finance_summary_from_payload(_response_object(response))
+
+    def get_sale_daily_settlement(
+        self, organization_id: UUID, session: Session, business_date: date
+    ) -> dict[str, object]:
+        response = self._client.get(
+            f"{self._base_url}/api/v1/organizations/{organization_id}/sale-daily-settlement",
+            headers=_auth_header(session),
+            params={"business_date": business_date.isoformat()},
+        )
+        response.raise_for_status()
+        return _response_object(response)
+
+    def get_management_preview(
+        self, organization_id: UUID, session: Session, from_date: date, to_date: date
+    ) -> dict[str, object]:
+        response = self._client.get(
+            f"{self._base_url}/api/v1/organizations/{organization_id}/management-preview",
+            headers=_auth_header(session),
+            params={"from_date": from_date.isoformat(), "to_date": to_date.isoformat()},
+        )
+        response.raise_for_status()
+        return _response_object(response)
+
+    def close_sale_day(
+        self,
+        organization_id: UUID,
+        session: Session,
+        business_date: date,
+        payload: dict[str, object],
+    ) -> dict[str, object]:
+        response = self._client.post(
+            f"{self._base_url}/api/v1/organizations/{organization_id}/sale-daily-settlement/close",
+            headers=_auth_header(session),
+            params={"business_date": business_date.isoformat()},
+            json=payload,
+        )
+        response.raise_for_status()
+        return _response_object(response)
+
+    def adjust_sale_day_close(
+        self,
+        organization_id: UUID,
+        session: Session,
+        business_date: date,
+        payload: dict[str, object],
+    ) -> dict[str, object]:
+        response = self._client.post(
+            f"{self._base_url}/api/v1/organizations/{organization_id}/sale-daily-settlement/adjustments",
+            headers=_auth_header(session),
+            params={"business_date": business_date.isoformat()},
+            json=payload,
+        )
+        response.raise_for_status()
+        return _response_object(response)
 
     def list_files(self, organization_id: UUID, session: Session) -> list[FileAsset]:
         response = self._client.get(

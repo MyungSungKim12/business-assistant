@@ -9,6 +9,7 @@ def test_main_window_has_product_title(qtbot) -> None:  # type: ignore[no-untype
     qtbot.addWidget(window)
 
     assert window.windowTitle() == "Business Assistant"
+    assert window.context_path.text() == "홈 대시보드"
 
 
 def test_navigation_keeps_keyboard_access_without_visible_scrollbars(qtbot) -> None:  # type: ignore[no-untyped-def]
@@ -53,3 +54,14 @@ def test_application_window_factory_accepts_server_entitlements(qtbot) -> None: 
     crm_item = window.navigation_menu.item(1)
 
     assert crm_item.flags() & Qt.ItemFlag.ItemIsEnabled
+
+
+def test_secondary_menu_preserves_permissions_and_navigation(qtbot):
+    window = MainWindow(EntitlementSet(frozenset()))
+    qtbot.addWidget(window)
+    actions = {action.text(): action for action in window.secondary_menu.actions()}
+    assert not actions["업무 자동화"].isEnabled()
+    window.account_button.click()
+    assert window.pages.currentIndex() == window._page_by_key["account"]
+    window.settings_button.click()
+    assert window.pages.currentIndex() == window._page_by_key["settings"]

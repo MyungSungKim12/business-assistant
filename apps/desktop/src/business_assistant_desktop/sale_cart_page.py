@@ -1,5 +1,6 @@
 """Three-column visit sale cart workspace."""
 
+import re
 from collections.abc import Callable
 from decimal import Decimal
 from typing import Any
@@ -9,6 +10,8 @@ import httpx
 from PySide6.QtCore import QObject, QRunnable, QThreadPool, Signal, Slot
 from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import (
+    QCheckBox,
+    QComboBox,
     QDialog,
     QHBoxLayout,
     QLabel,
@@ -74,8 +77,10 @@ class SaleCartWorkspace(QDialog):
         self.customers: list[Any] = []
         self.visits: list[dict[str, object]] = []
         self.drafts: list[dict[str, object]] = []
+        self.catalog_products: list[dict[str, object]] = []
         self.visible_visits: list[dict[str, object]] = []
         self.visible_drafts: list[dict[str, object]] = []
+        self.visible_catalog: list[dict[str, object]] = []
         self.bundle: dict[str, object] | None = None
         self._line_rows: list[dict[str, object]] = []
         self._worker: _Work | None = None
@@ -118,6 +123,10 @@ class SaleCartWorkspace(QDialog):
         self.draft_list = QListWidget()
         self.add_draft_button = QPushButton("선택 초안 담기")
         self.add_draft_button.setProperty("role", "primary")
+        self.catalog_list = QListWidget()
+        self.add_catalog_button = QPushButton("선택 상품 · 회원권 담기")
+        self.add_catalog_button.setProperty("role", "primary")
+        self.manage_catalog_button = QPushButton("상품 · 회원권 관리")
         self.line_table = QTableWidget(0, 5)
         self.line_table.setHorizontalHeaderLabels(["항목", "수량", "단가", "담당자", "상태"])
         self.line_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
@@ -126,6 +135,12 @@ class SaleCartWorkspace(QDialog):
         center.addWidget(QLabel("담기 전 시술 초안"))
         center.addWidget(self.draft_list, 1)
         center.addWidget(self.add_draft_button)
+        catalog_actions = QHBoxLayout()
+        catalog_actions.addWidget(self.add_catalog_button, 1)
+        catalog_actions.addWidget(self.manage_catalog_button)
+        center.addWidget(QLabel("판매 상품 · 회원권"))
+        center.addWidget(self.catalog_list, 1)
+        center.addLayout(catalog_actions)
         center.addWidget(QLabel("현재 장바구니"))
         center.addWidget(self.line_table, 2)
         editor = QHBoxLayout()
@@ -155,12 +170,25 @@ class SaleCartWorkspace(QDialog):
 
         self.subtotal_label = QLabel("소계 0원")
         self.discount_label = QLabel("할인 0원")
+        self.discount_kind = QComboBox()
+        self.discount_kind.addItem("금액 할인", "amount")
+        self.discount_kind.addItem("비율 할인", "percent")
+        self.discount_kind.addItem("할인 해제", "none")
+        self.discount_value = QLineEdit()
+        self.discount_value.setPlaceholderText("할인 금액(원) 또는 비율(%)")
+        self.discount_value.setMaxLength(12)
+        self.discount_reason = QLineEdit()
+        self.discount_reason.setPlaceholderText("할인 사유")
+        self.discount_reason.setMaxLength(1000)
+        self.discount_confirmed = QCheckBox("할인 내용과 권한을 확인했습니다.")
+        self.apply_discount_button = QPushButton("할인 적용")
         self.total_label = QLabel("청구 예정 0원")
         self.total_label.setObjectName("page-subtitle")
         self.review_button = QPushButton("검토 완료")
         self.review_button.setProperty("role", "primary")
         self.payment_button = QPushButton("수납 기록 · 내역")
         self.payment_button.setProperty("role", "primary")
+        self.wallet_button = QPushButton("고객 회원권 · 잔여 혜택")
         self.cancel_visit_button = QPushButton("빈 방문 취소")
         self.cancel_visit_button.setProperty("role", "danger")
         self.retry_button = QPushButton("같은 요청 재시도")
@@ -168,11 +196,17 @@ class SaleCartWorkspace(QDialog):
         right = QVBoxLayout()
         right.addWidget(self.subtotal_label)
         right.addWidget(self.discount_label)
+        right.addWidget(self.discount_kind)
+        right.addWidget(self.discount_value)
+        right.addWidget(self.discount_reason)
+        right.addWidget(self.discount_confirmed)
+        right.addWidget(self.apply_discount_button)
         right.addWidget(self.total_label)
         right.addStretch()
         right.addWidget(QLabel("검토 완료는 결제 완료가 아닙니다."))
         right.addWidget(self.review_button)
         right.addWidget(self.payment_button)
+        right.addWidget(self.wallet_button)
         right.addWidget(self.cancel_visit_button)
         right.addWidget(self.retry_button)
         columns.addWidget(surface_panel("금액 검토", right), 3)
@@ -191,10 +225,15 @@ class SaleCartWorkspace(QDialog):
         self.customer_list.currentRowChanged.connect(self._select_customer)
         self.visit_list.currentRowChanged.connect(self._select_visit)
         self.draft_list.currentRowChanged.connect(self._controls)
+        self.catalog_list.currentRowChanged.connect(self._controls)
         self.line_table.itemSelectionChanged.connect(self._select_line)
         self.new_visit_button.clicked.connect(self._create_visit)
         self.add_draft_button.clicked.connect(self._add_draft)
+        self.add_catalog_button.clicked.connect(self._add_catalog)
+        self.manage_catalog_button.clicked.connect(self._manage_catalog)
+        self.wallet_button.clicked.connect(self._open_wallets)
         self.review_button.clicked.connect(self._review)
+        self.apply_discount_button.clicked.connect(self._apply_discount)
         self.cancel_visit_button.clicked.connect(self._cancel_visit)
         self.save_line_button.clicked.connect(self._save_line)
         self.remove_line_button.clicked.connect(self._remove_line)
@@ -210,7 +249,7 @@ class SaleCartWorkspace(QDialog):
             return
         if (
             self._retry is None
-            and kind in {"create", "add", "review", "cancel", "restore"}
+            and kind in {"create", "add", "review", "cancel", "restore", "discount"}
             and not self._discard_editor()
         ):
             return
@@ -232,6 +271,7 @@ class SaleCartWorkspace(QDialog):
                 _attempt(lambda: self.client.list_customers(self.organization_id)),
                 _attempt(lambda: self.client.list_customer_visits(self.organization_id)),
                 _attempt(lambda: self.client.list_treatment_sale_drafts(self.organization_id)),
+                _attempt(lambda: self.client.list_catalog_products(self.organization_id)),
             ),
         )
 
@@ -284,6 +324,8 @@ class SaleCartWorkspace(QDialog):
                 self.visits = values[1]
             if values[2] is not None:
                 self.drafts = values[2]
+            if values[3] is not None:
+                self.catalog_products = values[3]
             self._load_warning = (
                 f"일부 자료 {failures}개를 불러오지 못했습니다. 성공한 자료는 유지했습니다."
                 if failures
@@ -305,14 +347,25 @@ class SaleCartWorkspace(QDialog):
                 self._load_warning
                 or "방문 내역을 불러왔습니다. 실제 수납은 ‘수납 기록 · 내역’에서 확인하세요."
             )
-        elif kind in {"create", "add", "update", "remove", "restore", "review", "cancel"}:
+        elif kind in {
+            "create",
+            "add",
+            "update",
+            "remove",
+            "restore",
+            "review",
+            "cancel",
+            "discount",
+        }:
             self._retry = None
             self.retry_button.hide()
             if kind == "create":
                 self._insert_created_visit(result)
             self._render_bundle(result)
             self.status_label.setText(
-                "장바구니를 저장했습니다. 아직 수납이나 매출로 확정되지 않았습니다."
+                "할인 규칙을 저장했습니다. 결제 전까지 장바구니를 다시 검토할 수 있습니다."
+                if kind == "discount"
+                else "장바구니를 저장했습니다. 아직 수납이나 매출로 확정되지 않았습니다."
             )
         self._controls()
 
@@ -329,6 +382,7 @@ class SaleCartWorkspace(QDialog):
         self.visit_list.clear()
         self.visit_list.blockSignals(False)
         self.draft_list.clear()
+        self.catalog_list.clear()
         self.bundle = None
         if not (0 <= row < len(self.customers)):
             self._controls()
@@ -397,8 +451,50 @@ class SaleCartWorkspace(QDialog):
         if isinstance(cart, dict):
             self.subtotal_label.setText(f"소계 {_money(cart.get('subtotal', 0))}")
             self.discount_label.setText(f"할인 {_money(cart.get('discount_total', 0))}")
+            kind = cart.get("discount_kind", "none")
+            value = cart.get("discount_value", "0")
+            reason = str(cart.get("discount_reason", ""))
+            if kind == "amount":
+                detail = f"정액 {_money(value)}원"
+            elif kind == "percent":
+                detail = f"비율 {value}%"
+            else:
+                detail = "수동 할인 없음"
+            self.discount_label.setText(
+                f"할인 {_money(cart.get('discount_total', 0))}원 · {detail}"
+                + (f" · {reason}" if reason else "")
+            )
+            history = bundle.get("discount_history", [])
+            if isinstance(history, list) and history:
+                history_lines = []
+                for event in history:
+                    if not isinstance(event, dict):
+                        continue
+                    event_kind = event.get("discount_kind", "none")
+                    event_value = event.get("discount_value", "0")
+                    event_amount = _money(event.get("discount_total", 0))
+                    event_label = (
+                        f"정액 {_money(event_value)}원"
+                        if event_kind == "amount"
+                        else f"비율 {event_value}%"
+                        if event_kind == "percent"
+                        else "할인 해제"
+                    )
+                    history_lines.append(
+                        f"{str(event.get('created_at', ''))[:16]} · {event_label} · "
+                        f"{event_amount}원 · {event.get('reason', '')}"
+                    )
+                self.discount_label.setToolTip("할인 변경 이력\n" + "\n".join(history_lines))
+            else:
+                self.discount_label.setToolTip("")
+            selected = self.discount_kind.findData(kind)
+            if selected >= 0:
+                self.discount_kind.setCurrentIndex(selected)
+            self.discount_value.setText("" if kind == "none" else str(value))
+            self.discount_reason.setText(reason)
             self.total_label.setText(f"청구 예정 {_money(cart.get('total_amount', 0))}")
         self._render_drafts()
+        self._render_catalog()
 
     def _insert_created_visit(self, bundle: dict[str, object]) -> None:
         visit = bundle.get("visit")
@@ -490,6 +586,10 @@ class SaleCartWorkspace(QDialog):
         self.removal_reason_input.clear()
         self.subtotal_label.setText("소계 0원")
         self.discount_label.setText("할인 0원")
+        self.discount_kind.setCurrentIndex(0)
+        self.discount_value.clear()
+        self.discount_reason.clear()
+        self.discount_confirmed.setChecked(False)
         self.total_label.setText("청구 예정 0원")
 
     def _render_drafts(self) -> None:
@@ -513,6 +613,31 @@ class SaleCartWorkspace(QDialog):
         for draft in available:
             self.draft_list.addItem(
                 f"{draft.get('description', '')}\n{_money(draft.get('amount', 0))}"
+            )
+
+    def _render_catalog(self) -> None:
+        used: set[str] = set()
+        if self.bundle and isinstance(self.bundle.get("lines"), list):
+            used = {
+                str(line.get("source_id"))
+                for line in self.bundle["lines"]
+                if isinstance(line, dict) and line.get("status") == "active"
+            }
+        self.visible_catalog = [
+            row
+            for row in self.catalog_products
+            if row.get("is_active") and str(row.get("id")) not in used
+        ]
+        self.catalog_list.clear()
+        for row in self.visible_catalog:
+            kind = "상품" if row.get("kind") == "product" else "회원권"
+            detail = (
+                f"재고 {row.get('stock_quantity', 0)}{row.get('unit_name', '')}"
+                if row.get("kind") == "product"
+                else _benefit(row)
+            )
+            self.catalog_list.addItem(
+                f"[{kind}] {row.get('name', '')}\n{_money(row.get('sale_price', 0))} · {detail}"
             )
 
     def _create_visit(self) -> None:
@@ -546,6 +671,110 @@ class SaleCartWorkspace(QDialog):
                 draft_id,
                 int(cart["version"]),
                 operation,
+            ),
+            retryable=True,
+        )
+
+    def _add_catalog(self) -> None:
+        if not self.can_manage or self.bundle is None:
+            return
+        row = self.catalog_list.currentRow()
+        if not (0 <= row < len(self.visible_catalog)):
+            return
+        visit, cart = self.bundle.get("visit"), self.bundle.get("cart")
+        if not isinstance(visit, dict) or not isinstance(cart, dict):
+            return
+        product_id = UUID(str(self.visible_catalog[row]["id"]))
+        operation = uuid4()
+        self._run(
+            "add",
+            lambda: self.client.add_catalog_product_to_cart(
+                self.organization_id,
+                UUID(str(visit["id"])),
+                product_id,
+                int(cart["version"]),
+                operation,
+            ),
+            retryable=True,
+        )
+
+    def _manage_catalog(self) -> None:
+        if self.busy or self._retry is not None or not self._discard_editor():
+            return
+        from business_assistant_desktop.catalog_dialog import CatalogManagerDialog
+
+        CatalogManagerDialog(
+            self.client, self.organization_id, can_manage=self.can_manage, parent=self
+        ).exec()
+        self.reload()
+
+    def _open_wallets(self) -> None:
+        row = self.customer_list.currentRow()
+        if self.busy or self._retry is not None or not (0 <= row < len(self.customers)):
+            return
+        from business_assistant_desktop.catalog_dialog import (
+            CustomerWalletDialog,
+            WalletUseDialog,
+        )
+
+        customer_id = UUID(str(self.customers[row].id))
+        cart = self.bundle.get("cart", {}) if self.bundle else {}
+        if (
+            self.bundle is not None
+            and isinstance(cart, dict)
+            and cart.get("status") in {"ready", "collecting"}
+        ):
+            WalletUseDialog(
+                self.client,
+                self.organization_id,
+                customer_id,
+                self.bundle,
+                can_manage=self.can_manage,
+                parent=self,
+            ).exec()
+            self._select_visit(self.visit_list.currentRow())
+        else:
+            CustomerWalletDialog(
+                self.client,
+                self.organization_id,
+                customer_id,
+                parent=self,
+                can_manage=self.can_manage,
+            ).exec()
+
+    def _apply_discount(self) -> None:
+        if not self.can_manage or self.bundle is None:
+            return
+        visit, cart = self.bundle.get("visit"), self.bundle.get("cart")
+        if not isinstance(visit, dict) or not isinstance(cart, dict):
+            return
+        kind = str(self.discount_kind.currentData())
+        value = self.discount_value.text().strip()
+        reason = self.discount_reason.text().strip()
+        if kind == "none":
+            value = "0"
+        if (
+            not reason
+            or len(reason) > 1000
+            or re.fullmatch(r"(?:0|[1-9][0-9]{0,11})", value) is None
+            or (kind == "amount" and int(value) < 1)
+            or (kind == "percent" and not 1 <= int(value) <= 99)
+            or not self.discount_confirmed.isChecked()
+        ):
+            self.status_label.setText("할인 종류·금액·사유와 확인 항목을 점검하세요.")
+            return
+        payload = {
+            "kind": kind,
+            "value": value,
+            "reason": reason,
+            "expected_version": int(cart["version"]),
+            "operation_id": str(uuid4()),
+            "confirmed": True,
+        }
+        self._run(
+            "discount",
+            lambda: self.client.apply_sale_cart_discount(
+                self.organization_id, UUID(str(visit["id"])), payload
             ),
             retryable=True,
         )
@@ -689,7 +918,13 @@ class SaleCartWorkspace(QDialog):
         self._select_visit(self.visit_list.currentRow())
 
     def _controls(self, *_args: object) -> None:
-        for selector in (self.customer_list, self.visit_list, self.line_table, self.draft_list):
+        for selector in (
+            self.customer_list,
+            self.visit_list,
+            self.line_table,
+            self.draft_list,
+            self.catalog_list,
+        ):
             selector.setEnabled(not self.busy and self._retry is None)
         has_customer = self.customer_list.currentRow() >= 0
         has_cart = self.bundle is not None
@@ -706,6 +941,14 @@ class SaleCartWorkspace(QDialog):
         self.new_visit_button.setEnabled(editable and has_customer)
         cart = self.bundle.get("cart", {}) if self.bundle else {}
         editable = editable and isinstance(cart, dict) and cart.get("status") in {"draft", "ready"}
+        self.apply_discount_button.setEnabled(editable and self.bundle is not None)
+        for widget in (
+            self.discount_kind,
+            self.discount_value,
+            self.discount_reason,
+            self.discount_confirmed,
+        ):
+            widget.setEnabled(editable and self.bundle is not None)
         row = self.line_table.currentRow()
         selected_line = self._line_rows[row] if 0 <= row < len(self._line_rows) else None
         selected_active = selected_line is not None and selected_line.get("status") == "active"
@@ -713,6 +956,11 @@ class SaleCartWorkspace(QDialog):
         self.add_draft_button.setEnabled(
             editable and has_cart and self.draft_list.currentRow() >= 0
         )
+        self.add_catalog_button.setEnabled(
+            editable and has_cart and self.catalog_list.currentRow() >= 0
+        )
+        self.manage_catalog_button.setEnabled(not self.busy and self._retry is None)
+        self.wallet_button.setEnabled(not self.busy and self._retry is None and has_customer)
         self.review_button.setEnabled(editable and has_cart and has_active_line)
         self.cancel_visit_button.setEnabled(editable and has_cart and not has_active_line)
         self.save_line_button.setEnabled(editable and selected_active)
@@ -776,3 +1024,14 @@ def _attempt(operation: Callable[[], Any]) -> tuple[Any, Exception | None]:
         return operation(), None
     except Exception as error:
         return None, error
+
+
+def _benefit(row: dict[str, object]) -> str:
+    parts = []
+    if str(row.get("benefit_money", "0")) != "0":
+        parts.append(f"{_money(row.get('benefit_money', 0))} 제공")
+    if int(row.get("benefit_count", 0)):
+        parts.append(f"{row.get('benefit_count')}회")
+    if row.get("valid_days"):
+        parts.append(f"{row.get('valid_days')}일")
+    return " · ".join(parts) or "혜택 확인 필요"

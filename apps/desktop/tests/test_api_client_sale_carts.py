@@ -31,6 +31,15 @@ def test_visit_sale_cart_paths_auth_and_payloads() -> None:
     assert api.remove_sale_cart_line(org, session, visit, line, 4, operation, "고객 요청") == bundle
     assert api.restore_sale_cart_line(org, session, visit, line, 5, operation) == bundle
     assert api.review_sale_cart(org, session, visit, 6, operation, True) == bundle
+    discount = {
+        "kind": "percent",
+        "value": "15",
+        "reason": "첫 방문",
+        "expected_version": 7,
+        "operation_id": str(operation),
+        "confirmed": True,
+    }
+    assert api.apply_sale_cart_discount(org, session, visit, discount) == bundle
     assert api.cancel_customer_visit(org, session, visit, 1, operation) == bundle
 
     base = f"/api/v1/organizations/{org}"
@@ -43,6 +52,7 @@ def test_visit_sale_cart_paths_auth_and_payloads() -> None:
         f"{base}/visits/{visit}/sale-cart/lines/{line}/remove",
         f"{base}/visits/{visit}/sale-cart/lines/{line}/restore",
         f"{base}/visits/{visit}/sale-cart/review",
+        f"{base}/visits/{visit}/sale-cart/discount",
         f"{base}/visits/{visit}/cancel",
     ]
     assert dict(calls[0].url.params) == {"customer_id": str(customer), "status": "open"}
@@ -58,6 +68,7 @@ def test_visit_sale_cart_paths_auth_and_payloads() -> None:
         "operation_id": str(operation),
     }
     assert json.loads(calls[5].content)["reason"] == "고객 요청"
+    assert json.loads(calls[8].content) == discount
     assert all(call.headers["Authorization"] == "Bearer token" for call in calls)
 
 
@@ -82,6 +93,15 @@ def test_payment_paths_preserve_exact_payload_and_cart_draft_endpoint():
     api.list_sale_cart_drafts(org, session)
     api.get_visit_payments(org, session, visit)
     api.record_visit_payment(org, session, visit, payload)
+    refund = {
+        "source_id": str(uuid4()),
+        "amount": "1",
+        "reason": "고객 요청",
+        "expected_version": 5,
+        "operation_id": str(uuid4()),
+        "confirmed": True,
+    }
+    api.refund_visit_payment(org, session, visit, refund)
     assert calls[0].url.path == f"/api/v1/organizations/{org}/sale-cart-drafts"
     assert (
         calls[1].url.path
@@ -89,4 +109,6 @@ def test_payment_paths_preserve_exact_payload_and_cart_draft_endpoint():
         == f"/api/v1/organizations/{org}/visits/{visit}/payments"
     )
     assert json.loads(calls[2].content) == payload
+    assert calls[3].url.path == f"/api/v1/organizations/{org}/visits/{visit}/payments/refunds"
+    assert json.loads(calls[3].content) == refund
     assert all(call.headers["Authorization"] == "Bearer token" for call in calls)

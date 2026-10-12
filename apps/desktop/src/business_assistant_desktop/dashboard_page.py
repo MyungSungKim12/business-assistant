@@ -1,7 +1,8 @@
 """Independent, permission-scoped operational snapshots from existing APIs."""
 
 from collections.abc import Callable
-from datetime import datetime
+from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal, InvalidOperation
 
 from PySide6.QtCore import QObject, QRunnable, Qt, QThreadPool, Signal, Slot
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
@@ -51,7 +52,9 @@ class DashboardPage(QWidget):
         row.setSpacing(16)
         for key, name, definition in (
             ("crm", "활성 고객", "조회된 고객 중 보관 고객 제외"),
+            ("appointments", "오늘 예정 예약", "한국 시간 오늘의 예약·확정 건수"),
             ("schedule", "미완료 할 일", "조회된 업무 중 열림·진행 중 상태"),
+            ("receivables", "현재 미수 금액", "미결제 방문 장바구니 잔액 합계 · 원"),
             ("files", "보관 중인 파일", "조회된 파일 중 보관 처리된 항목 제외"),
         ):
             card = QFrame()
@@ -80,11 +83,17 @@ class DashboardPage(QWidget):
             box.addWidget(refresh)
             open_button = QPushButton("목록 보기")
             open_button.setEnabled(key in readers)
-            open_button.clicked.connect(lambda checked=False, k=key: self.navigate.emit(k))
+            destination = {
+                "appointments": "schedule",
+                "receivables": "finance",
+            }.get(key, key)
+            open_button.clicked.connect(lambda checked=False, k=destination: self.navigate.emit(k))
             box.addWidget(open_button)
             row.addWidget(card, 1)
         layout.addLayout(row)
-        note = QLabel("예약·수납·미수금 지표는 업무 기능 연결 후 제공됩니다.")
+        note = QLabel(
+            "각 숫자는 현재 계정의 조회 시점 기준입니다. 수납 원장과 매출 확정치는 구분됩니다."
+        )
         note.setObjectName("page-subtitle")
         note.setWordWrap(True)
         layout.addWidget(note)
@@ -119,5 +128,39 @@ class DashboardPage(QWidget):
             self.values[key].setText("—")
             self.details[key].setText("집계 불가 · 새로고침으로 다시 시도하세요.")
         else:
-            self.values[key].setText(f"{value:,}")
+            self.values[key].setText(f"{value:,}" + ("원" if key == "receivables" else ""))
             self.details[key].setText(datetime.now().strftime("조회 시각 %Y-%m-%d %H:%M:%S"))
+
+
+def count_today_appointments(rows: list[dict[str, object]], today: date | None = None) -> int:
+    """Count only outstanding bookings in the Seoul business day."""
+    korea = timezone(timedelta(hours=9))
+    day = today or datetime.now(korea).date()
+    count = 0
+    for row in rows:
+        if row.get("status") not in {"reserved", "confirmed"}:
+            continue
+        start = datetime.fromisoformat(str(row["start_at"]))
+        if start.utcoffset() is None:
+            raise ValueError("Appointment time lacks an offset")
+        count += start.astimezone(korea).date() == day
+    return count
+
+
+def total_receivables(snapshot: dict[str, object]) -> int:
+    """Sum server-computed due amounts; reject malformed responses instead of inventing zero."""
+    rows = snapshot["receivables"]
+    if not isinstance(rows, list):
+        raise ValueError("Invalid receivables")
+    total = 0
+    for row in rows:
+        if not isinstance(row, dict):
+            raise ValueError("Invalid receivable")
+        try:
+            value = Decimal(str(row["due_amount"]))
+        except InvalidOperation as error:
+            raise ValueError("Invalid receivable amount") from error
+        if not value.is_finite() or value < 0 or value != value.to_integral_value():
+            raise ValueError("Invalid receivable amount")
+        total += int(value)
+    return total

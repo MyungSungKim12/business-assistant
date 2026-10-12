@@ -17,7 +17,7 @@ class MenuDefinition:
 MENU_CATALOG: tuple[MenuDefinition, ...] = (
     MenuDefinition("dashboard", "홈 대시보드", None),
     MenuDefinition("crm", "고객·거래처", "crm.basic"),
-    MenuDefinition("schedule", "일정·할 일", "schedule.basic"),
+    MenuDefinition("schedule", "일정·할 일", "task.basic"),
     MenuDefinition("treatments", "시술관리", "crm.basic"),
     MenuDefinition("documents", "문서 자동화", "document.template"),
     MenuDefinition("finance", "매출·지출", "finance.basic"),

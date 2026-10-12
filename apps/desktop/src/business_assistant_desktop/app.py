@@ -33,22 +33,20 @@ def create_application(argv: Sequence[str] | None = None) -> QApplication:
     application.setOrganizationName("Business Assistant")
     application.setApplicationName("Business Assistant")
     application.setApplicationDisplayName("Business Assistant")
-    if not application.property("product-font-loaded"):
-        font_root = Path(__file__).parent / "assets"
+    if not application.property("suit-font-loaded"):
+        asset_root = Path(__file__).parent / "assets"
         font_ids = [
-            QFontDatabase.addApplicationFont(str(font_root / f"Pretendard-{weight}.ttf"))
+            QFontDatabase.addApplicationFont(str(asset_root / f"SUIT-{weight}.ttf"))
             for weight in ("Regular", "Medium", "SemiBold", "Bold")
         ]
-        if all(font_id >= 0 for font_id in font_ids):
-            application.setProperty("product-font-loaded", True)
+        application.setProperty("suit-font-loaded", all(value >= 0 for value in font_ids))
     if not application.styleSheet():
         application.setStyle("Fusion")
-        font = QFont("Pretendard")
+        font = QFont()
+        font.setFamilies(["SUIT", "Segoe UI", "Malgun Gothic"])
         font.setPixelSize(14)
-        # Keep Windows' native outline rasterisation and snap small Korean glyphs
-        # to the device pixel grid. Forcing PreferAntialias makes 125/150% text
-        # look soft on some ClearType configurations.
-        font.setHintingPreference(QFont.HintingPreference.PreferFullHinting)
+        # Let the platform render its own UI fonts at the active monitor's DPI.
+        font.setHintingPreference(QFont.HintingPreference.PreferDefaultHinting)
         font.setStyleStrategy(QFont.StyleStrategy.PreferDefault)
         application.setFont(font)
         application.setStyleSheet(application_stylesheet())
