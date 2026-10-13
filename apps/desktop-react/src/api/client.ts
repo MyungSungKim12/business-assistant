@@ -69,6 +69,14 @@ export class ApiClient {
   createOperationRecord(o:string,module:'treatments'|'finance'|'documents',input:Record<string,unknown>):Promise<OperationRecord>{return this.authed({method:'POST',path:`/organizations/${o}/operations/${module}`,headers:{'Content-Type':'application/json'},body:JSON.stringify(input)},operationRecordSchema)}
   updateOperationRecord(o:string,module:'finance'|'documents',id:string,input:Record<string,unknown>):Promise<OperationRecord>{return this.authed({method:'PATCH',path:`/organizations/${o}/operations/${module}/${id}`,headers:{'Content-Type':'application/json'},body:JSON.stringify(input)},operationRecordSchema)}
 
+  /** 모듈별 API가 쓰는 공개 호출 도우미. 경로는 /api/v1 이후부터 쓴다. */
+  call<T>(method: 'GET'|'POST'|'PUT'|'PATCH'|'DELETE', path: string, schema: z.ZodType<T>, body?: unknown): Promise<T> {
+    return this.authed({ method, path, headers: body === undefined ? {} : { 'Content-Type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) }, schema);
+  }
+  callVoid(method: 'POST'|'PUT'|'PATCH'|'DELETE', path: string, body?: unknown): Promise<void> {
+    return this.authedVoid({ method, path, headers: body === undefined ? {} : { 'Content-Type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+  }
+
   private async authed<T>(request: HttpRequest, schema: z.ZodType<T>): Promise<T> {
     if (!this.accessToken) throw new ApiError(401, 'NOT_AUTHENTICATED', '로그인이 필요합니다.', false);
     let response = await this.send({ ...request, headers: { ...request.headers, Authorization: `Bearer ${this.accessToken}` } });
