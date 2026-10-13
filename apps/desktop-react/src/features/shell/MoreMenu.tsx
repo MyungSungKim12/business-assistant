@@ -5,15 +5,16 @@ import { moreMenuIds, visibleGroups } from './menuCatalog';
 interface MoreMenuProps {
   active: MenuId;
   canManage: boolean;
+  platformAdmin?: boolean;
   onNavigate: (id: MenuId) => void;
 }
 
 /** 더보기: 나머지 모든 메뉴를 분류별로 한눈에 보여 주는 전체 메뉴 패널. */
-export function MoreMenu({ active, canManage, onNavigate }: MoreMenuProps) {
+export function MoreMenu({ active, canManage, platformAdmin = false, onNavigate }: MoreMenuProps) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
-  const groups = visibleGroups(canManage);
-  const activeInside = moreMenuIds(canManage).includes(active);
+  const groups = visibleGroups(canManage, platformAdmin);
+  const activeInside = moreMenuIds(canManage, platformAdmin).includes(active);
 
   useEffect(() => {
     if (!open) return undefined;

@@ -50,6 +50,17 @@ const RULES: Record<string, Rule> = {
     action: (b) => (b.action === 'publish' ? 'template.publish' : null), targetType: 'document_template', target: (p) => p.templateId,
     metadata: (_p, b) => pick(b, ['operation_id', 'expected_revision']),
   },
+  [`POST ${base}/members`]: {
+    action: fixed('member.add'), targetType: 'member', target: noTarget,
+    metadata: (_p, b) => pick(b, ['role']),
+  },
+  [`PATCH ${base}/members/:userId`]: {
+    action: fixed('member.role_change'), targetType: 'member', target: (p) => p.userId,
+    metadata: (_p, b) => pick(b, ['role']),
+  },
+  [`DELETE ${base}/members/:userId`]: {
+    action: fixed('member.remove'), targetType: 'member', target: (p) => p.userId, metadata: () => ({}),
+  },
   [`DELETE ${base}/files/:fileId`]: {
     action: fixed('file.archive'), targetType: 'file', target: (p) => p.fileId, metadata: () => ({}),
   },

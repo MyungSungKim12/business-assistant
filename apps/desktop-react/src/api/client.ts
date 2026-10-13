@@ -1,4 +1,4 @@
-import type { z } from 'zod';
+import { z } from 'zod';
 
 import type { Platform } from '../platform/types';
 import { ApiError, apiError } from './errors';
@@ -8,10 +8,13 @@ import type { HttpRequest, HttpResponse } from './transport';
 export class ApiClient {
   private accessToken: string | null = null;
   private refreshInFlight: Promise<Session> | null = null;
+  /** 플랫폼 관리자 여부 확인 결과(세션 동안 유지). 실패는 저장하지 않아 다음에 다시 시도한다. */
+  private platformAdmin: Promise<boolean> | null = null;
 
   constructor(private readonly platform: Platform) {}
 
   async login(email: string, password: string): Promise<Session> {
+    this.platformAdmin = null;
     const response = await this.send({ method: 'POST', path: '/auth/login', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) });
     const session = this.parse(sessionSchema, response);
     await this.applySession(session);
@@ -49,7 +52,21 @@ export class ApiClient {
 
   async logout(): Promise<void> {
     this.accessToken = null;
+    this.platformAdmin = null;
     await this.platform.tokenStore.clear();
+  }
+
+  /**
+   * 관리자 API 서버(/admin/me)가 이 사용자를 플랫폼 관리자로 확인하는지. 관리자 API 주소가 없거나 호출이 실패하면 false(메뉴 숨김).
+   * 성공한 결과는 로그아웃·다시 로그인할 때까지 재사용한다.
+   */
+  isPlatformAdmin(): Promise<boolean> {
+    if (!this.platformAdmin) {
+      this.platformAdmin = this.call('GET', '/admin/me', z.object({ platform_admin: z.boolean() }))
+        .then((result) => result.platform_admin)
+        .catch(() => { this.platformAdmin = null; return false; });
+    }
+    return this.platformAdmin;
   }
 
   listOrganizations(): Promise<Organization[]> {

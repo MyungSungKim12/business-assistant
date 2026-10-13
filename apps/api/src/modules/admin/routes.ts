@@ -22,6 +22,13 @@ export const subscriptionRequest = z.object({
  * 서비스 키가 없으면 503이다. 확인 순서: 인증(401) → 서비스 설정(503) → 관리자(403) → 입력(422) → 처리.
  */
 export function registerAdminRoutes(app: FastifyInstance, gateway: AdminGateway | undefined): void {
+  // 클라이언트가 '구독' 메뉴 노출 여부를 정하는 데 쓴다. 서비스 키 없이 토큰 소유자 ID 와 관리자 목록만 대조한다.
+  app.get('/api/v1/admin/me', async (request) => {
+    const token = bearerToken(request);
+    if (!gateway) throw new ApiFailure(503, 'Admin subscription service unavailable');
+    const userId = await gateway.userId(token);
+    return { platform_admin: gateway.isPlatformAdmin(userId) };
+  });
   app.post('/api/v1/admin/organizations/:organizationId/subscription', async (request) => {
     const token = bearerToken(request);
     if (!gateway) throw new ApiFailure(503, 'Admin subscription service unavailable');

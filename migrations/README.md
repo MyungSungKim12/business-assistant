@@ -107,3 +107,34 @@
 
 - `040_audit_log.sql`: `public.audit_events`(append-only, RLS: 조직 owner/admin만 조회)와 사용자 토큰으로 호출하는 보안 정의 함수 `public.record_audit_event(...)`를 추가한다. 호출자(`auth.uid()`)가 actor로 강제되고 조직 구성원만 기록할 수 있으며, 서비스 키(관리자 API)는 `source = 'service'`로 직접 insert한다. update/delete/truncate는 트리거로 막는다. 데이터는 새 테이블뿐이고 기존 자료는 바꾸지 않으며 여러 번 실행해도 안전하다.
 - **039 다음에** SQL Editor에서 실행한다. 이 작업에서는 운영 DB에 적용하지 않았다. 적용 전에 서버를 새 버전으로 올리면 감사 기록 RPC가 실패하므로, 일반 작업은 계속되지만(경고 로그만) **고객 영구 삭제는 감사 기록이 없으면 거부(fail-closed)된다**. 따라서 040을 먼저 적용한 뒤 서버를 재시작한다. 적용 후 `GET /api/v1/organizations/{조직}/audit-events`로 확인한다.
+
+## 041~045 6단계 기능 마이그레이션 (적용 순서)
+
+**순서: 039 → 040 → 041 → 042 → 043 → 044 → 045.** 각 파일은 여러 번 실행해도 안전하다(멱등). 운영 DB에는 자동 적용하지 않았고, 이 작업 환경에는 PostgreSQL이 없어 SQL을 실제로 실행해 보지 못했다(문자열 계약 테스트만 통과). **먼저 스테이징 DB나 SQL Editor의 트랜잭션 안에서 실행해 보고** 적용한다. **마이그레이션을 먼저 적용한 뒤 API 서버를 재시작하고 앱을 갱신한다.** 새 서버를 먼저 올리면 해당 기능만 503으로 실패하고 기존 기능은 계속 동작한다.
+
+### 041 상품 안전재고·서비스 가격/수정·회원권 이력
+
+- `041_catalog_service_wallet_admin.sql`: 상품별 안전재고(`catalog_products.low_stock_threshold`)와 안전재고 변경 RPC, 서비스 가격·카테고리·편집 버전 컬럼과 서비스 수정·비활성 RPC(`update_appointment_service`), 조직 전체 지갑 목록(`list_organization_wallets`)과 지갑 잔액 변동 이력(`list_wallet_history`) 읽기 RPC를 추가한다. 새 컬럼은 모두 기본값이 있어 기존 자료는 바꾸지 않는다.
+- 적용 후 회원권 화면(목록·이력), 서비스 수정, 상품 안전재고 저장으로 확인한다.
+
+### 042 매출 내역 검색·재무 월 마감·전체 미수금
+
+- `042_sales_search_finance_month_close.sql`: 수납·환불·반품 내역 검색 읽기 RPC `list_sale_payments`, 재무 월 마감 테이블 `finance_month_closings`와 마감/재오픈 RPC(owner/admin만), 마감된 달의 `finance_transactions` 입력·수정(보관 포함)을 막는 트리거, 조직 전체 미수금 요약 RPC `get_receivables_summary`를 추가한다. 기존 데이터는 바꾸지 않는다.
+- 일 마감(033, 영업일 시재)과 별개의 월 단위 장부 마감이다. **월 마감 후에는 그 달 날짜의 수입·지출 등록·수정과 그 달 날짜로 기록되는 수납·환불이 거절된다**(재오픈 후 가능). 현재 달을 마감하면 오늘 수납도 막히므로 보통 지난달을 마감한다.
+- 적용 후 확인: 수납 → 매출 화면 `매출 내역` 탭 조회 → 지난달 `월 마감` → 그 달 날짜 거래 등록 시 안내.
+
+### 043 서명 증빙 해시·시술 사진 전/후 구분
+
+- `043_document_evidence_photo_phase.sql`: 동의서 서명·교부·철회 이벤트의 SHA-256 증빙 해시를 보관하는 append-only 표 `treatment_document_event_proofs`와, 시술 사진 전/후/기타 구분 컬럼 `treatment_photos.phase`(nullable)를 추가한다. 기존 이벤트·사진 행은 수정하지 않는다.
+- **043을 먼저 적용한 뒤** 같은 버전의 API 서버와 앱을 배포한다. 적용 전에 새 API를 올리면 동의서 이력 조회와 시술 사진 조회가 실패한다. 기존 이벤트는 "증빙 없음"으로 표시된다.
+
+### 044 고객 검색·태그 관리·중복 병합
+
+- `044_customer_crm_tools.sql`: 고객 상태 제약에 `archived` 추가, 검색·정렬 인덱스, 태그 목록·이름 바꾸기·병합·삭제 RPC, 중복 후보 조회 RPC, 고객 병합 RPC(`merge_customers`)와 병합 이력 테이블을 추가한다. CHECK 제약 교체와 함수·테이블 추가만 한다. **운영 DB의 고객 상태 제약이 이미 다르게 바뀌어 있는지 먼저 확인한다.**
+- **병합은 되돌릴 수 없다.** 보조 고객은 보관 상태로 남고 `customer_merge_history`에 스냅샷이 남는다. 시술 판매 인계 기록(`treatment_sale_drafts`)이 있는 고객은 병합할 수 없다. 병합 함수는 여러 테이블의 고객 참조를 한 번에 옮기므로 **반드시 테스트 데이터로 먼저 실행해 확인한 뒤 운영에서 사용한다.**
+- 적용 순서: 044 → API 서버 재시작 → 앱 갱신. 앱이 먼저 올라오면 서버 검색 경로가 없어 예전 전체 목록으로 동작한다.
+
+### 045 구성원 관리
+
+- `045_organization_members.sql`: 구성원 관리 RPC 4종(`list_organization_members`, `add_organization_member_by_email`, `set_organization_member_role`, `remove_organization_member`)을 추가한다. 테이블·정책 변경은 없다. `auth.users`를 읽는 보안 정의 함수이므로 적용 후 `authenticated`만 실행할 수 있는지(`anon`·`public` 권한 없음) 확인한다.
+- 적용 전에는 구성원 화면이 목록을 불러오지 못하므로 API(구성원 라우트)를 배포하기 전에 먼저 적용한다. 구성원 추가는 **이미 가입한 사용자의 이메일만** 지원한다(이메일 초대 발송 없음). 감사 로그(`member.*`)는 040이 필요하다.

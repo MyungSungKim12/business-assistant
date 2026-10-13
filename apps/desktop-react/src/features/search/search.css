@@ -1,0 +1,56 @@
+/* search.css: 전체 검색 팔레트(Ctrl+K) */
+.search {
+  display: grid;
+  gap: 6px;
+}
+
+.search__input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.search__list,
+.search__list ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.search__list {
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.search__group {
+  padding: 4px 6px 2px;
+  color: var(--label);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.search__item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.search__item small {
+  overflow: hidden;
+  color: var(--text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search__item.is-active {
+  background: var(--selection);
+}
+
+.search__status {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 11px;
+}

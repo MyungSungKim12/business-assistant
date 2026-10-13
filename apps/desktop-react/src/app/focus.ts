@@ -1,0 +1,10 @@
+/**
+ * 검색 결과 등에서 화면을 열면서 "이 항목을 선택해 달라"고 전달하는 정보.
+ * Workspace 가 받아 두며, 각 화면이 focus 를 받도록 바뀌면 그 화면에 넘긴다(통합 시 연결).
+ * nonce 는 같은 항목을 다시 선택해도 변경으로 감지되게 하는 값이다.
+ */
+export interface WorkspaceFocus {
+  kind: 'customer' | 'appointment' | 'task';
+  id: string;
+  nonce: number;
+}

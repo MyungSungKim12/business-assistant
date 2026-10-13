@@ -14,11 +14,12 @@ vi.mock('../features/customers/CustomerPage', () => ({ CustomerPage: stub('custo
 vi.mock('../features/dashboard/DashboardPage', () => ({ DashboardPage: stub('dashboard') }));
 vi.mock('../features/documents', () => ({ DocumentPage: stub('documents'), FilePage: stub('files'), TreatmentDocumentModal: stub('treatment-documents') }));
 vi.mock('../features/management', () => ({ ManagementPage: stub('management') }));
+vi.mock('../features/members', () => ({ MembersPage: stub('members') }));
 vi.mock('../features/sales', () => ({ FinancePage: stub('finance'), MembershipPage: stub('memberships'), SalesPage: stub('sales') }));
 vi.mock('../features/tasks/TaskPage', () => ({ TaskPage: stub('tasks') }));
 vi.mock('../features/treatments', () => ({ TreatmentPage: stub('treatments') }));
 
-const menus: MenuId[] = ['dashboard', 'tasks', 'customers', 'appointments', 'treatments', 'sales', 'memberships', 'inventory', 'services', 'staff', 'finance', 'documents', 'files', 'management', 'admin'];
+const menus: MenuId[] = ['dashboard', 'tasks', 'customers', 'appointments', 'treatments', 'sales', 'memberships', 'inventory', 'services', 'staff', 'finance', 'documents', 'files', 'management', 'members', 'admin'];
 
 describe('Workspace', () => {
   it.each(menus)('shows the %s screen', (menu) => {

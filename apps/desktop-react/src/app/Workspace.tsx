@@ -6,11 +6,13 @@ import { CustomerPage } from '../features/customers/CustomerPage';
 import { DashboardPage } from '../features/dashboard/DashboardPage';
 import { DocumentPage, FilePage, TreatmentDocumentModal } from '../features/documents';
 import { ManagementPage } from '../features/management';
+import { MembersPage } from '../features/members';
 import { FinancePage, MembershipPage, SalesPage } from '../features/sales';
 import type { MenuId } from '../features/shell/TopBar';
 import { TaskPage } from '../features/tasks/TaskPage';
 import { TreatmentPage } from '../features/treatments';
 import { ErrorBoundary } from './ErrorBoundary';
+import type { WorkspaceFocus } from './focus';
 
 interface WorkspaceProps {
   api: ApiClient;
@@ -19,6 +21,14 @@ interface WorkspaceProps {
   organizationName?: string;
   /** 소유자·관리자 여부 */
   canManage?: boolean;
+  /** 로그인한 사용자 ID와 이 매장에서의 역할(구성원 관리 화면에서 본인 보호에 쓴다). */
+  currentUserId?: string;
+  currentRole?: 'owner' | 'admin' | 'member';
+  /**
+   * 검색 결과 등에서 화면을 열면서 전달하는 선택 대상. 각 화면이 받도록 바뀌면 그 화면에 넘긴다.
+   * 현재 고객관리가 받아 고객을 선택한다. 예약·할 일은 해당 메뉴만 열린다.
+   */
+  focus?: WorkspaceFocus | null;
   /** 구성원(member)이면 true. 조회 위주 화면의 쓰기 UI를 숨긴다. */
   readOnly: boolean;
   onNavigate: (id: MenuId) => void;
@@ -38,12 +48,12 @@ export function Workspace(props: WorkspaceProps) {
   );
 }
 
-function WorkspacePage({ api, organizationId, active, organizationName, canManage = false, readOnly, onNavigate, onDirtyChange }: WorkspaceProps) {
+function WorkspacePage({ api, organizationId, active, organizationName, canManage = false, currentUserId = '', currentRole = 'member', focus, readOnly, onNavigate, onDirtyChange }: WorkspaceProps) {
   const props = { api, organizationId, readOnly };
   switch (active) {
     case 'dashboard': return <DashboardPage api={api} organizationId={organizationId} onNavigate={onNavigate} organizationName={organizationName} readOnly={readOnly} canManage={canManage} />;
     case 'tasks': return <TaskPage api={api} organizationId={organizationId} readOnly={readOnly} />;
-    case 'customers': return <CustomerPage {...props} />;
+    case 'customers': return <CustomerPage {...props} focusCustomerId={focus?.kind === 'customer' ? focus.id : undefined} focusNonce={focus?.nonce} />;
     // 예약은 구성원도 등록·변경할 수 있다. 공간·장비 관리는 소유자·관리자만 한다.
     case 'appointments': return <AppointmentPage api={api} organizationId={organizationId} readOnly={false} canManageResources={!readOnly} />;
     case 'treatments':
@@ -63,6 +73,7 @@ function WorkspacePage({ api, organizationId, active, organizationName, canManag
     case 'documents': return <DocumentPage {...props} />;
     case 'files': return <FilePage {...props} />;
     case 'management': return <ManagementPage {...props} />;
+    case 'members': return <MembersPage api={api} organizationId={organizationId} currentUserId={currentUserId} currentRole={currentRole} />;
     case 'admin': return <AdminSubscriptionPage api={api} organizationId={organizationId} />;
   }
 }

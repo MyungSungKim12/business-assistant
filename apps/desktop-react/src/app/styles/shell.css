@@ -160,3 +160,13 @@ body {
   min-height: 0;
 }
 
+
+.topbar__search kbd {
+  margin-left: 4px;
+  padding: 0 3px;
+  border: 1px solid var(--topbar-border);
+  border-radius: 2px;
+  color: var(--topbar-muted);
+  font-family: inherit;
+  font-size: 10px;
+}

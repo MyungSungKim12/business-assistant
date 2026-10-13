@@ -1,0 +1,42 @@
+/* members.css: 구성원 관리 */
+.members-page {
+  gap: 6px;
+}
+
+.members-add {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 6px 8px;
+  flex: none;
+}
+
+.members-add label {
+  min-width: 220px;
+}
+
+.members-add__hint,
+.members-add .form-error {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+.members-table {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.members-table td select {
+  width: 100%;
+}
+
+.members-self {
+  margin-left: 5px;
+  padding: 0 4px;
+  border-radius: 2px;
+  background: var(--selection);
+  color: var(--accent);
+  font-size: 10px;
+  font-style: normal;
+}

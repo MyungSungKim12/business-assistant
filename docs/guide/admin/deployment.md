@@ -30,6 +30,7 @@
 | `APP_BODY_LIMIT_BYTES` | `1048576` | 둘 다 | 요청 본문 최대 크기. 초과 시 413 |
 | `APP_LOG_LEVEL` | `info` | 둘 다 | `fatal` `error` `warn` `info` `debug` `trace` `silent` |
 | `APP_AUTH_RATE_LIMIT_ENABLED` | `true` | 일반 | 로그인·회원가입·갱신 시도 제한 사용 여부 |
+| `APP_ACCESS_CACHE_TTL_SEC` | `30` | 일반 | 권한(멤버십·구독) 검사 결과 메모리 캐시 시간(초). `0`이면 끈다. 구성원 변경 시 즉시 비우지만 서버를 여러 대로 늘리면 다른 서버는 이 시간까지 기다린다 |
 | `APP_AUTH_LOGIN_MAX` / `APP_AUTH_LOGIN_WINDOW_SEC` | `10` / `600` | 일반 | 같은 IP(또는 IP+이메일)의 로그인 **실패** 허용 횟수 / 기간(초) |
 | `APP_AUTH_LOGIN_EMAIL_MAX` | `30` | 일반 | 같은 이메일의 로그인 실패 합계(모든 IP 합산, 같은 기간) |
 | `APP_AUTH_SIGNUP_MAX` / `APP_AUTH_SIGNUP_WINDOW_SEC` | `5` / `3600` | 일반 | 같은 IP·같은 이메일의 회원가입 시도 횟수 / 기간 |
