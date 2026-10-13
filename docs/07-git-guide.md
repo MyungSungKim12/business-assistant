@@ -2,15 +2,19 @@
 
 Git은 변경 이력을 남기고 팀원과 안전하게 공유하는 도구입니다. 비밀값이 들어갈 수 있는 `.env`는 이미 무시되지만, 커밋 전에는 항상 변경 내용을 직접 확인하세요.
 
-## 브랜치 이름
+## 브랜치 운영: main 하나
 
-작업 목적을 짧고 소문자로 적습니다. 예: `feature/customer-management`, `fix/login-timeout`, `docs/onboarding-guide`. 하나의 브랜치는 한 가지 목적에 집중합니다.
+이 프로젝트는 **`main` 브랜치 하나만** 관리합니다. 기능별 브랜치를 만들지 않고, 작은 단위로 검증한 뒤 `main`에 바로 커밋하고 푸시합니다. 푸시하면 GitHub Actions가 타입 검사·테스트·빌드(CI)를 실행하므로, 푸시 후 Actions 탭에서 통과 여부를 확인합니다. 실패하면 다음 커밋으로 바로 고칩니다.
 
 ```powershell
 git switch main
 git pull --ff-only origin main
-git switch -c feature/customer-management
 ```
+
+- 한 커밋은 한 가지 목적에 집중하고, 메시지는 `기능:`, `수정:`, `문서:`, `운영:`처럼 종류로 시작합니다.
+- 푸시 전에 `scripts/check.ps1`(타입 검사·테스트·빌드)을 통과시킵니다.
+- 위험한 변경(데이터베이스 마이그레이션 등)은 `migrations/README.md`의 적용 순서 안내를 먼저 읽고, 운영 DB에 적용한 뒤 앱을 갱신합니다.
+- 협업자가 늘어 검토가 필요해지면 그때 보호 규칙(Pull Request)을 도입합니다.
 
 ## 일상 작업 순서
 
@@ -21,10 +25,10 @@ git add docs/05-development-guide.md
 git diff --cached
 git commit -m "문서: 개발 환경 안내 추가"
 git pull --rebase origin main
-git push -u origin feature/customer-management
+git push origin main
 ```
 
-`git status`는 바뀐 파일을, `git diff`는 아직 추가하지 않은 차이를, `git diff --cached`는 커밋에 들어갈 차이를 보여 줍니다. `git add .` 대신 필요한 파일을 지정하면 의도하지 않은 파일을 넣을 가능성이 줄어듭니다.
+`git status`는 바뀐 파일을, `git diff`는 아직 추가하지 않은 차이를, `git diff --cached`는 커밋에 들어갈 차이를 보여 줍니다. `git add .` 대신 필요한 파일을 지정해 의도하지 않은 파일이 들어가지 않게 합니다.
 
 ## 비밀정보 확인
 
