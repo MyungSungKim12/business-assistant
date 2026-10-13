@@ -12,12 +12,19 @@ export type RequestOptions = {
   mapCodes?: boolean;
   /** 코드 없는 400을 422로 취급한다(테이블 쓰기·RPC 입력 거부). */
   badRequestIsInvalid?: boolean;
+  /** Prefer 헤더를 직접 지정한다(예: 중복 무시 삽입). representation 보다 우선한다. */
+  prefer?: string;
 };
 
 const codeStatus: Record<string, 'conflict' | 'notFound' | 'forbidden' | 'invalid'> = {
   P0001: 'conflict', P0002: 'notFound', '42501': 'forbidden', '22023': 'invalid', '23514': 'invalid', '22P02': 'invalid',
 };
 const fallback = { conflict: 409, notFound: 404, forbidden: 403, invalid: 422 } as const;
+
+function preferHeader(options: RequestOptions): Record<string, string> {
+  if (options.prefer) return { Prefer: options.prefer };
+  return options.representation ? { Prefer: 'return=representation' } : {};
+}
 
 export function createDocumentHttp(config: ServerConfig, fetcher: typeof fetch = fetch) {
   const base = config.APP_SUPABASE_URL.replace(/\/+$/, '');
@@ -42,7 +49,7 @@ export function createDocumentHttp(config: ServerConfig, fetcher: typeof fetch =
     url.search = new URLSearchParams(options.query ?? {}).toString();
     try {
       const response = await fetcher(url, {
-        method, headers: headers(token, options.representation ? { Prefer: 'return=representation' } : {}),
+        method, headers: headers(token, preferHeader(options)),
         body: options.body === undefined ? undefined : JSON.stringify(options.body), signal: AbortSignal.timeout(10_000), redirect: 'error',
       });
       const text = await response.text();

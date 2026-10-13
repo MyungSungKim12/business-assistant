@@ -104,8 +104,10 @@ describe('동의서 서명·교부·철회', () => {
     const retry = await post(app, { ...body, values });
     expect(first.statusCode).toBe(201);
     expect(first.body).toBe(retry.body);
-    expect(calls[0].body).toEqual(calls[1].body);
-    expect((calls[0].body as { p_values: unknown }).p_values).toEqual(values);
+    const rpcCalls = calls.filter((call) => call.url.pathname.endsWith('/rpc/record_treatment_document_event'));
+    expect(rpcCalls).toHaveLength(2);
+    expect(rpcCalls[0].body).toEqual(rpcCalls[1].body);
+    expect((rpcCalls[0].body as { p_values: unknown }).p_values).toEqual(values);
   });
 
   const stroke = [[0, 0], [1, 1]];

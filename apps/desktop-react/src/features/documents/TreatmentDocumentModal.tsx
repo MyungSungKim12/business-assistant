@@ -3,6 +3,8 @@ import { Modal, confirm, notify } from '@business-assistant/react-ui';
 import type { ApiClient } from '../../api/client';
 import { documentApi } from './api';
 import { ConsentModal } from './ConsentModal';
+import { exportConsentPdf } from './documentPdf';
+import { PdfExportButton } from './PdfExportButton';
 import { formatTime, isDefinitive, messageFor, newOperationId, statusOf } from './errors';
 import { FIELD_NAMES, type DocumentTemplate, type IssuedDocument, type Scope, type TreatmentPreview } from './schemas';
 
@@ -156,7 +158,10 @@ export function TreatmentDocumentModal({ api, organizationId, customerId, treatm
           {current && <>
             <p className="doc-preview-info">{`${current.title} · 서식 v${current.template_version} · 발행본 · 서명 상태 별도 확인\n발행일 ${formatTime(current.issued_at)} · 발행자 ID ${current.issued_by}\n${sourceLabel(current.source_snapshot)}`}</p>
             <pre className="doc-body" aria-label="발행본 내용">{current.content}</pre>
-            <button type="button" disabled={busy || pending !== null} onClick={() => setConsent(current)}>선택한 발행본 · 서명·교부·철회</button>
+            <div className="doc-actions">
+              <button type="button" disabled={busy || pending !== null} onClick={() => setConsent(current)}>선택한 발행본 · 서명·교부·철회</button>
+              <PdfExportButton disabled={busy || pending !== null} onExport={() => exportConsentPdf(api, scope, current)} />
+            </div>
           </>}
         </div>}
         <p role={failed ? 'alert' : 'status'} className={failed ? 'form-error' : 'muted'}>{status}</p>

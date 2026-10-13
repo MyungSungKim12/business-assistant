@@ -19,6 +19,7 @@ const templateParams = orgParams.extend({ templateId: z.uuid() });
 const documentParams = orgParams.extend({ documentId: z.uuid() });
 const treatmentParams = orgParams.extend({ customerId: z.uuid(), treatmentId: z.uuid() });
 const issuedParams = treatmentParams.extend({ documentId: z.uuid() });
+const eventParams = issuedParams.extend({ eventId: z.uuid() });
 const fileParams = orgParams.extend({ fileId: z.uuid() });
 
 const trimmedName = z.string().transform((value) => value.trim()).pipe(z.string().min(1).max(200));
@@ -172,6 +173,13 @@ export function registerDocumentRoutes(app: FastifyInstance, organizations: OrgA
     const c = context(request), p = params(request, issuedParams), input = parse(consentRequest, request.body, 'Invalid document consent request');
     await requireTreatmentAccess(c, p.organizationId, true);
     return reply.code(201).send(await c.documents.recordConsentEvent(c.token, scopeOf(p), p.documentId, input));
+  });
+
+  // 증빙 해시를 지금 이벤트 행으로 다시 계산해 저장값과 일치하는지 알려 준다(읽기 전용).
+  app.get(`${consentEvents}/:eventId/verify`, async (request) => {
+    const c = context(request), p = params(request, eventParams);
+    await requireTreatmentAccess(c, p.organizationId, false);
+    return c.documents.verifyConsentEvent(c.token, scopeOf(p), p.documentId, p.eventId);
   });
 
   // ----- 파일 자료(멤버 누구나 목록·업로드·다운로드, 보관은 owner/admin) -----

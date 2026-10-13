@@ -2,12 +2,17 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Modal, confirm, notify } from '@business-assistant/react-ui';
 import type { ApiClient } from '../../api/client';
 import { documentApi } from './api';
+import { exportConsentPdf } from './documentPdf';
 import { formatTime, isDefinitive, messageFor, newOperationId, statusOf } from './errors';
-import { consentActionLabel, deliveryMethodLabel, type ConsentAction, type ConsentEvent, type ConsentRequest, type IssuedDocument, type Scope } from './schemas';
+import { PdfExportButton } from './PdfExportButton';
+import { consentActionLabel, deliveryMethodLabel, evidenceStatusLabel, type ConsentAction, type ConsentEvent, type ConsentRequest, type EvidenceVerification, type IssuedDocument, type Scope } from './schemas';
 import { SignaturePad } from './SignaturePad';
 import { hasInk, type Strokes } from './signature';
 
 type Tab = 'sign' | 'deliver' | 'revoke' | 'history';
+/** 이벤트별 무결성 확인 상태. 확인 중이거나 결과(또는 실패 문구)를 들고 있다. */
+type Verification = { busy: boolean; result?: EvidenceVerification; error?: string };
+const shortHash = (hash: string | undefined | null) => (hash ? hash.slice(0, 8) : '');
 const empty = { signer: '', strokes: [] as Strokes, signConfirm: false, method: 'paper', recipient: '', reference: '', note: '', deliverConfirm: false, reason: '', revokeConfirm: false };
 
 function signedValues(event: ConsentEvent | undefined): { signer: string; strokes: Strokes } {
@@ -35,6 +40,7 @@ export function ConsentModal({ api, scope, document, readOnly, onClose }: { api:
   const [tab, setTab] = useState<Tab>('sign');
   const [form, setForm] = useState(empty);
   const [selected, setSelected] = useState(-1);
+  const [verifications, setVerifications] = useState<Record<string, Verification>>({});
   const patch = (changes: Partial<typeof empty>) => setForm((old) => ({ ...old, ...changes }));
 
   const signEvent = events.find((event) => event.action === 'sign');
@@ -101,6 +107,18 @@ export function ConsentModal({ api, scope, document, readOnly, onClose }: { api:
     void send(request);
   };
 
+  /** 서버가 저장된 증빙 해시와 지금 기록으로 다시 계산한 값을 비교한다. 읽기 전용이라 멤버도 할 수 있다. */
+  const verify = async (item: ConsentEvent) => {
+    setVerifications((old) => ({ ...old, [item.id]: { busy: true } }));
+    try {
+      const result = await documentApi.verifyEvent(api, scope, document.id, item.id);
+      setVerifications((old) => ({ ...old, [item.id]: { busy: false, result } }));
+    } catch (error) {
+      const message = messageFor(error, { 403: '무결성 확인 권한이 없습니다.', 404: '기록을 찾을 수 없습니다. 이력을 새로고침하세요.' }, '무결성을 확인하지 못했습니다. 다시 시도하세요.');
+      setVerifications((old) => ({ ...old, [item.id]: { busy: false, error: message } }));
+    }
+  };
+
   const close = async () => {
     if (busy) return setStatus('요청 처리 후 닫아주세요.');
     if (dirty || pending) {
@@ -111,6 +129,7 @@ export function ConsentModal({ api, scope, document, readOnly, onClose }: { api:
   };
 
   const event = events[selected];
+  const check = event ? verifications[event.id] : undefined;
   const eventDetail = (item: ConsentEvent) => {
     const v = item.values as Record<string, string>;
     if (item.action === 'sign') return `서명자: ${v.signer_name}\n손서명은 손서명 탭에서 조회할 수 있습니다.`;
@@ -160,14 +179,20 @@ export function ConsentModal({ api, scope, document, readOnly, onClose }: { api:
         </div>}
         {tab === 'history' && <div role="tabpanel" className="doc-history">
           <ul className="doc-list" aria-label="기록 이력">
-            {events.map((item, index) => <li key={item.id}><button type="button" aria-pressed={selected === index} onClick={() => setSelected(index)}>{item.revision}. {consentActionLabel[item.action]} · {formatTime(item.occurred_at)}</button></li>)}
+            {events.map((item, index) => <li key={item.id}><button type="button" aria-pressed={selected === index} onClick={() => setSelected(index)}>{item.revision}. {consentActionLabel[item.action]} · {formatTime(item.occurred_at)} · {item.evidence ? `증빙 ${shortHash(item.evidence.hash)}` : '증빙 없음'}</button></li>)}
             {loaded && events.length === 0 && <li className="muted">아직 기록이 없습니다.</li>}
           </ul>
-          {event && <pre className="doc-body" aria-label="기록 상세">{`${consentActionLabel[event.action]}\n기록자 ID: ${event.actor_id}\n기록 시각: ${formatTime(event.occurred_at)}\n${eventDetail(event)}`}</pre>}
+          {event && <pre className="doc-body" aria-label="기록 상세">{`${consentActionLabel[event.action]}\n기록자 ID: ${event.actor_id}\n기록 시각(서버): ${formatTime(event.occurred_at)}\n${eventDetail(event)}\n증빙 해시: ${event.evidence ? `${shortHash(event.evidence.hash)}… (${event.evidence.algorithm})` : '없음 (증빙 기능 적용 이전 기록)'}`}</pre>}
+          {event && <div className="doc-actions">
+            <button type="button" disabled={check?.busy} onClick={() => void verify(event)}>{check?.busy ? '확인 중…' : '무결성 확인'}</button>
+            {check?.result && <span role="status" className={`doc-verify doc-verify--${check.result.status}`}>{evidenceStatusLabel[check.result.status]}</span>}
+            {check?.error && <span role="alert" className="form-error">{check.error}</span>}
+          </div>}
         </div>}
         <p role={failed || conflicted ? 'alert' : 'status'} className={failed || conflicted ? 'form-error' : 'muted'}>{status}</p>
         <div className="doc-actions">
           <button type="button" disabled={busy || pending !== null} onClick={() => void load()}>이력 새로고침</button>
+          <PdfExportButton disabled={!loaded || busy} onExport={() => exportConsentPdf(api, scope, document, events)} />
           {pending && <button type="button" disabled={busy} onClick={() => void send(pending)}>같은 요청 재시도</button>}
           <span className="doc-spacer" />
           <button type="button" onClick={() => void close()}>닫기</button>

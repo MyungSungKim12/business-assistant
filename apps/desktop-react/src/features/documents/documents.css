@@ -27,3 +27,22 @@
 .doc-pad__actions { display: flex; gap: 6px; }
 .doc-issue-picker { max-width: 480px; }
 @media (max-width: 900px) { .doc-split { grid-template-columns: minmax(0, 1fr); } }
+.doc-verify { font-weight: 600; }
+.doc-verify--match { color: var(--success); }
+.doc-verify--mismatch { color: var(--error); }
+.doc-verify--no_proof, .doc-verify--unknown_algorithm { color: var(--warning); }
+
+/* 파일 업로드 진행률·취소 */
+.file-uploads { margin: 0; padding: 0; list-style: none; display: grid; gap: 3px; max-height: 96px; overflow: auto; }
+.file-upload { display: grid; grid-template-columns: minmax(0, 200px) minmax(80px, 1fr) 44px auto; align-items: center; gap: 6px; }
+.file-upload__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-upload__bar { height: 8px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-muted); overflow: hidden; }
+.file-upload__bar > span { display: block; height: 100%; background: var(--accent); transition: width .12s linear; }
+.file-upload__state { text-align: right; }
+
+/* 파일 미리보기 창: 본문 영역만 높이를 갖고 안에서 스크롤한다 */
+.file-preview { display: grid; gap: 6px; }
+.file-preview__stage { display: flex; align-items: center; justify-content: center; height: min(64vh, 640px); overflow: auto; border: 1px solid var(--border); background: var(--surface-muted); }
+.file-preview__image { max-width: 100%; max-height: 100%; object-fit: contain; }
+.file-preview__frame { width: 100%; height: 100%; border: 0; background: #fff; }
+.file-preview__info { margin: 0; }

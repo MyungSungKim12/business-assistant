@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { confirm, notify } from '@business-assistant/react-ui';
 import type { ApiClient } from '../../api/client';
 import { documentApi } from './api';
+import { exportDocumentPdf } from './documentPdf';
 import { formatTime, messageFor } from './errors';
+import { PdfExportButton } from './PdfExportButton';
 import { documentStatusLabel, type DocumentRecord, type DocumentTemplate } from './schemas';
 import { TemplateManager } from './TemplateManager';
 import { TreatmentDocumentModal } from './TreatmentDocumentModal';
@@ -133,7 +135,10 @@ function DocumentsTab({ api, organizationId, readOnly, reloadKey }: DocumentPage
           </select></label>
           <label>본문<textarea rows={12} readOnly={readOnly} value={draft.content} onChange={(e) => setDraft({ ...draft, content: e.target.value })} /></label>
           {formError && <p role="alert" className="form-error">{formError}</p>}
-          {!readOnly && <button type="button" className="primary-button" disabled={saving || !draft.title.trim()} onClick={() => void save()}>{saving ? '저장 중…' : selected ? '저장' : '초안 작성'}</button>}
+          <div className="doc-actions">
+            {!readOnly && <button type="button" className="primary-button" disabled={saving || !draft.title.trim()} onClick={() => void save()}>{saving ? '저장 중…' : selected ? '저장' : '초안 작성'}</button>}
+            {selected && <PdfExportButton disabled={!draft.title.trim()} onExport={() => exportDocumentPdf({ title: draft.title.trim(), content: draft.content, status: draft.status, updated_at: selected.updated_at })} />}
+          </div>
         </>}
       </div>
     </section>

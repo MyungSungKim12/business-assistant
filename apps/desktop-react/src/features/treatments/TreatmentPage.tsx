@@ -1,3 +1,4 @@
+import { usePrivacy } from '../../lib/privacy';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { DataGrid, DateField, ErrorState, LoadingState, Modal, Select, confirm, notify, type Column } from '@business-assistant/react-ui';
 import type { ApiClient } from '../../api/client';
@@ -41,6 +42,7 @@ async function confirmLeave(dirty: boolean): Promise<boolean> {
 }
 
 export function TreatmentPage({ api, organizationId, readOnly, initialCustomerId, onDirtyChange, documentsPanel }: TreatmentPageProps) {
+  const privacy = usePrivacy();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [customersState, setCustomersState] = useState<'loading' | 'ready' | 'error'>('loading');
   const [customerQuery, setCustomerQuery] = useState('');
@@ -302,7 +304,7 @@ export function TreatmentPage({ api, organizationId, readOnly, initialCustomerId
           {customersState === 'ready' && !customers.length && <p className="empty-state">고객관리에서 고객을 먼저 등록하세요.</p>}
           <ul aria-label="고객 목록">
             {visibleCustomers.map((item) => (
-              <li key={item.id}><button type="button" aria-pressed={item.id === customerId} onClick={() => void openCustomer(item.id)}><strong>{item.name}</strong><small>{item.phone || '연락처 미등록'}</small></button></li>
+              <li key={item.id}><button type="button" aria-pressed={item.id === customerId} onClick={() => void openCustomer(item.id)}><strong>{item.name}</strong><small>{privacy.phone(item.phone) || '연락처 미등록'}</small></button></li>
             ))}
           </ul>
           <div className="treatment-cautions" aria-label="고객 주의사항">
@@ -349,7 +351,7 @@ export function TreatmentPage({ api, organizationId, readOnly, initialCustomerId
         </section>
       </div>
 
-      <TreatmentPhotos api={api} organizationId={organizationId} customerId={customerId} customerName={customer?.name} treatmentDate={record?.treatment_date ?? null} readOnly={readOnly} />
+      <TreatmentPhotos api={api} organizationId={organizationId} customerId={customerId} customerName={customer?.name} treatmentDate={record?.treatment_date ?? null} treatmentId={record?.id ?? null} treatmentName={record?.treatment_name} readOnly={readOnly} />
 
       {message && <p role={message.tone === 'error' ? 'alert' : 'status'} className={message.tone === 'error' ? 'form-error' : 'muted'}>{message.text}</p>}
 

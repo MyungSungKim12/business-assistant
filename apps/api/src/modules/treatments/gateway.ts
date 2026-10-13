@@ -12,7 +12,7 @@ export const treatmentMessages = {
 const unavailable = treatmentMessages[503];
 
 const treatmentSelect = 'id,organization_id,customer_id,treatment_date,treatment_name,category,practitioner,notes,amount,next_visit_date,status,version,started_at,ended_at,consultation_goal,consultation_plan,cautions_snapshot,cautions_acknowledged_by,cautions_acknowledged_at';
-const photoSelect = 'id,organization_id,customer_id,treatment_id,storage_path,thumbnail_path,content_type,caption,sort_order,taken_at';
+const photoSelect = 'id,organization_id,customer_id,treatment_id,storage_path,thumbnail_path,phase,content_type,caption,sort_order,taken_at';
 const eventSelect = 'id,actor_id,action,reason,occurred_at,before_data,after_data';
 
 export type TreatmentGateway = ReturnType<typeof createTreatmentGateway>;
@@ -57,6 +57,13 @@ export function createTreatmentGateway(config: ServerConfig, fetcher: typeof fet
     createPhoto: (token: string, organizationId: string, customerId: string, values: Record<string, unknown>): Promise<TreatmentPhoto> => guard(async () => {
       const row = await rest.insert(token, 'treatment_photos', { organization_id: organizationId, customer_id: customerId, ...values }, photoRow);
       assertOrganization([row], organizationId, unavailable);
+      return row;
+    }),
+
+    /** 구분(phase)·설명 수정. 일치하는 사진이 없으면 null(404 대응). */
+    updatePhoto: (token: string, organizationId: string, customerId: string, photoId: string, patch: Record<string, unknown>): Promise<TreatmentPhoto | null> => guard(async () => {
+      const row = await rest.update(token, 'treatment_photos', { select: photoSelect, id: `eq.${photoId}`, ...scope(organizationId, customerId) }, patch, photoRow);
+      if (row) assertOrganization([row], organizationId, unavailable);
       return row;
     }),
 

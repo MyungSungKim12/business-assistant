@@ -8,11 +8,16 @@ import {
 const customerBase = (organizationId: string, customerId: string) => `/organizations/${organizationId}/customers/${customerId}`;
 const treatmentBase = (organizationId: string, customerId: string, treatmentId: string) => `${customerBase(organizationId, customerId)}/treatments/${treatmentId}`;
 
+/** 시술 사진 구분: 시술 전/후/기타. null 은 미분류(043 이전에 만든 연결)로 화면에서는 '기타'와 같게 다룬다. */
+export const photoPhaseSchema = z.enum(['before', 'after', 'other']);
+export type PhotoPhase = z.infer<typeof photoPhaseSchema>;
 export const treatmentPhotoSchema = z.object({
   id: z.string(), organization_id: z.string(), customer_id: z.string(), treatment_id: z.string(), storage_path: z.string(),
   thumbnail_path: z.string().nullable(), content_type: z.string(), caption: z.string(), sort_order: z.number(), taken_at: z.string().nullable(),
+  phase: photoPhaseSchema.nullable().default(null),
 });
 export type TreatmentPhoto = z.infer<typeof treatmentPhotoSchema>;
+export type TreatmentPhotoInput = { treatment_id: string; storage_path: string; thumbnail_path?: string | null; content_type?: string; caption?: string; sort_order?: number; taken_at?: string | null; phase?: PhotoPhase | null };
 
 export const treatmentKeys = { customer: (organizationId: string, customerId: string) => ['organizations', organizationId, 'customers', customerId, 'treatments'] as const };
 
@@ -24,7 +29,9 @@ export const treatmentApi = {
   events: (api: ApiClient, organizationId: string, customerId: string, treatmentId: string) => api.call('GET', `${treatmentBase(organizationId, customerId, treatmentId)}/events`, treatmentEventsSchema),
 
   listPhotos: (api: ApiClient, organizationId: string, customerId: string, treatmentId?: string) => api.call('GET', `${customerBase(organizationId, customerId)}/treatment-photos${treatmentId ? `?treatment_id=${treatmentId}` : ''}`, z.array(treatmentPhotoSchema)),
-  createPhoto: (api: ApiClient, organizationId: string, customerId: string, input: { treatment_id: string; storage_path: string; thumbnail_path?: string | null; content_type?: string; caption?: string; sort_order?: number; taken_at?: string | null }) => api.call('POST', `${customerBase(organizationId, customerId)}/treatment-photos`, treatmentPhotoSchema, input),
+  createPhoto: (api: ApiClient, organizationId: string, customerId: string, input: TreatmentPhotoInput) => api.call('POST', `${customerBase(organizationId, customerId)}/treatment-photos`, treatmentPhotoSchema, input),
+  /** 구분(phase)·설명만 바꾼다. */
+  updatePhoto: (api: ApiClient, organizationId: string, customerId: string, photoId: string, patch: { phase?: PhotoPhase | null; caption?: string }) => api.call('PATCH', `${customerBase(organizationId, customerId)}/treatment-photos/${photoId}`, treatmentPhotoSchema, patch),
   deletePhoto: (api: ApiClient, organizationId: string, customerId: string, photoId: string) => api.callVoid('DELETE', `${customerBase(organizationId, customerId)}/treatment-photos/${photoId}`),
 
   saleDrafts: (api: ApiClient, organizationId: string, customerId: string, treatmentId: string) => api.call('GET', `${treatmentBase(organizationId, customerId, treatmentId)}/sale-draft`, saleDraftsSchema),

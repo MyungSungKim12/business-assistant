@@ -43,3 +43,287 @@
   border-radius: var(--radius-sm);
   text-align: center;
 }
+
+/* 왼쪽 고객 사진 갤러리 + 오른쪽 시술 전/후 연결 영역. 각 영역이 안에서 스크롤한다. */
+.treatment-photos__split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
+  gap: 6px;
+  height: 100%;
+  min-height: 0;
+}
+
+.treatment-photos__gallery {
+  min-width: 0;
+  min-height: 0;
+}
+
+.tpl {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  min-height: 0;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-panel);
+}
+
+.tpl-placeholder {
+  align-self: center;
+}
+
+.tpl__head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.tpl__head h3 {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tpl__message {
+  margin: 0;
+}
+
+.tpl__body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 0;
+  overflow: auto;
+}
+
+.tpl__empty {
+  margin: 0;
+  padding: 10px 4px;
+  text-align: center;
+}
+
+.tpl-group h4 {
+  margin: 0 0 2px;
+  font-size: 12px;
+}
+
+.tpl-tiles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tpl-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 88px;
+}
+
+.tpl-tile__image {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 88px;
+  height: 66px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-muted);
+  font-size: var(--font-size-small);
+}
+
+.tpl-tile__image img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.tpl-tile__name {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: var(--font-size-small);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tpl-tile__actions {
+  display: flex;
+  gap: 2px;
+}
+
+.tpl-tile__actions select {
+  flex: 1;
+  min-width: 0;
+}
+
+.tpl-tile__actions button {
+  min-width: 20px;
+  padding: 0 4px;
+}
+
+.tpl-picker {
+  display: grid;
+  gap: 6px;
+}
+
+.tpl-picker__phase {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.tpl-picker__phase legend {
+  float: left;
+  margin-right: 8px;
+  padding: 0;
+  font-weight: 600;
+}
+
+.tpl-picker__grid {
+  height: min(46vh, 420px);
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+/* 전/후 비교 */
+.cmp {
+  display: grid;
+  gap: 6px;
+}
+
+.cmp-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.cmp-select {
+  display: grid;
+  gap: 2px;
+  min-width: 160px;
+}
+
+.cmp-zoom {
+  min-width: 36px;
+  text-align: right;
+}
+
+.cmp-side {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.cmp-figure {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  margin: 0;
+}
+
+.cmp-figure figcaption {
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 두 사진을 담는 틀은 항상 같은 크기이고, 사진은 비율을 지킨 채 틀에 맞춘다. */
+.cmp-frame {
+  position: relative;
+  height: min(54vh, 520px);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-muted);
+  touch-action: none;
+  user-select: none;
+}
+
+.cmp-frame.is-zoomed {
+  cursor: grab;
+}
+
+.cmp-layer {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform-origin: center center;
+}
+
+.cmp-layer img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+.cmp-status {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cmp-overlay {
+  display: grid;
+  gap: 4px;
+}
+
+.cmp-clip {
+  position: absolute;
+  inset: 0;
+}
+
+.cmp-divider {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--accent);
+  pointer-events: none;
+}
+
+.cmp-tag {
+  position: absolute;
+  top: 6px;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--topbar-bg);
+  color: var(--topbar-strong);
+  font-size: var(--font-size-small);
+  pointer-events: none;
+}
+
+.cmp-tag--before {
+  left: 6px;
+}
+
+.cmp-tag--after {
+  right: 6px;
+}
+
+.cmp-slider {
+  width: 100%;
+}

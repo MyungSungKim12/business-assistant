@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { ServerConfig } from '../../config.js';
 import { ApiFailure } from '../../errors.js';
+import { computeEvidenceHash, embeddedProofSchema, EVIDENCE_ALGORITHM, evidenceInputOf, storedEvidenceOf, verifyEvidence, type EvidenceVerification } from './evidence.js';
 import { createDocumentHttp, type ErrorMessages } from './http.js';
 
 // ---------- 스키마(게이트웨이 반환·응답 형식) ----------
@@ -26,10 +27,12 @@ export const issuedSchema = z.object({
   title: z.string(), content: z.string(), source_snapshot: z.record(z.string(), z.unknown()), issued_by: z.uuid(), issued_at: z.string(),
 });
 // operation_id / request_fingerprint 는 일부러 파싱에서 제외한다(재시도 메타데이터 비노출).
-export const consentEventSchema = z.object({
+// proof 는 증빙 해시 테이블(043) 임베드이며, 응답에는 evidence 로 바꿔 싣는다(증빙이 없던 옛 이벤트는 null).
+const consentRowSchema = z.object({
   id: z.uuid(), organization_id: z.uuid(), document_id: z.uuid(), revision: z.number().int().min(1), action: z.enum(['sign', 'deliver', 'revoke']),
-  values: z.record(z.string(), z.unknown()), actor_id: z.uuid(), occurred_at: z.string(), content_hash: z.string(),
+  values: z.record(z.string(), z.unknown()), actor_id: z.uuid(), occurred_at: z.string(), content_hash: z.string(), proof: embeddedProofSchema,
 });
+export const consentEventSchema = consentRowSchema.transform(({ proof, ...event }) => ({ ...event, evidence: storedEvidenceOf(proof) }));
 const fileRowSchema = z.object({
   id: z.uuid(), organization_id: z.uuid(), uploaded_by: z.uuid(), storage_path: z.string(), original_name: z.string(), content_type: z.string(),
   size_bytes: z.number().int(), is_archived: z.boolean(), created_at: z.string(), updated_at: z.string(),
@@ -67,11 +70,15 @@ export type DocumentGateway = {
   listIssuedTreatmentDocuments(token: string, scope: TreatmentScope): Promise<IssuedTreatmentDocument[]>;
   listConsentEvents(token: string, scope: TreatmentScope, documentId: string): Promise<ConsentEvent[]>;
   recordConsentEvent(token: string, scope: TreatmentScope, documentId: string, input: ConsentInput): Promise<ConsentEvent>;
+  verifyConsentEvent(token: string, scope: TreatmentScope, documentId: string, eventId: string): Promise<EvidenceVerification>;
   listFiles(token: string, organizationId: string, includeArchived: boolean): Promise<FileAsset[]>;
   createFileUpload(token: string, organizationId: string, input: FileUploadInput): Promise<SignedFile>;
   createFileDownload(token: string, organizationId: string, fileId: string): Promise<SignedFile>;
   archiveFile(token: string, organizationId: string, fileId: string): Promise<FileAsset | null>;
 };
+
+const eventSelect = '*,proof:treatment_document_event_proofs(algorithm,evidence_hash)';
+type StoredEvidenceView = { algorithm: string; hash: string };
 
 const documentMessages: ErrorMessages = { invalid: 'Invalid document request', unavailable: 'Document service unavailable' };
 const templateMessages: ErrorMessages = {
@@ -133,6 +140,23 @@ export function createDocumentGateway(config: ServerConfig, fetcher: typeof fetc
     const rows = parseRows(await http.request(token, 'GET', '/rest/v1/file_assets', fileMessages, { query: { id: eq(fileId), organization_id: eq(organizationId) } }), fileRowSchema, fileMessages);
     inOrganization(rows, organizationId, fileMessages);
     return rows[0] ?? null;
+  }
+  /**
+   * 방금 기록된 이벤트의 증빙 해시를 계산해 저장한다. 증빙 저장이 실패해도 이벤트 자체는 이미 확정되어 있으므로
+   * 오류를 올리지 않고 evidence 를 null 로 돌려준다(나중에 "무결성 확인"에서 증빙 없음으로 표시된다).
+   * 같은 operation_id 재시도는 on_conflict 로 무시되어 증빙이 한 번만 남는다.
+   */
+  async function storeEvidence(token: string, event: z.infer<typeof consentEventSchema>): Promise<StoredEvidenceView | null> {
+    const hash = computeEvidenceHash(evidenceInputOf({ ...event, event_id: event.id }));
+    try {
+      await http.request(token, 'POST', '/rest/v1/treatment_document_event_proofs', consentMessages, {
+        query: { on_conflict: 'event_id' }, prefer: 'resolution=ignore-duplicates,return=minimal',
+        body: { event_id: event.id, organization_id: event.organization_id, document_id: event.document_id, algorithm: EVIDENCE_ALGORITHM, evidence_hash: hash },
+      });
+      return { algorithm: EVIDENCE_ALGORITHM, hash };
+    } catch {
+      return event.evidence;
+    }
   }
   const publicFile = (row: z.infer<typeof fileRowSchema>): FileAsset => fileSchema.parse(row);
 
@@ -201,7 +225,7 @@ export function createDocumentGateway(config: ServerConfig, fetcher: typeof fetc
       const events: ConsentEvent[] = [];
       for (;;) {
         const payload = await http.request(token, 'GET', '/rest/v1/treatment_document_events', consentMessages, {
-          query: { organization_id: eq(scope.organizationId), document_id: eq(documentId), order: 'revision.asc', limit: '250', offset: String(events.length) }, mapCodes: true,
+          query: { select: eventSelect, organization_id: eq(scope.organizationId), document_id: eq(documentId), order: 'revision.asc', limit: '250', offset: String(events.length) }, mapCodes: true,
         });
         const page = inOrganization(parseRows(payload, consentEventSchema, consentMessages), scope.organizationId, consentMessages);
         if (page.some((event, index) => event.revision !== events.length + index + 1 || event.document_id !== documentId)) throw new ApiFailure(503, consentMessages.unavailable);
@@ -217,7 +241,21 @@ export function createDocumentGateway(config: ServerConfig, fetcher: typeof fetc
         }, mapCodes: true,
       });
       if (!Array.isArray(payload) || payload.length !== 1) throw new ApiFailure(503, consentMessages.unavailable);
-      return inOrganization(parseRows(payload, consentEventSchema, consentMessages), scope.organizationId, consentMessages)[0];
+      const event = inOrganization(parseRows(payload, consentEventSchema, consentMessages), scope.organizationId, consentMessages)[0];
+      return { ...event, evidence: await storeEvidence(token, event) };
+    },
+    async verifyConsentEvent(token, scope, documentId, eventId) {
+      await requireParent(token, 'issued_treatment_documents', {
+        organization_id: eq(scope.organizationId), customer_id: eq(scope.customerId), treatment_id: eq(scope.treatmentId), id: eq(documentId),
+      }, documentId, consentMessages);
+      const payload = await http.request(token, 'GET', '/rest/v1/treatment_document_events', consentMessages, {
+        query: { select: eventSelect, organization_id: eq(scope.organizationId), document_id: eq(documentId), id: eq(eventId), limit: '2' }, mapCodes: true,
+      });
+      const rows = inOrganization(parseRows(payload, consentEventSchema, consentMessages), scope.organizationId, consentMessages);
+      if (rows.length === 0) throw new ApiFailure(404, consentMessages.notFound ?? 'Not found');
+      if (rows.length !== 1 || rows[0].id !== eventId || rows[0].document_id !== documentId) throw new ApiFailure(503, consentMessages.unavailable);
+      const event = rows[0];
+      return verifyEvidence(evidenceInputOf({ ...event, event_id: event.id }), event.evidence);
     },
     async listFiles(token, organizationId, includeArchived) {
       const query: Record<string, string> = { organization_id: eq(organizationId), order: 'created_at.desc' };

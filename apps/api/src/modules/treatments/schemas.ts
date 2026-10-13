@@ -114,8 +114,11 @@ export const mutationRequest = z.strictObject({
   return { action: request.action, expected_version: request.expected_version, operation_id: request.operation_id, reason, values };
 });
 
+/** 시술 사진 구분: 시술 전/후/기타. null·생략은 미분류. */
+export const photoPhase = z.enum(['before', 'after', 'other']);
 export const photoRequest = z.strictObject({
   treatment_id: id,
+  phase: photoPhase.nullable().optional(),
   storage_path: z.string().min(1).max(1000),
   thumbnail_path: z.string().nullable().default(null),
   content_type: z.string().default('image/jpeg'),
@@ -142,8 +145,12 @@ export const eventRow = z.object({
 });
 export type TreatmentEvent = z.infer<typeof eventRow>;
 
+/** 구분(phase)·설명만 바꿀 수 있다. 연결된 시술·저장 경로는 바꾸지 않는다(다시 연결하려면 해제 후 새로 연결). */
+export const photoPatch = z.strictObject({ phase: photoPhase.nullable().optional(), caption: z.string().max(500).optional() })
+  .refine((value) => Object.keys(value).length > 0, 'at least one photo field is required');
 export const photoRow = z.object({
   id, organization_id: id, customer_id: id, treatment_id: id, storage_path: z.string(), thumbnail_path: z.string().nullable().default(null),
+  phase: photoPhase.nullable().optional(),
   content_type: z.string(), caption: z.string(), sort_order: z.number().int(), taken_at: z.string().nullable().default(null),
 });
 export type TreatmentPhoto = z.infer<typeof photoRow>;

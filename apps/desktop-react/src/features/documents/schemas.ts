@@ -22,9 +22,15 @@ export const issuedSchema = z.object({
   source_snapshot: z.record(z.string(), z.unknown()), issued_by: z.uuid(), issued_at: z.string(),
 });
 export const issuedListSchema = z.array(issuedSchema);
+/** 서버가 기록 시점에 계산해 둔 증빙 해시. 증빙이 없던 옛 기록은 null. */
+export const evidenceSchema = z.object({ algorithm: z.string(), hash: z.string() });
 export const consentEventSchema = z.object({
   id: z.uuid(), organization_id: z.uuid(), document_id: z.uuid(), revision: z.number(), action: z.enum(['sign', 'deliver', 'revoke']), values: z.record(z.string(), z.unknown()),
-  actor_id: z.uuid(), occurred_at: z.string(), content_hash: z.string(),
+  actor_id: z.uuid(), occurred_at: z.string(), content_hash: z.string(), evidence: evidenceSchema.nullable().default(null),
+});
+export const evidenceStatusSchema = z.enum(['match', 'mismatch', 'no_proof', 'unknown_algorithm']);
+export const evidenceVerificationSchema = z.object({
+  event_id: z.string(), revision: z.number(), status: evidenceStatusSchema, algorithm: z.string().nullable(), stored_hash: z.string().nullable(), computed_hash: z.string().nullable(), occurred_at: z.string(),
 });
 export const consentEventsSchema = z.array(consentEventSchema);
 export const fileSchema = z.object({
@@ -44,6 +50,7 @@ export type TreatmentPreview = z.infer<typeof previewSchema>;
 export type IssuedDocument = z.infer<typeof issuedSchema>;
 export type ConsentEvent = z.infer<typeof consentEventSchema>;
 export type ConsentAction = ConsentEvent['action'];
+export type EvidenceVerification = z.infer<typeof evidenceVerificationSchema>;
 export type FileAsset = z.infer<typeof fileSchema>;
 export type SignedFile = z.infer<typeof signedFileSchema>;
 export type TemplateAction = 'create' | 'save' | 'publish' | 'revise' | 'retire';
@@ -53,6 +60,9 @@ export type Scope = { organizationId: string; customerId: string; treatmentId: s
 
 export const documentStatusLabel: Record<string, string> = { draft: '초안', final: '완료', archived: '보관' };
 export const templateStatusLabel: Record<string, string> = { draft: '초안', published: '게시됨', retired: '폐기됨' };
+export const evidenceStatusLabel: Record<EvidenceVerification['status'], string> = {
+  match: '일치 · 기록 이후 변경 없음', mismatch: '불일치 · 기록 내용이 달라졌습니다', no_proof: '증빙 해시 없음 · 이전 기록', unknown_algorithm: '확인 불가 · 알 수 없는 해시 방식',
+};
 export const consentActionLabel: Record<ConsentAction, string> = { sign: '현장 손서명', deliver: '교부 확인 기록', revoke: '철회 기록' };
 export const deliveryMethodLabel: Record<string, string> = { paper: '종이 교부', email: '외부 이메일', sms: '외부 문자', other: '기타' };
 export const FIELD_NAMES: Record<string, string> = {
