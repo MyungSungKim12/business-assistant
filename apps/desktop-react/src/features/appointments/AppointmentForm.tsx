@@ -1,0 +1,165 @@
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import type { ApiClient } from '../../api/client';
+import { appointmentSchema, type Appointment, type AppointmentService, type AppointmentStaff, type Customer } from '../../api/schemas';
+import { ResourcePicker, describeRequirements, isDefiniteRejection, missingRequirements, useOperationTracker } from '../appointment-resources';
+import type { AppointmentResource, ResourceRequirement } from '../appointment-resources';
+import { kstIso, toKstLocalInput } from './appointmentTime';
+
+export interface FormValues {
+  customer_id: string;
+  staff_id: string;
+  service_id: string;
+  /** datetime-local 값(KST 벽시계). */
+  start_at: string;
+  resource_ids: string[];
+}
+
+export const emptyFormValues: FormValues = { customer_id: '', staff_id: '', service_id: '', start_at: '', resource_ids: [] };
+
+export interface AppointmentFormProps {
+  api: ApiClient;
+  organizationId: string;
+  customers: Customer[];
+  staff: AppointmentStaff[];
+  services: AppointmentService[];
+  /** 있으면 수정 폼, 없으면 새 예약 폼. */
+  appointment?: Appointment;
+  /** 새 예약 폼의 처음 값(빈 칸을 눌러 들어온 담당자·시각 등). */
+  seed?: Partial<FormValues>;
+  /** 이름을 찾지 못하는 고객·담당자·서비스(비활성)를 수정 폼 선택지에 남기기 위한 이름 조회. */
+  customerName: (id: string) => string;
+  staffName: (id: string) => string;
+  onSaved: (saved: Appointment) => void;
+  /** 입력이 처음 값과 달라졌는지 알린다(화면 이동 시 확인용). */
+  onDirtyChange: (dirty: boolean) => void;
+  /** 수정 폼에서 변경을 그만두고 상세로 돌아간다. */
+  onCancel?: () => void;
+  /** 충돌(409) 뒤 서버의 최신 예약을 다시 불러오게 한다. */
+  onReload?: () => void;
+}
+
+const sortedIds = (ids: string[]) => [...ids].sort();
+const sameValues = (a: FormValues, b: FormValues) => a.customer_id === b.customer_id && a.staff_id === b.staff_id && a.service_id === b.service_id && a.start_at === b.start_at && sortedIds(a.resource_ids).join() === sortedIds(b.resource_ids).join();
+
+/** 새 예약·예약 수정 공용 폼. 저장에 실패해도 입력은 그대로 둔다. */
+export function AppointmentForm({ api, organizationId, customers, staff, services, appointment, seed, customerName, staffName, onSaved, onDirtyChange, onCancel, onReload }: AppointmentFormProps) {
+  const editing = appointment !== undefined;
+  const initial = useMemo<FormValues>(() => (appointment
+    ? { customer_id: appointment.customer_id, staff_id: appointment.staff_id, service_id: appointment.service_id, start_at: toKstLocalInput(appointment.start_at), resource_ids: appointment.resource_ids }
+    : { ...emptyFormValues, ...seed }), [appointment?.id, seed]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [values, setValues] = useState<FormValues>(initial);
+  const [requirements, setRequirements] = useState<{ needs: ResourceRequirement[]; pool: AppointmentResource[] }>({ needs: [], pool: [] });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [conflict, setConflict] = useState(false);
+  // 같은 입력의 재시도는 같은 operation_id를 써서 서버가 중복 저장을 막고, 입력이 바뀌면 새로 만든다.
+  const operation = useOperationTracker();
+
+  const dirty = !sameValues(values, initial);
+  const dirtyReport = useRef(onDirtyChange);
+  dirtyReport.current = onDirtyChange;
+  useEffect(() => { dirtyReport.current(dirty); }, [dirty]);
+  useEffect(() => () => dirtyReport.current(false), []);
+
+  const missing = missingRequirements(requirements.needs, requirements.pool, values.resource_ids);
+  const serviceChanged = editing && values.service_id !== appointment.service_id;
+
+  const customerOptions = editing && !customers.some((row) => row.id === appointment.customer_id) ? [{ id: appointment.customer_id, name: customerName(appointment.customer_id) }, ...customers] : customers;
+  const staffOptions = editing && !staff.some((row) => row.id === appointment.staff_id) ? [{ id: appointment.staff_id, name: staffName(appointment.staff_id) }, ...staff] : staff;
+  const serviceOptions = editing && !services.some((row) => row.id === appointment.service_id)
+    ? [{ id: appointment.service_id, name: appointment.service_name_snapshot, duration_minutes: appointment.duration_minutes }, ...services]
+    : services;
+
+  const set = (patch: Partial<FormValues>) => { setValues((old) => ({ ...old, ...patch })); setConflict(false); };
+
+  function changeService(serviceId: string) {
+    // 원래 서비스로 되돌리면 저장돼 있던 자원 선택도 되돌린다. 다른 서비스면 선택기가 필수 기준에 맞춰 다시 고른다.
+    if (editing && serviceId === appointment.service_id) set({ service_id: serviceId, resource_ids: appointment.resource_ids });
+    else set({ service_id: serviceId });
+  }
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    if (missing.length > 0) { setError(`필수 자원이 부족합니다. 필요한 기준: ${describeRequirements(requirements.needs)}`); return; }
+    const input = {
+      customer_id: values.customer_id,
+      staff_id: values.staff_id,
+      service_id: values.service_id,
+      start_at: kstIso(values.start_at),
+      source: appointment?.source ?? 'manual',
+      expected_version: appointment ? appointment.version : null,
+      resource_ids: sortedIds(values.resource_ids),
+    };
+    const operationId = operation.idFor(JSON.stringify({ id: appointment?.id ?? null, ...input }));
+    setSaving(true);
+    try {
+      const saved = appointment
+        ? await api.call('PUT', `/organizations/${organizationId}/appointments/${appointment.id}`, appointmentSchema, { ...input, operation_id: operationId })
+        : await api.createAppointment(organizationId, { ...input, expected_version: null, operation_id: operationId });
+      operation.reset();
+      setError(''); setConflict(false);
+      onSaved(saved);
+    } catch (reason) {
+      const status = (reason as { status?: number }).status;
+      // 서버가 명확히 거절했으면 새 시도로 보고 ID를 바꾼다. 결과를 알 수 없는 실패(네트워크·5xx)는 같은 ID로 재시도한다.
+      if (isDefiniteRejection(reason)) operation.reset();
+      if (status === 409) {
+        setConflict(editing);
+        setError(editing
+          ? '다른 곳에서 먼저 변경되었거나, 같은 시간에 담당자·공간·장비가 이미 사용 중이거나 근무 시간이 아닙니다. 최신 상태를 불러온 뒤 시간을 확인해 다시 저장해 주세요.'
+          : '같은 시간에 담당자·공간·장비가 이미 사용 중이거나 근무 시간이 아닙니다. 시간을 바꿔 다시 시도해 주세요.');
+      } else if (status === 422) {
+        setError('입력 내용이 올바르지 않습니다. 고객·담당자·서비스·시작 시각을 확인해 주세요. 입력 내용은 유지됩니다.');
+      } else {
+        setError(`예약을 저장하지 못했습니다. 입력 내용은 유지됩니다.${editing ? ' 같은 내용으로 다시 저장해도 중복되지 않습니다.' : ''}`);
+      }
+    } finally { setSaving(false); }
+  }
+
+  return (
+    <form className="apt-form" onSubmit={submit} aria-label={editing ? '예약 수정' : '새 예약'}>
+      <header className="apt-side__head"><h2>{editing ? '예약 수정' : '새 예약'}</h2></header>
+      <label>고객
+        <select required disabled={editing} value={values.customer_id} onChange={(e) => set({ customer_id: e.target.value })}>
+          <option value="">선택</option>
+          {customerOptions.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+        </select>
+      </label>
+      {editing && <p className="muted apt-form__hint">고객은 바꿀 수 없습니다. 다른 고객이면 새 예약을 만드세요.</p>}
+      <label>담당자
+        <select required value={values.staff_id} onChange={(e) => set({ staff_id: e.target.value })}>
+          <option value="">선택</option>
+          {staffOptions.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+        </select>
+      </label>
+      <label>서비스
+        <select required value={values.service_id} onChange={(e) => changeService(e.target.value)}>
+          <option value="">선택</option>
+          {serviceOptions.map((x) => <option key={x.id} value={x.id}>{x.name} · {x.duration_minutes}분</option>)}
+        </select>
+      </label>
+      <label>시작 시각
+        <input required type="datetime-local" value={values.start_at} onChange={(e) => set({ start_at: e.target.value })} />
+      </label>
+      <ResourcePicker
+        api={api}
+        organizationId={organizationId}
+        serviceId={values.service_id || null}
+        value={values.resource_ids}
+        onChange={(ids) => setValues((old) => ({ ...old, resource_ids: ids }))}
+        onRequirementsChange={(needs, pool) => setRequirements({ needs, pool })}
+        autoSelect={!editing || serviceChanged}
+      />
+      {error && (
+        <p role="alert" className="form-error">
+          {error}
+          {conflict && onReload && <> <button type="button" onClick={onReload}>최신 상태 불러오기</button></>}
+        </p>
+      )}
+      <div className="apt-form__actions">
+        {editing && onCancel && <button type="button" onClick={onCancel} disabled={saving}>수정 취소</button>}
+        <button className="primary-button" disabled={saving}>{saving ? '저장 중…' : editing ? '변경 저장' : '예약 저장'}</button>
+      </div>
+    </form>
+  );
+}
