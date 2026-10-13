@@ -4,7 +4,7 @@ import { createOrganizationGateway } from '../supabase/organizations.js';
 
 const org = 'a9cc39fd-8e8c-4df8-a623-1f23a3a936bd';
 const user = 'b9cc39fd-8e8c-4df8-a623-1f23a3a936bd';
-const config = { APP_SUPABASE_URL:'https://example.supabase.co', APP_SUPABASE_PUBLISHABLE_KEY:'public', APP_SUPABASE_SERVICE_KEY:'secret', APP_FILE_BUCKET:'business-files', APP_API_PORT:8000 };
+const config = { APP_SUPABASE_URL:'https://example.supabase.co', APP_SUPABASE_PUBLISHABLE_KEY:'public', APP_FILE_BUCKET:'business-files', APP_API_PORT:8000 };
 function fixture(options: {invalid?:boolean; member?:boolean; outage?:boolean; subscription?:boolean} = {}) {
   const calls: URL[] = [];
   const fetcher: typeof fetch = async (input, init) => {

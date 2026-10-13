@@ -2,14 +2,15 @@ import { z } from 'zod';
 import type { ServerConfig } from '../../config.js';
 import { ApiFailure } from '../../errors.js';
 import { createRest } from '../../supabase/rest.js';
+import { sanitizeMetadata } from '../../audit/recorder.js';
 
 const UNAVAILABLE = 'Admin subscription service unavailable';
 
 /**
- * 플랫폼 관리자 설정. Python Settings.platform_admin_user_ids(APP_PLATFORM_ADMIN_USER_IDS, 쉼표로 구분한 UUID)와 같다.
- * ServerConfig에는 아직 이 키가 없으므로, 있으면 config 값을 쓰고 없으면 process.env를 읽는다(통합 시 config로 옮길 수 있다).
+ * 관리자 서버(admin-server.ts) 전용 설정. 서비스 키(APP_SUPABASE_SERVICE_KEY)와 플랫폼 관리자 목록
+ * (APP_PLATFORM_ADMIN_USER_IDS, 쉼표로 구분한 UUID)은 일반 API 의 ServerConfig 에 없고 이 프로세스만 읽는다.
  */
-export type AdminConfig = ServerConfig & { APP_PLATFORM_ADMIN_USER_IDS?: string };
+export type AdminConfig = ServerConfig & { APP_SUPABASE_SERVICE_KEY?: string; APP_PLATFORM_ADMIN_USER_IDS?: string };
 
 export function platformAdminIds(config: AdminConfig, environment: Record<string, string | undefined> = process.env): Set<string> {
   const raw = config.APP_PLATFORM_ADMIN_USER_IDS ?? environment.APP_PLATFORM_ADMIN_USER_IDS ?? '';
@@ -18,6 +19,7 @@ export function platformAdminIds(config: AdminConfig, environment: Record<string
   return new Set(ids.filter((id) => z.uuid().safeParse(id).success));
 }
 
+export type AdminAuditInput = { actorId: string; organizationId: string; action: string; metadata: Record<string, unknown>; requestId?: string; ip?: string };
 export type SubscriptionInput = { plan_code: string; status: string; starts_at: string; ends_at: string | null };
 
 export function createAdminGateway(config: AdminConfig, fetcher: typeof fetch = fetch, environment: Record<string, string | undefined> = process.env) {
@@ -59,6 +61,30 @@ export function createAdminGateway(config: AdminConfig, fetcher: typeof fetch = 
       }
       if (typeof payload !== 'object' || payload === null || (payload as { plan_code?: unknown }).plan_code !== input.plan_code) throw new ApiFailure(503, UNAVAILABLE);
       return input;
+    },
+    /**
+     * 감사 로그를 서비스 키로 직접 적는다(관리자는 대상 조직의 구성원이 아니라 사용자 토큰 RPC 를 쓸 수 없다).
+     * 실패하면 오류를 던지며, 호출자가 로그만 남기고 본 작업 결과는 유지한다.
+     */
+    async recordAudit(input: AdminAuditInput): Promise<void> {
+      const serviceKey = config.APP_SUPABASE_SERVICE_KEY;
+      if (!serviceKey) throw new ApiFailure(503, UNAVAILABLE);
+      const url = new URL('/rest/v1/audit_events', config.APP_SUPABASE_URL);
+      try {
+        const response = await fetcher(url, {
+          method: 'POST',
+          headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+          body: JSON.stringify({
+            organization_id: input.organizationId, actor_id: input.actorId, action: input.action, target_type: 'organization', target_id: input.organizationId,
+            metadata: sanitizeMetadata(input.metadata), request_id: input.requestId ?? null, ip: input.ip ?? null, source: 'service',
+          }),
+          signal: AbortSignal.timeout(10_000), redirect: 'error',
+        });
+        if (!response.ok) throw new ApiFailure(503, UNAVAILABLE);
+      } catch (error) {
+        if (error instanceof ApiFailure) throw error;
+        throw new ApiFailure(503, UNAVAILABLE);
+      }
     },
   };
 }

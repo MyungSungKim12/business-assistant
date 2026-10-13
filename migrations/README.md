@@ -102,3 +102,8 @@
 
 - `039_finance_basic_feature.sql`: `finance.basic` 기능을 등록하고 BASIC·STANDARD·PRO 모든 요금제에 연결한다. 매출 장바구니·수납·정산·재고·재무 API가 `crm.basic`과 함께 이 키를 요구한다. 데이터 변경만 하며 여러 번 실행해도 안전하다.
 - 038 다음에 SQL Editor에서 실행한다. 운영 DB 자동 적용은 하지 않았다. 적용 후 매출 화면을 다시 열어 자료가 불러와지는지 확인한다.
+
+## 040 감사 로그
+
+- `040_audit_log.sql`: `public.audit_events`(append-only, RLS: 조직 owner/admin만 조회)와 사용자 토큰으로 호출하는 보안 정의 함수 `public.record_audit_event(...)`를 추가한다. 호출자(`auth.uid()`)가 actor로 강제되고 조직 구성원만 기록할 수 있으며, 서비스 키(관리자 API)는 `source = 'service'`로 직접 insert한다. update/delete/truncate는 트리거로 막는다. 데이터는 새 테이블뿐이고 기존 자료는 바꾸지 않으며 여러 번 실행해도 안전하다.
+- **039 다음에** SQL Editor에서 실행한다. 이 작업에서는 운영 DB에 적용하지 않았다. 적용 전에 서버를 새 버전으로 올리면 감사 기록 RPC가 실패하므로, 일반 작업은 계속되지만(경고 로그만) **고객 영구 삭제는 감사 기록이 없으면 거부(fail-closed)된다**. 따라서 040을 먼저 적용한 뒤 서버를 재시작한다. 적용 후 `GET /api/v1/organizations/{조직}/audit-events`로 확인한다.

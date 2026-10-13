@@ -32,6 +32,16 @@ export function registerAdminRoutes(app: FastifyInstance, gateway: AdminGateway 
     if (!params.success) throw new ApiFailure(422, 'Invalid organization ID');
     const body = subscriptionRequest.safeParse(request.body);
     if (!body.success) throw new ApiFailure(422, body.error.issues[0]?.message ?? 'Invalid subscription input');
-    return gateway.replaceSubscription(params.data.organizationId, body.data);
+    const saved = await gateway.replaceSubscription(params.data.organizationId, body.data);
+    // 구독 교체는 이미 반영됐으므로 감사 기록 실패는 응답을 바꾸지 않고 로그로만 남긴다.
+    try {
+      await gateway.recordAudit({
+        actorId: userId, organizationId: params.data.organizationId, action: 'subscription.replace', requestId: request.id, ip: request.ip,
+        metadata: { plan_code: saved.plan_code, status: saved.status, starts_at: saved.starts_at, ends_at: saved.ends_at },
+      });
+    } catch {
+      request.log.error({ action: 'subscription.replace', requestId: request.id }, 'audit event was not recorded');
+    }
+    return saved;
   });
 }

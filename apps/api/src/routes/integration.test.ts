@@ -10,13 +10,14 @@ describe('module registration', () => {
   it('registers every converted module when a config is supplied', async () => {
     const app = createApp({ config });
     const paths = [
-      'catalog-products', 'document-templates', 'files', 'finance-transactions', 'visits', 'treatment-sale-drafts', 'appointment-resources', 'management-preview',
+      'catalog-products', 'document-templates', 'files', 'finance-transactions', 'visits', 'treatment-sale-drafts', 'appointment-resources', 'management-preview', 'audit-events',
     ];
     for (const path of paths) {
       const response = await app.inject({ url: `/api/v1/organizations/${organizationId}/${path}` });
       expect(response.statusCode, path).not.toBe(404);
     }
-    expect((await app.inject({ method: 'POST', url: `/api/v1/admin/organizations/${organizationId}/subscription` })).statusCode).not.toBe(404);
+    // 관리자 구독 기능은 서비스 키가 필요하므로 일반 API 에는 없다(admin-server.ts 로 분리, SEC-02).
+    expect((await app.inject({ method: 'POST', url: `/api/v1/admin/organizations/${organizationId}/subscription` })).statusCode).toBe(404);
     await app.close();
   });
 });
