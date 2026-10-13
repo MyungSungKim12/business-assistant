@@ -1,0 +1,122 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, "codex/**"]
+  schedule:
+    # 의존성 취약점 점검(매주 월요일 03:00 UTC)
+    - cron: "0 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web:
+    name: 타입 검사·테스트·빌드 (API, React, 공통 UI)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: 소스 받기
+        uses: actions/checkout@v5
+
+      - name: Node 준비
+        uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+
+      - name: pnpm 준비
+        run: corepack enable
+
+      - name: 의존성 설치
+        run: pnpm install --frozen-lockfile
+
+      - name: API 타입 검사
+        run: pnpm --filter @business-assistant/api exec tsc -p tsconfig.json --noEmit
+
+      - name: API 테스트(마이그레이션 계약 검사 포함)
+        run: pnpm --filter @business-assistant/api exec vitest run
+
+      - name: 공통 UI 테스트
+        run: pnpm --filter @business-assistant/react-ui exec vitest run
+
+      - name: 데스크톱 React 테스트
+        run: pnpm --filter @business-assistant/desktop-react exec vitest run
+
+      - name: 빌드(React 타입 검사 포함, API)
+        run: |
+          pnpm --filter @business-assistant/desktop-react build
+          pnpm --filter @business-assistant/api build
+
+  rust:
+    name: Rust 단위 테스트 (Tauri 셸)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: 소스 받기
+        uses: actions/checkout@v5
+
+      - name: Node 준비
+        uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+
+      - name: pnpm 준비와 의존성 설치
+        shell: pwsh
+        run: |
+          corepack enable
+          pnpm install --frozen-lockfile
+
+      - name: 프런트 빌드(Tauri 컨텍스트가 dist를 요구한다)
+        shell: pwsh
+        run: pnpm --filter @business-assistant/desktop-react build
+
+      - name: Cargo 캐시
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            apps/desktop-react/src-tauri/target
+          key: cargo-${{ runner.os }}-${{ hashFiles('apps/desktop-react/src-tauri/Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-
+
+      - name: cargo test
+        shell: pwsh
+        working-directory: apps/desktop-react/src-tauri
+        run: cargo test --lib --locked
+
+  audit:
+    name: 의존성 취약점 점검
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # 새 취약점이 외부 사정으로 생길 수 있으므로 PR을 막지 않고 결과만 알린다. 심각한 항목은 직접 확인해 조치한다.
+    continue-on-error: true
+    steps:
+      - name: 소스 받기
+        uses: actions/checkout@v5
+
+      - name: Node 준비
+        uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+
+      - name: pnpm 준비와 의존성 설치
+        run: |
+          corepack enable
+          pnpm install --frozen-lockfile
+
+      - name: pnpm audit (운영 의존성, high 이상)
+        run: pnpm audit --prod --audit-level high
+
+      - name: cargo-audit 설치
+        run: cargo install cargo-audit --locked
+
+      - name: cargo audit
+        working-directory: apps/desktop-react/src-tauri
+        run: cargo audit

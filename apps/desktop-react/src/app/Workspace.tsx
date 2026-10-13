@@ -10,6 +10,7 @@ import { FinancePage, MembershipPage, SalesPage } from '../features/sales';
 import type { MenuId } from '../features/shell/TopBar';
 import { TaskPage } from '../features/tasks/TaskPage';
 import { TreatmentPage } from '../features/treatments';
+import { ErrorBoundary } from './ErrorBoundary';
 
 interface WorkspaceProps {
   api: ApiClient;
@@ -21,12 +22,23 @@ interface WorkspaceProps {
   /** 구성원(member)이면 true. 조회 위주 화면의 쓰기 UI를 숨긴다. */
   readOnly: boolean;
   onNavigate: (id: MenuId) => void;
+  /** 화면 렌더링 오류를 알린다(로그 기록용). */
+  onError?: (error: Error) => void;
   /** 작성 중인 내용이 있는 화면이 메뉴 이동 보호를 요청할 때 쓴다. */
   onDirtyChange: (dirty: boolean) => void;
 }
 
 /** 메뉴에 해당하는 화면을 고른다. 새 화면은 여기에만 연결하면 된다. */
-export function Workspace({ api, organizationId, active, organizationName, canManage = false, readOnly, onNavigate, onDirtyChange }: WorkspaceProps) {
+export function Workspace(props: WorkspaceProps) {
+  // 한 화면에서 렌더링 오류가 나도 상단 메뉴와 다른 화면은 계속 쓸 수 있게 하고, 메뉴를 옮기면 오류 상태를 푼다.
+  return (
+    <ErrorBoundary scope="page" resetKey={props.active} onError={(error) => props.onError?.(error)}>
+      <WorkspacePage {...props} />
+    </ErrorBoundary>
+  );
+}
+
+function WorkspacePage({ api, organizationId, active, organizationName, canManage = false, readOnly, onNavigate, onDirtyChange }: WorkspaceProps) {
   const props = { api, organizationId, readOnly };
   switch (active) {
     case 'dashboard': return <DashboardPage api={api} organizationId={organizationId} onNavigate={onNavigate} organizationName={organizationName} readOnly={readOnly} canManage={canManage} />;

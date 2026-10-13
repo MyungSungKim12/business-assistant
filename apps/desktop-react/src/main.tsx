@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client';
 
 import { ApiClient } from './api/client';
 import { App } from './app/App';
+import { ErrorBoundary } from './app/ErrorBoundary';
 import { createBrowserPlatform } from './platform/browser';
 import { createTauriPlatform } from './platform/tauri';
 import type { Platform } from './platform/types';
@@ -24,6 +25,12 @@ function installErrorLogging() {
 }
 installErrorLogging();
 
+/** 화면 렌더링 오류를 로그 한 줄로 만든다. 컴포넌트 스택은 앞 3줄만 남긴다(전화번호는 Rust 로그 쪽에서 가린다). */
+function describeRenderError(error: Error, componentStack: string): string {
+  const stack = componentStack.trim().split('\n').slice(0, 3).map((line) => line.trim()).join(' <- ');
+  return `화면 오류: ${error.name}: ${error.message.slice(0, 300)}${stack ? ` | ${stack}` : ''}`;
+}
+
 function showFatal(reason: unknown, platform?: Platform) {
   const message = reason instanceof Error ? reason.message : String(reason);
   platform?.log?.('ERROR', `시작 실패: ${message}`);
@@ -43,7 +50,13 @@ async function boot() {
   try {
     platform = '__TAURI_INTERNALS__' in window ? await createTauriPlatform() : createBrowserPlatform();
     const services = { platform, api: new ApiClient(platform) };
-    createRoot(root!).render(<StrictMode><App services={services} /></StrictMode>);
+    createRoot(root!).render(
+      <StrictMode>
+        <ErrorBoundary scope="app" onError={(error, stack) => platform?.log?.('ERROR', describeRenderError(error, stack))}>
+          <App services={services} />
+        </ErrorBoundary>
+      </StrictMode>,
+    );
   } catch (reason) {
     showFatal(reason, platform);
   }

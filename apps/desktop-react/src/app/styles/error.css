@@ -1,0 +1,36 @@
+/* error.css: 오류 경계 화면 */
+.error-fallback {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  max-width: 640px;
+  margin: 24px auto;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface-panel);
+}
+
+.error-fallback--app {
+  margin-top: 12vh;
+}
+
+.error-fallback h1 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.error-fallback p {
+  margin: 0;
+}
+
+.error-fallback__detail {
+  margin: 0;
+  padding: 8px;
+  overflow: auto;
+  border: 1px solid var(--divider);
+  background: var(--surface-muted);
+  color: var(--text-muted);
+  font-size: var(--font-size-small);
+  white-space: pre-wrap;
+}
