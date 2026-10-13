@@ -6,8 +6,8 @@
 business-assistant/
 ├─ apps/
 │  ├─ desktop-react/ React/Tauri 데스크톱 앱
-│  └─ server/        FastAPI 서버와 Supabase 어댑터
-├─ packages/common/  공통 모델, 오류와 API 계약
+│  └─ server/        Node API 서버(Fastify)와 Supabase 게이트웨이
+├─ packages/         공통 코드, API 계약, 공통 React UI
 ├─ migrations/       번호 순서의 Supabase SQL
 ├─ scripts/          실행, 검증, DB 테스트와 화면 미리보기
 ├─ docs/
@@ -24,7 +24,7 @@ business-assistant/
 sequenceDiagram
   actor User as 사용자
   participant Desktop as React/Tauri Desktop
-  participant API as FastAPI Server
+  participant API as Node API Server
   participant Auth as Supabase Auth
   participant DB as PostgreSQL + RLS
   participant Storage as Private Storage

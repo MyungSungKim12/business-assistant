@@ -26,7 +26,7 @@ powershell -ExecutionPolicy Bypass -File scripts/bootstrap.ps1
 powershell -ExecutionPolicy Bypass -File scripts/check.ps1
 ```
 
-이 명령은 Ruff 린트, Ruff 포맷 검사, mypy 타입 검사, pytest를 순서대로 실행합니다. 한 명령이라도 실패하면 즉시 멈춥니다. 개별 테스트는 `uv run pytest`, 포맷 자동 적용은 `uv run ruff format .`로 실행할 수 있습니다.
+이 명령은 TypeScript 타입 검사, API·React·공통 UI 테스트(vitest), Rust 테스트(cargo test), React 프로덕션 빌드를 순서대로 실행합니다. 한 명령이라도 실패하면 즉시 멈춥니다. 개별 테스트는 `corepack pnpm --filter @business-assistant/api test`처럼 패키지별로 실행할 수 있습니다.
 
 ## 서버와 React/Tauri 데스크톱 시작
 

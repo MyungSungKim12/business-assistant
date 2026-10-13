@@ -29,14 +29,13 @@ Supabase 인증과 조직별 권한 API를 실행하려면 `.env.example`을 `.e
 프로젝트 URL과 publishable key를 입력한 뒤 마이그레이션을 적용하세요. 실제 키를 Git에
 추가하지 마세요. 전체 순서는 [Supabase 설정 안내](docs/08-supabase-setup.md)를 따릅니다.
 
-서버와 데스크톱 앱은 각각 별도 PowerShell 창에서 시작합니다.
+서버와 데스크톱 앱은 한 번에 시작합니다.
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts/run-server.ps1
-powershell -ExecutionPolicy Bypass -File scripts/run-react-desktop.ps1
+run-app.cmd
 ```
 
-두 번째 명령은 브라우저 주소가 아닌 Windows 앱 창을 엽니다. `run-react-web.ps1`은 UI 개발용 브라우저 미리보기입니다. Native Tauri 준비물과 환경 변수는 [React/Tauri 운영 안내](docs/guide/admin/react-tauri.md)를 참고하세요.
+`run-app.cmd`(또는 `scripts/run-app.ps1`)는 API 서버를 띄우고 응답을 기다린 뒤 브라우저 주소가 아닌 Windows 앱 창을 엽니다. 창을 닫으면 함께 띄운 API 서버도 종료합니다. API만 따로 실행하려면 `scripts/run-server.ps1`을 사용합니다. `run-react-web.ps1`은 UI 개발용 브라우저 미리보기입니다. Native Tauri 준비물과 환경 변수는 [React/Tauri 운영 안내](docs/guide/admin/react-tauri.md)를 참고하세요.
 
 처음 개발하는 경우에는 [개발 환경 안내](docs/05-development-guide.md)를 먼저 읽으세요.
 
@@ -71,7 +70,7 @@ pull request에서는 문서 빌드만 검사하고, `main` 브랜치에 반영�
 ## 핵심 원칙
 
 1. 데스크톱 앱은 데이터베이스에 직접 연결하지 않습니다.
-2. 모든 보호된 작업은 FastAPI 서버를 거칩니다.
+2. 모든 보호된 작업은 Node API 서버(Fastify)를 거칩니다.
 3. 메뉴를 숨기는 것만으로 권한을 처리하지 않습니다.
 4. 서버가 구독 상태와 기능 권한을 매 요청마다 검증합니다.
 5. 관리자 키와 DB 비밀번호는 데스크톱 앱에 포함하지 않습니다.
@@ -86,7 +85,7 @@ React/Tauri Desktop
   └─ 로컬 파일·Excel·PDF 처리
           │ HTTPS + access token
           ▼
-FastAPI Server
+Node API Server (Fastify)
   ├─ 사용자 인증
   ├─ 조직·직원 역할 확인
   ├─ 구독·기능 권한 확인
@@ -104,17 +103,17 @@ Supabase
 
 | 영역 | 기술 |
 |---|---|
-| 언어 | Python 3.13 |
-| 패키지·가상환경 | uv |
+| 언어 | TypeScript (Node 24) |
+| 패키지·워크스페이스 | pnpm |
 | 데스크톱 UI | React 19 + Tauri 2 |
-| API 서버 | FastAPI + Uvicorn |
-| 데이터 계층 | SQLAlchemy 2.x + Alembic |
+| API 서버 | Fastify + zod |
+| 데이터 계층 | Supabase PostgREST/RPC (사용자 토큰, RLS) |
 | 운영 데이터베이스 | Supabase PostgreSQL |
 | 인증 | Supabase Auth |
 | 파일 저장 | Supabase Storage |
-| 설정 | Pydantic Settings |
-| 테스트 | pytest |
-| 코드 품질 | Ruff + mypy |
+| 설정 | zod 환경 변수 검증 |
+| 테스트 | vitest, Rust cargo test |
+| 코드 품질 | TypeScript strict |
 | 소스 관리 | Git + GitHub |
 
 ## 범용 메뉴
@@ -194,18 +193,19 @@ PRO
 business-assistant/
 ├─ apps/
 │  ├─ desktop-react/           # React/Tauri 데스크톱 앱
-│  └─ server/                  # FastAPI 백엔드
+│  └─ api/                     # Node API 서버(Fastify)
 ├─ packages/
-│  └─ common/                  # 공통 타입과 API 계약
+│  ├─ api-contract/            # API 계약
+│  └─ react-ui/                # 공통 React UI와 디자인 토큰
 ├─ docs/                       # 제품·설계·개발 문서
 ├─ migrations/                 # 데이터베이스 마이그레이션
 ├─ scripts/                    # 개발 편의 스크립트
-├─ tests/                      # 저장소 수준 테스트
 ├─ .env.example
 ├─ .gitignore
-├─ .python-version
-├─ pyproject.toml
-├─ uv.lock
+├─ package.json
+├─ pnpm-workspace.yaml
+├─ run-app.cmd                 # API + 데스크톱 앱 한 번에 실행
+├─ requirements-docs.txt       # 문서 사이트(MkDocs) 전용 Python 의존성
 └─ README.md
 ```
 
@@ -216,7 +216,7 @@ business-assistant/
 - [x] uv와 Python 3.13 개발환경
 - [x] 모노레포 및 공통 설정
 - [x] React/Tauri 데스크톱 기본 화면
-- [x] FastAPI 상태 확인 API
+- [x] Node API 상태 확인
 - [x] 테스트, 린트, 타입 검사
 - [x] 개발 및 Git 문서
 
@@ -252,7 +252,7 @@ business-assistant/
 
 - Supabase 관리자 키와 DB 비밀번호는 서버 환경변수로만 관리합니다.
 - Git에는 `.env`와 비밀정보를 커밋하지 않습니다.
-- FastAPI는 토큰 서명, 발급자, 대상, 만료를 검증합니다.
+- Node API는 토큰 서명, 발급자, 대상, 만료를 검증합니다.
 - 모든 업무 요청에서 사용자, 조직, 역할, 구독 권한을 검사합니다.
 - 테넌트 데이터에는 RLS를 적용하고 관련 열을 인덱싱합니다.
 - 로그인, 구독, 기기, 권한 변경은 감사 로그에 기록합니다.

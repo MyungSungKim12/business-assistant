@@ -75,7 +75,7 @@ Supabase Dashboard의 SQL Editor 또는 팀에서 사용하는 Supabase CLI 마�
 
 모든 `public` 애플리케이션 테이블에는 RLS를 활성화합니다. RLS는 publishable key를
 사용하는 클라이언트의 조직 간 데이터 접근을 제한하는 최후의 경계입니다. RLS를 끄거나
-service key로 클라이언트 정책을 우회하지 마세요. FastAPI 서버도 Bearer 토큰, 조직
+service key로 클라이언트 정책을 우회하지 마세요. Node API 서버도 Bearer 토큰, 조직
 멤버십, 구독 entitlement를 매 요청마다 별도로 검증해야 합니다.
 
 ## 4 테스트와 실행
@@ -89,7 +89,7 @@ powershell -ExecutionPolicy Bypass -File scripts/bootstrap.ps1
 설정과 문서 계약만 빠르게 확인하려면 다음을 실행합니다.
 
 ```powershell
-uv run pytest apps/server/tests/test_config.py -q
+corepack pnpm --filter @business-assistant/api exec vitest run src/config.test.ts
 ```
 
 전체 린트, 포맷, 타입 검사와 테스트는 다음 명령으로 실행합니다.

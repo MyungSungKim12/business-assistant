@@ -42,7 +42,7 @@ Supabase Dashboard의 SQL Editor에서 운영 스키마 SQL을 번호 순서대�
 
 | 변수 | 사용 위치 | 설명 |
 | --- | --- | --- |
-| `APP_API_BASE_URL` | 데스크톱 | FastAPI 서버 주소 |
+| `APP_API_BASE_URL` | 데스크톱 | Node API 서버 주소 |
 | `APP_FILE_BUCKET` | 서버 | 비공개 파일·사진 버킷 이름 |
 | `APP_SUPABASE_URL` | 서버 | 프로젝트 URL |
 | `APP_SUPABASE_PUBLISHABLE_KEY` | 인증 흐름 | 공개 가능한 프로젝트 키 |

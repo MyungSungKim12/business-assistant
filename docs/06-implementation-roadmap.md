@@ -1,10 +1,10 @@
 # 구현 로드맵
 
-각 단계는 이전 단계의 품질 검사(Ruff, mypy, pytest)를 통과한 뒤 진행합니다. 완료 기준은 기능이 보이는 것뿐 아니라 권한, 오류 처리, 테스트와 문서가 함께 준비된 상태입니다.
+각 단계는 이전 단계의 품질 검사(TypeScript 타입 검사, vitest, cargo test)를 통과한 뒤 진행합니다. 완료 기준은 기능이 보이는 것뿐 아니라 권한, 오류 처리, 테스트와 문서가 함께 준비된 상태입니다.
 
 ## 1단계 — 프로젝트 기반
 
-**산출물**: uv/Python 3.13 워크스페이스, 공통 패키지, FastAPI 상태 확인 API, React/Tauri 데스크톱 앱, PowerShell 개발 스크립트, 입문 문서.
+**산출물**: pnpm 워크스페이스, 공통 패키지, Node API 상태 확인, React/Tauri 데스크톱 앱, PowerShell 개발 스크립트, 입문 문서.
 
 **완료 기준**: `scripts/bootstrap.ps1`으로 새 환경을 구성하고 `scripts/check.ps1`이 통과합니다. 서버의 `/api/v1/health`가 응답하고, React 웹 개발 서버가 시작됩니다.
 
