@@ -120,6 +120,7 @@ nav:
   - 운영자 가이드:
       - Supabase와 SQL 적용: guide/admin/supabase.md
       - 권한·보안·운영 점검: guide/admin/permissions-and-operations.md
+      - 데모 데이터 만들기: guide/admin/demo-data.md
   - 개발자 가이드:
       - 구조와 데이터 흐름: guide/developer/architecture.md
       - Git 브랜치와 worktree: guide/developer/git-worktree.md
