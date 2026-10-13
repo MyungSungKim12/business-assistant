@@ -1,37 +1,159 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { confirm } from '@business-assistant/react-ui';
 import type { ApiClient } from '../../api/client';
 import type { Task } from '../../api/schemas';
+import { TaskCalendar } from './TaskCalendar';
+import { TaskDetail } from './TaskDetail';
+import type { TaskFormValues } from './TaskForm';
+import { TaskList } from './TaskList';
+import { dateKeyToLocalInput, dueDateKey, localInputToIso, moveDueToDate, toDateKey, type DateKey } from './taskDates';
+import { EMPTY_FILTERS, filterTasks, sortByDue, type TaskFilters } from './taskFilters';
+import type { TaskStatus } from './taskMeta';
+import './tasks.css';
 
-export function TaskPage({ api, organizationId }: { api: ApiClient; organizationId: string }) {
+export interface TaskPageProps {
+  api: ApiClient;
+  organizationId: string;
+  /** member 등 조회 전용 계정. */
+  readOnly?: boolean;
+  /** 오늘로 취급할 날짜(테스트용). 기본은 실행 환경의 오늘. */
+  todayKey?: DateKey;
+}
+
+function mergeTask(items: Task[], next: Task): Task[] {
+  return items.map((item) => (item.id === next.id ? { ...item, ...next } : item));
+}
+
+export function TaskPage({ api, organizationId, readOnly = false, todayKey: todayOverride }: TaskPageProps) {
+  const todayKey = useMemo(() => todayOverride ?? toDateKey(new Date()), [todayOverride]);
   const [items, setItems] = useState<Task[]>([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({ title: '', description: '', due_at: '', priority: 'normal' as 'low'|'normal'|'high' });
+  const [filters, setFilters] = useState<TaskFilters>(EMPTY_FILTERS);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [createKey, setCreateKey] = useState(0);
+  const [createDue, setCreateDue] = useState('');
+  const dirtyRef = useRef(false);
+  const itemsRef = useRef<Task[]>([]);
+  itemsRef.current = items;
+
   const load = useCallback(async () => {
-    try { setItems(await api.listTasks(organizationId)); setError(''); }
-    catch { setError('할 일 목록을 불러오지 못했습니다.'); }
+    setLoading(true);
+    try {
+      setItems(await api.listTasks(organizationId));
+      setError('');
+    } catch {
+      setError('할 일 목록을 불러오지 못했습니다.');
+    } finally {
+      setLoading(false);
+    }
   }, [api, organizationId]);
   useEffect(() => { void load(); }, [load]);
-  const create = async () => {
-    if (!form.title.trim()) return;
-    setSaving(true);
+
+  const onDirtyChange = useCallback((dirty: boolean) => { dirtyRef.current = dirty; }, []);
+  const confirmLeave = async () => {
+    if (!dirtyRef.current) return true;
+    const ok = await confirm({ title: '작성 중인 내용', message: '저장하지 않은 내용이 있습니다. 버리고 이동할까요?', confirmLabel: '버리기', tone: 'danger' });
+    if (ok) dirtyRef.current = false;
+    return ok;
+  };
+
+  const selected = useMemo(() => items.find((item) => item.id === selectedId) ?? null, [items, selectedId]);
+  const rows = useMemo(() => sortByDue(filterTasks(items, filters)), [items, filters]);
+
+  const selectTask = async (task: Task) => {
+    if (task.id === selectedId) return;
+    if (!dirtyRef.current) { setSelectedId(task.id); return; }
+    if (!(await confirmLeave())) return;
+    setSelectedId(task.id);
+  };
+  const startNew = async () => {
+    if (selected === null && !dirtyRef.current) { setCreateKey((value) => value + 1); setCreateDue(''); return; }
+    if (!(await confirmLeave())) return;
+    setSelectedId(null);
+    setCreateDue('');
+    setCreateKey((value) => value + 1);
+  };
+  const selectDate = (key: DateKey) => {
+    setFilters((current) => ({ ...current, range: { from: key, to: key } }));
+    setCreateDue(dateKeyToLocalInput(key));
+  };
+
+  const createTask = async (values: TaskFormValues) => {
+    const created = await api.createTask(organizationId, { title: values.title, description: values.description, due_at: localInputToIso(values.due), priority: values.priority });
+    setItems((current) => [...current, created]);
+    setCreateDue('');
+    setSelectedId(created.id);
+  };
+  const updateTask = async (task: Task, values: TaskFormValues) => {
+    const saved = await api.updateTask(organizationId, task.id, { title: values.title, description: values.description, due_at: localInputToIso(values.due), priority: values.priority });
+    setItems((current) => mergeTask(current, saved));
+  };
+  const changeStatus = async (task: Task, status: TaskStatus) => {
+    const saved = await api.updateTask(organizationId, task.id, { status });
+    setItems((current) => mergeTask(current, saved));
+  };
+  const deleteTask = async (task: Task) => {
+    await api.deleteTask(organizationId, task.id);
+    setItems((current) => current.filter((item) => item.id !== task.id));
+    setSelectedId((current) => (current === task.id ? null : current));
+  };
+
+  /** 달력 드래그 이동. 화면에는 먼저 반영하고, 실패하면 원래 기한으로 되돌린다. */
+  const moveTask = async (task: Task, key: DateKey | null) => {
+    if (readOnly || dueDateKey(task.due_at) === key) return;
+    const original = itemsRef.current.find((item) => item.id === task.id) ?? task;
+    const nextDue = key ? moveDueToDate(original.due_at, key) : null;
+    setItems((current) => mergeTask(current, { ...original, due_at: nextDue }));
+    setError('');
     try {
-      await api.createTask(organizationId, { ...form, title: form.title.trim(), due_at: form.due_at ? new Date(form.due_at).toISOString() : null });
-      setForm({ title: '', description: '', due_at: '', priority: 'normal' });
-      await load();
-    } catch { setError('할 일을 저장하지 못했습니다.'); }
-    finally { setSaving(false); }
+      const saved = await api.updateTask(organizationId, task.id, { due_at: nextDue });
+      setItems((current) => mergeTask(current, saved));
+    } catch (failure) {
+      setItems((current) => mergeTask(current, original));
+      setError('기한을 변경하지 못해 원래 날짜로 되돌렸습니다.');
+      throw failure;
+    }
   };
-  const update = async (item: Task, status: 'open'|'in_progress'|'done'|'canceled') => {
-    try { await api.updateTask(organizationId, item.id, { status }); await load(); }
-    catch { setError('할 일 상태를 변경하지 못했습니다.'); }
-  };
-  return <section className="task-page">
-    <div className="page-toolbar"><div><p className="eyebrow">TASKS</p><h1>할 일</h1><p className="muted">매장 업무를 등록하고 처리 상태를 공유합니다.</p></div></div>
-    {error && <p role="alert" className="form-error">{error}</p>}
-    <div className="task-layout">
-      <div className="data-surface task-list">{items.map((item) => <article key={item.id} className={`task-item task-item--${item.status}`}><div><span className={`priority priority--${item.priority}`}>{item.priority === 'high' ? '높음' : item.priority === 'low' ? '낮음' : '보통'}</span><h2>{item.title}</h2><p>{item.description || '설명 없음'}</p><small>{item.due_at ? new Date(item.due_at).toLocaleString('ko-KR') : '기한 없음'}</small></div><div className="row-actions"><select aria-label="상태" value={item.status} onChange={(event) => void update(item, event.target.value as 'open'|'in_progress'|'done'|'canceled')}><option value="open">대기</option><option value="in_progress">진행</option><option value="done">완료</option><option value="canceled">취소</option></select><button className="danger-button" onClick={async()=>{try{await api.deleteTask(organizationId,item.id);await load()}catch{setError('할 일을 삭제하지 못했습니다.')}}}>삭제</button></div></article>)}{!items.length && <p className="empty-state">등록된 할 일이 없습니다.</p>}</div>
-      <aside className="editor-panel"><h2>할 일 등록</h2><label>제목<input value={form.title} onChange={(e)=>setForm({...form,title:e.target.value})}/></label><label>설명<textarea value={form.description} onChange={(e)=>setForm({...form,description:e.target.value})}/></label><label>기한<input type="datetime-local" value={form.due_at} onChange={(e)=>setForm({...form,due_at:e.target.value})}/></label><label>우선순위<select value={form.priority} onChange={(e)=>setForm({...form,priority:e.target.value as typeof form.priority})}><option value="low">낮음</option><option value="normal">보통</option><option value="high">높음</option></select></label><button className="primary-button" disabled={saving||!form.title.trim()} onClick={()=>void create()}>{saving?'저장 중…':'할 일 등록'}</button></aside>
+
+  const filterDay = filters.range.from && filters.range.from === filters.range.to ? filters.range.from : null;
+  return (
+    <div className="tasks-page">
+      <TaskList
+        rows={rows}
+        totalCount={items.length}
+        loading={loading}
+        error={error}
+        filters={filters}
+        todayKey={todayKey}
+        selectedId={selectedId}
+        readOnly={readOnly}
+        onFiltersChange={setFilters}
+        onSelect={(task) => void selectTask(task)}
+        onNew={() => void startNew()}
+        onRetry={() => void load()}
+      />
+      <TaskDetail
+        task={selected}
+        createKey={createKey}
+        createDue={createDue}
+        readOnly={readOnly}
+        onCreate={createTask}
+        onUpdate={updateTask}
+        onStatus={changeStatus}
+        onDelete={deleteTask}
+        onDirtyChange={onDirtyChange}
+      />
+      <TaskCalendar
+        tasks={items}
+        todayKey={todayKey}
+        selectedId={selectedId}
+        selectedDate={filterDay}
+        readOnly={readOnly}
+        onSelectTask={(task) => void selectTask(task)}
+        onSelectDate={selectDate}
+        onMove={moveTask}
+      />
     </div>
-  </section>;
+  );
 }

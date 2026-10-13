@@ -1,1 +1,46 @@
-import{useEffect,useState}from'react';import type{ApiClient}from'../../api/client';export function useDashboardData(api:ApiClient,organizationId:string){const[customers,setCustomers]=useState<number|null>(null);const[tasks,setTasks]=useState<number|null>(null);useEffect(()=>{let live=true;api.listCustomers(organizationId).then(x=>live&&setCustomers(x.length)).catch(()=>live&&setCustomers(null));api.listTasks(organizationId).then(x=>live&&setTasks(x.filter(t=>t.status!=='done').length)).catch(()=>live&&setTasks(null));return()=>{live=false}},[api,organizationId]);return{customers,tasks}}
+import type { Customer, Task } from '../../api/schemas';
+import type { Settlement, Transaction } from '../sales/types';
+import { dashboardApi, type DashboardApi, type TodayAppointments } from './dashboardApi';
+import type { StockItem, WalletRow } from './dashboardMetrics';
+import { useSource, type Source } from './sourceState';
+
+export interface DashboardSources {
+  customers: Source<Customer[]>;
+  tasks: Source<Task[]>;
+  appointments: Source<TodayAppointments>;
+  transactions: Source<Transaction[]>;
+  settlement: Source<Settlement>;
+  products: Source<StockItem[]>;
+  wallets: Source<WalletRow[]>;
+}
+
+export interface DashboardReloaders {
+  customers: () => void;
+  tasks: () => void;
+  appointments: () => void;
+  transactions: () => void;
+  settlement: () => void;
+  products: () => void;
+  wallets: () => void;
+}
+
+/**
+ * 패널별 데이터 원본. 각 원본은 독립적으로 불러오고 실패해도 다른 원본에 영향을 주지 않는다.
+ * refreshKey가 바뀌면 모두 다시 불러온다.
+ */
+export function useDashboardData(api: DashboardApi, organizationId: string, today: string, refreshKey: number): { sources: DashboardSources; reload: DashboardReloaders } {
+  const [customers, reloadCustomers] = useSource(() => api.listCustomers(organizationId), [api, organizationId, refreshKey]);
+  const [tasks, reloadTasks] = useSource(() => api.listTasks(organizationId), [api, organizationId, refreshKey]);
+  const [appointments, reloadAppointments] = useSource(() => dashboardApi.appointments(api, organizationId, today), [api, organizationId, today, refreshKey]);
+  const [transactions, reloadTransactions] = useSource(() => dashboardApi.transactions(api, organizationId, today), [api, organizationId, today, refreshKey]);
+  const [settlement, reloadSettlement] = useSource(() => dashboardApi.settlement(api, organizationId, today), [api, organizationId, today, refreshKey]);
+  const [products, reloadProducts] = useSource(() => dashboardApi.products(api, organizationId), [api, organizationId, refreshKey]);
+  const [wallets, reloadWallets] = useSource(() => dashboardApi.wallets(api, organizationId), [api, organizationId, refreshKey]);
+  return {
+    sources: { customers, tasks, appointments, transactions, settlement, products, wallets },
+    reload: {
+      customers: reloadCustomers, tasks: reloadTasks, appointments: reloadAppointments, transactions: reloadTransactions,
+      settlement: reloadSettlement, products: reloadProducts, wallets: reloadWallets,
+    },
+  };
+}

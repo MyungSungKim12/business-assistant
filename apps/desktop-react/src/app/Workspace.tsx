@@ -15,6 +15,9 @@ interface WorkspaceProps {
   api: ApiClient;
   organizationId: string;
   active: MenuId;
+  organizationName?: string;
+  /** 소유자·관리자 여부 */
+  canManage?: boolean;
   /** 구성원(member)이면 true. 조회 위주 화면의 쓰기 UI를 숨긴다. */
   readOnly: boolean;
   onNavigate: (id: MenuId) => void;
@@ -23,11 +26,11 @@ interface WorkspaceProps {
 }
 
 /** 메뉴에 해당하는 화면을 고른다. 새 화면은 여기에만 연결하면 된다. */
-export function Workspace({ api, organizationId, active, readOnly, onNavigate, onDirtyChange }: WorkspaceProps) {
+export function Workspace({ api, organizationId, active, organizationName, canManage = false, readOnly, onNavigate, onDirtyChange }: WorkspaceProps) {
   const props = { api, organizationId, readOnly };
   switch (active) {
-    case 'dashboard': return <DashboardPage api={api} organizationId={organizationId} onNavigate={onNavigate} />;
-    case 'tasks': return <TaskPage api={api} organizationId={organizationId} />;
+    case 'dashboard': return <DashboardPage api={api} organizationId={organizationId} onNavigate={onNavigate} organizationName={organizationName} readOnly={readOnly} canManage={canManage} />;
+    case 'tasks': return <TaskPage api={api} organizationId={organizationId} readOnly={readOnly} />;
     case 'customers': return <CustomerPage {...props} />;
     // 예약은 구성원도 등록·변경할 수 있다. 공간·장비 관리는 소유자·관리자만 한다.
     case 'appointments': return <AppointmentPage api={api} organizationId={organizationId} readOnly={false} canManageResources={!readOnly} />;

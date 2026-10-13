@@ -29,7 +29,7 @@ describe('App', () => {
 
   it('automatically selects a sole organization and renders the top shell', async () => {
     render(<App services={services()} />); await login();
-    expect(await screen.findByText('베이지 살롱')).toBeInTheDocument();
+    expect((await screen.findAllByText('베이지 살롱')).length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: '고객관리' })).toBeInTheDocument();
     expect(screen.getByText('원장')).toBeInTheDocument();
   });
@@ -40,7 +40,7 @@ describe('App', () => {
     const view = render(<App services={many} />); await login();
     expect(await screen.findByRole('heading', { name: '매장 선택' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /두 번째 매장/ }));
-    expect(await screen.findByRole('heading', { name: '오늘의 매장' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { level: 1, name: '두 번째 매장' })).toBeInTheDocument();
     view.unmount(); useSessionStore.getState().reset();
     render(<App services={services({ listOrganizations: vi.fn(async () => []) })} />); await login();
     expect(await screen.findByText('접근 가능한 매장이 없습니다.')).toBeInTheDocument();
@@ -49,7 +49,7 @@ describe('App', () => {
   it('hides customer access without entitlement and marks members read only', async () => {
     const member = [{ ...organizations[0], role: 'member' }];
     render(<App services={services({ listOrganizations: vi.fn(async () => member), getEntitlements: vi.fn(async () => ({ organization_id: member[0].id, plan_code: 'basic', features: [] })) })} />);
-    await login(); await screen.findByText('베이지 살롱');
+    await login(); await screen.findAllByText('베이지 살롱');
     expect(screen.queryByRole('button', { name: '고객관리' })).not.toBeInTheDocument();
     expect(screen.getByText('읽기 전용')).toBeInTheDocument();
   });
@@ -65,7 +65,7 @@ describe('App', () => {
   });
 
   it('opens settings and reports unavailable update support', async () => {
-    render(<App services={services()} />); await login(); await screen.findByText('베이지 살롱');
+    render(<App services={services()} />); await login(); await screen.findAllByText('베이지 살롱');
     fireEvent.click(screen.getByRole('button', { name: '설정' }));
     expect(await screen.findByText('패키징 단계에서 지원 예정')).toBeInTheDocument();
   });

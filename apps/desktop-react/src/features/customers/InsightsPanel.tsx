@@ -1,0 +1,88 @@
+import { useMemo, type ReactNode } from 'react';
+import { birthdayCustomers, lapsedCustomers, LAPSED_DAYS, summarizeCustomers, UPCOMING_DAYS, upcomingVisits } from './insights';
+import { kstToday } from './kst';
+import type { Customer } from './types';
+
+type Props = {
+  customers: Customer[];
+  selectedId?: string;
+  /** 테스트에서 기준 시각을 고정할 때 쓴다. */
+  now?: Date;
+  onSelect: (customer: Customer) => void;
+};
+
+type ListItem = { customer: Customer; detail: string; strong?: boolean };
+
+function Card({ title, count, hint, children }: { title: string; count?: number; hint?: string; children: ReactNode }) {
+  return (
+    <section className="cx-insight" aria-label={title}>
+      <header>
+        <h3>{title}</h3>
+        {count !== undefined && <span className="cx-badge">{count}</span>}
+        {hint && <span className="muted cx-insight__hint">{hint}</span>}
+      </header>
+      <div className="cx-insight__body">{children}</div>
+    </section>
+  );
+}
+
+function CustomerList({ items, selectedId, empty, onSelect }: { items: ListItem[]; selectedId?: string; empty: string; onSelect: (customer: Customer) => void }) {
+  if (items.length === 0) return <p className="cx-insight__empty muted">{empty}</p>;
+  return (
+    <ul className="cx-insight__list">
+      {items.map(({ customer, detail, strong }) => (
+        <li key={customer.id}>
+          <button type="button" aria-pressed={customer.id === selectedId} onClick={() => onSelect(customer)}>
+            <span className="cx-insight__name">{customer.name}</span>
+            <span className={strong ? 'cx-insight__detail cx-insight__detail--strong' : 'cx-insight__detail'}>{detail}</span>
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+const dayLabel = (days: number) => (days === 0 ? '오늘' : `D-${days}`);
+
+/** 고객 목록 데이터만으로 계산하는 업무 인사이트(현황·다음 방문·장기 미방문·생일). 기준일은 KST. */
+export function InsightsPanel({ customers, selectedId, now, onSelect }: Props) {
+  const today = kstToday(now);
+  const summary = useMemo(() => summarizeCustomers(customers, today), [customers, today]);
+  const upcoming = useMemo(() => upcomingVisits(customers, today), [customers, today]);
+  const lapsed = useMemo(() => lapsedCustomers(customers, today), [customers, today]);
+  const birthdays = useMemo(() => birthdayCustomers(customers, today), [customers, today]);
+  const maxTag = summary.topTags[0]?.count ?? 1;
+  const month = Number(today.slice(5, 7));
+
+  return (
+    <div className="cx-insights" aria-label="고객 인사이트">
+      <Card title="고객 현황" hint={`${today} 기준`}>
+        <dl className="cx-stats">
+          <div><dt>전체</dt><dd>{summary.total}</dd></div>
+          <div><dt>활성</dt><dd>{summary.active}</dd></div>
+          <div><dt>VIP</dt><dd>{summary.vip}</dd></div>
+          <div><dt>보관</dt><dd>{summary.archived}</dd></div>
+          <div><dt>이번 달 방문</dt><dd>{summary.visitedThisMonth}</dd></div>
+        </dl>
+        <h4>태그별 분포 (상위 {summary.topTags.length || 5})</h4>
+        {summary.topTags.length === 0
+          ? <p className="cx-insight__empty muted">등록된 태그가 없습니다.</p>
+          : <ul className="cx-tags">{summary.topTags.map((item) => (
+              <li key={item.tag}><span title={item.tag}>{item.tag}</span><i style={{ width: `${Math.max(6, (item.count / maxTag) * 100)}%` }} /><b>{item.count}</b></li>
+            ))}</ul>}
+      </Card>
+      <Card title="다음 방문 임박" count={upcoming.length} hint={`${UPCOMING_DAYS}일 이내`}>
+        <CustomerList selectedId={selectedId} onSelect={onSelect} empty={`${UPCOMING_DAYS}일 안에 예정된 방문이 없습니다.`}
+          items={upcoming.map((item) => ({ customer: item.customer, detail: `${item.date} · ${dayLabel(item.days)}`, strong: item.days <= 1 }))} />
+      </Card>
+      <Card title="장기 미방문" count={lapsed.length} hint={`${LAPSED_DAYS}일 이상 · 연락 대상`}>
+        <CustomerList selectedId={selectedId} onSelect={onSelect} empty="연락이 필요한 장기 미방문 고객이 없습니다."
+          items={lapsed.map((item) => ({ customer: item.customer, detail: item.days === null ? '방문 기록 없음' : `${item.lastVisit} · ${item.days}일 전` }))} />
+      </Card>
+      <Card title="이번 달 생일" count={birthdays.length} hint={`${month}월`}>
+        <CustomerList selectedId={selectedId} onSelect={onSelect} empty="이번 달 생일인 고객이 없습니다."
+          items={birthdays.map((item) => ({ customer: item.customer, detail: `${month}월 ${item.day}일${item.isToday ? ' · 오늘' : ''}`, strong: item.isToday }))} />
+      </Card>
+    </div>
+  );
+}

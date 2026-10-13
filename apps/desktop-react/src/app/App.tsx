@@ -75,7 +75,7 @@ export function App({ services }: { services: AppServices }) {
         onExit={services.platform.exitApp}
       />
       <main className="workspace">
-        <Workspace api={api} organizationId={organization.id} active={active} readOnly={readOnly} onNavigate={navigate} onDirtyChange={setDirty} />
+        <Workspace api={api} organizationId={organization.id} organizationName={organization.name} canManage={canManage} active={active} readOnly={readOnly} onNavigate={navigate} onDirtyChange={setDirty} />
       </main>
       {settings && <SettingsDialog platform={services.platform} onClose={() => setSettings(false)} />}
       <NoticeHost />

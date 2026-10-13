@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { ConfirmDialog } from '@business-assistant/react-ui';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { z } from 'zod';
 import { ApiError } from '../../api/errors';
 import { TreatmentPage } from './TreatmentPage';
@@ -26,7 +26,7 @@ const readyRecord = (id = t1) => treatment(id, { consultation_goal: '보습', ca
 type Call = { method: string; path: string; body: unknown };
 type Handler = (call: Call, state: { records: Treatment[] }) => unknown | undefined;
 
-function setup(options: { records?: Treatment[]; handler?: Handler; customers?: object[]; listCustomers?: () => Promise<object[]> } = {}) {
+function setup(options: { records?: Treatment[]; handler?: Handler; customers?: object[]; listCustomers?: () => Promise<object[]>; photos?: object[] } = {}) {
   const state = { records: options.records ?? [treatment(t1)] };
   const calls: Call[] = [];
   const call = vi.fn(async (method: string, path: string, schema: z.ZodType, body?: unknown) => {
@@ -64,6 +64,9 @@ function setup(options: { records?: Treatment[]; handler?: Handler; customers?: 
   });
   const api = {
     listCustomers: vi.fn(options.listCustomers ?? (async () => options.customers ?? [customer(cust, '김고객'), customer(other, '박고객', { phone: null, allergies: '', skin_type: null, concerns: [] })])),
+    listCustomerPhotos: vi.fn(async () => options.photos ?? []),
+    createPhotoDownloadUrl: vi.fn(async (_o: string, _c: string, id: string) => ({ photo: {}, signed_url: `https://files.test/${id}`, expires_in: 60 })),
+    filePlatform: { downloadBinary: vi.fn(async () => new Uint8Array([1, 2, 3])), pickImages: vi.fn(async () => []) },
     call,
     callVoid: vi.fn(),
   } as never;
@@ -398,5 +401,50 @@ describe('TreatmentPage', () => {
     const empty = setup({ customers: [] });
     empty.view();
     expect((await screen.findAllByText('고객관리에서 고객을 먼저 등록하세요.')).length).toBeGreaterThan(0);
+  });
+  describe('customer photos', () => {
+    const photo = (id: string, name: string, createdAt: string) => ({ id, organization_id: org, customer_id: cust, original_name: name, storage_path: 'p', content_type: 'image/jpeg', size_bytes: 2048, caption: '', created_at: createdAt });
+    const photos = [
+      photo('a1111111-1111-4111-8111-111111111111', 'other.jpg', '2026-09-01T03:00:00Z'),
+      photo('b2222222-2222-4222-8222-222222222222', 'day.jpg', '2026-09-17T15:30:00Z'),
+    ];
+    beforeEach(() => {
+      URL.createObjectURL = vi.fn(() => 'blob:test');
+      URL.revokeObjectURL = vi.fn();
+    });
+
+    it('shows the selected customer photos large and highlights the same-day photos for the selected treatment', async () => {
+      const { view } = setup({ photos });
+      view();
+      await screen.findByText('수분 관리');
+      expect(await screen.findByLabelText('day.jpg 크게 보기')).toBeInTheDocument();
+      expect(screen.getByLabelText('other.jpg 크게 보기')).toBeInTheDocument();
+      expect(document.querySelector('.pg-root')).toHaveAttribute('data-size', 'large');
+      await openRecord();
+      const highlighted = await screen.findByRole('region', { name: '시술일 사진 · 2026-09-18 · 1장' });
+      expect(within(highlighted).getByLabelText('day.jpg 크게 보기')).toBeInTheDocument();
+      expect(within(highlighted).queryByLabelText('other.jpg 크게 보기')).not.toBeInTheDocument();
+      expect(screen.getByRole('region', { name: '2026-09-01 · 1장' })).toBeInTheDocument();
+    });
+
+    it('hides upload and archive actions for read-only members', async () => {
+      const { view } = setup({ photos });
+      view(true);
+      await screen.findByLabelText('day.jpg 크게 보기');
+      expect(screen.queryByRole('button', { name: '사진 추가' })).not.toBeInTheDocument();
+      fireEvent.click(screen.getByLabelText('day.jpg 크게 보기'));
+      expect(await screen.findByRole('dialog')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: '보관' })).not.toBeInTheDocument();
+    });
+
+    it('can be collapsed without losing the loaded photos', async () => {
+      const { view } = setup({ photos });
+      view();
+      await screen.findByLabelText('day.jpg 크게 보기');
+      fireEvent.click(screen.getByRole('button', { name: '접기' }));
+      expect(screen.getByRole('button', { name: '펼치기' })).toHaveAttribute('aria-expanded', 'false');
+      fireEvent.click(screen.getByRole('button', { name: '펼치기' }));
+      expect(screen.getByLabelText('day.jpg 크게 보기')).toBeVisible();
+    });
   });
 });

@@ -1,0 +1,94 @@
+import type { Transaction } from '../../sales/types';
+import type { MenuId } from '../../shell/TopBar';
+import { CHART_DAYS, compactWon, dailySeries, groupDigits, niceMax, shortDate, type DayBar } from '../dashboardMetrics';
+import type { Source } from '../sourceState';
+import { Panel } from './Panel';
+
+const VIEW_W = 280;
+const VIEW_H = 100;
+
+export interface ChartBar { date: string; income: number; expense: number; incomeHeight: number; expenseHeight: number }
+export interface ChartModel { max: number; bars: ChartBar[]; hasData: boolean; incomeTotal: number; expenseTotal: number }
+
+/** 일별 합계를 막대 높이(0~VIEW_H)로 바꾼다. 데이터가 없어도 축과 막대 칸은 유지한다. */
+export function buildChartModel(series: DayBar[]): ChartModel {
+  const peak = series.reduce((largest, bar) => Math.max(largest, bar.income, bar.expense), 0);
+  const max = niceMax(peak);
+  const bars = series.map((bar) => ({
+    ...bar,
+    incomeHeight: (bar.income / max) * VIEW_H,
+    expenseHeight: (bar.expense / max) * VIEW_H,
+  }));
+  return {
+    max,
+    bars,
+    hasData: peak > 0,
+    incomeTotal: series.reduce((sum, bar) => sum + bar.income, 0),
+    expenseTotal: series.reduce((sum, bar) => sum + bar.expense, 0),
+  };
+}
+
+function Chart({ model }: { model: ChartModel }) {
+  const slot = VIEW_W / model.bars.length;
+  const barWidth = slot * 0.34;
+  const summary = `최근 ${CHART_DAYS}일 수입 합계 ${groupDigits(model.incomeTotal)}원, 지출 합계 ${groupDigits(model.expenseTotal)}원`;
+  return (
+    <div className="dash-chart">
+      <div className="dash-chart__axis" aria-hidden="true">
+        <span>{compactWon(model.max)}</span>
+        <span>{compactWon(model.max / 2)}</span>
+        <span>0</span>
+      </div>
+      <svg className="dash-chart__svg" viewBox={`0 0 ${VIEW_W} ${VIEW_H}`} preserveAspectRatio="none" role="img" aria-label={summary}>
+        <title>{summary}</title>
+        {[0, VIEW_H / 2, VIEW_H].map((y) => (
+          <line key={y} className="dash-chart__grid" x1={0} x2={VIEW_W} y1={y} y2={y} vectorEffect="non-scaling-stroke" />
+        ))}
+        {model.bars.map((bar, index) => {
+          const x = index * slot + slot * 0.12;
+          return (
+            <g key={bar.date}>
+              <title>{`${shortDate(bar.date)} 수입 ${groupDigits(bar.income)}원, 지출 ${groupDigits(bar.expense)}원`}</title>
+              <rect className="dash-chart__income" x={x} width={barWidth} y={VIEW_H - bar.incomeHeight} height={bar.incomeHeight} />
+              <rect className="dash-chart__expense" x={x + barWidth + 1} width={barWidth} y={VIEW_H - bar.expenseHeight} height={bar.expenseHeight} />
+            </g>
+          );
+        })}
+      </svg>
+      <div className="dash-chart__labels" aria-hidden="true">
+        {model.bars.map((bar, index) => <span key={bar.date}>{index % 2 === (model.bars.length - 1) % 2 ? shortDate(bar.date) : ''}</span>)}
+      </div>
+    </div>
+  );
+}
+
+/** 최근 14일 수입·지출 막대 차트(SVG). */
+export function FinanceChartPanel({ state, today, onRetry, onNavigate }: { state: Source<Transaction[]>; today: string; onRetry: () => void; onNavigate: (menu: MenuId) => void }) {
+  return (
+    <Panel
+      area="dash-area-chart"
+      title={`최근 ${CHART_DAYS}일 수입·지출`}
+      state={state}
+      onRetry={onRetry}
+      isEmpty={() => false}
+      emptyText=""
+      headerExtra={() => (
+        <>
+          <span className="dash-legend dash-legend--income">수입</span>
+          <span className="dash-legend dash-legend--expense">지출</span>
+          <button type="button" className="ba-mini" onClick={() => onNavigate('finance')}>정산 메뉴</button>
+        </>
+      )}
+    >
+      {(transactions) => {
+        const model = buildChartModel(dailySeries(transactions, today));
+        return (
+          <>
+            <Chart model={model} />
+            {!model.hasData && <p className="dash-chart__empty">최근 {CHART_DAYS}일 동안 기록된 수입·지출이 없습니다.</p>}
+          </>
+        );
+      }}
+    </Panel>
+  );
+}

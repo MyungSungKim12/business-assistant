@@ -6,16 +6,12 @@
   .user-name {
     display: none;
   }
-  .customer-layout {
-    grid-template-columns: 1fr 390px;
-  }
 }
 
 @media (max-width:900px) {
   .app-shell {
     min-width: 760px;
   }
-  .customer-layout,
   .appointment-layout,
   .task-layout,
   .operation-layout {

@@ -1,0 +1,276 @@
+/* 고객관리 화면(cx-*): 위 = 목록 | 상세, 아래 = 인사이트 | 사진. 목록 표는 데이터 양과 관계없이 같은 크기. */
+.cx-page {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  height: 100%;
+  min-width: 1180px;
+  min-height: 0;
+}
+
+.cx-board {
+  flex: 1;
+  min-height: 560px;
+  display: grid;
+  grid-template-columns: minmax(560px, 1.15fr) minmax(420px, 0.85fr);
+  grid-template-rows: minmax(0, 1.1fr) minmax(0, 1fr);
+  gap: 6px;
+}
+
+.cx-panel {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  padding: 6px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--surface-panel);
+}
+
+.cx-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 5px;
+}
+
+.cx-controls input {
+  flex: 1;
+}
+
+.cx-count {
+  min-width: 44px;
+  text-align: right;
+}
+
+.cx-error {
+  margin: 0 0 5px;
+}
+
+/* 표 자리는 패널 남은 높이를 모두 차지하고, 표는 그 안에서만 스크롤한다. */
+.cx-grid-slot {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+.cx-grid-slot .ba-grid-wrap {
+  position: absolute;
+  inset: 0;
+  height: auto;
+  min-height: 0;
+}
+
+.cx-detail h2 {
+  margin: 0 0 6px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+
+.cx-detail__scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.cx-hint {
+  margin: 10px 2px;
+}
+
+.cx-insights-slot {
+  padding: 4px;
+}
+
+.cx-insights {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 4px;
+}
+
+.cx-insight {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-panel);
+}
+
+.cx-insight > header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  min-height: 24px;
+  padding: 0 7px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-muted);
+}
+
+.cx-insight h3 {
+  margin: 0;
+  font-size: 12px;
+}
+
+.cx-insight__hint {
+  margin-left: auto;
+  overflow: hidden;
+  font-size: var(--font-size-small);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cx-badge {
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--selection);
+  color: var(--text);
+  font-size: var(--font-size-small);
+  text-align: center;
+}
+
+.cx-insight__body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.cx-insight__body h4 {
+  margin: 6px 7px 3px;
+  color: var(--label);
+  font-size: var(--font-size-small);
+}
+
+.cx-insight__empty {
+  margin: 0;
+  padding: 10px 8px;
+}
+
+.cx-insight__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cx-insight__list button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  width: 100%;
+  height: 24px;
+  min-height: 24px;
+  padding: 0 7px;
+  border: 0;
+  border-bottom: 1px solid var(--divider);
+  border-radius: 0;
+  background: transparent;
+  text-align: left;
+}
+
+.cx-insight__list button:hover {
+  background: var(--row-hover);
+}
+
+.cx-insight__list button[aria-pressed='true'] {
+  background: var(--selection);
+}
+
+.cx-insight__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cx-insight__detail {
+  flex: none;
+  color: var(--text-muted);
+  font-size: var(--font-size-small);
+}
+
+.cx-insight__detail--strong {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.cx-stats {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  margin: 0;
+  border-bottom: 1px solid var(--divider);
+}
+
+.cx-stats div {
+  padding: 4px 6px;
+  text-align: center;
+}
+
+.cx-stats dt {
+  color: var(--text-muted);
+  font-size: var(--font-size-small);
+  white-space: nowrap;
+}
+
+.cx-stats dd {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.cx-tags {
+  margin: 0;
+  padding: 0 7px 4px;
+  list-style: none;
+}
+
+.cx-tags li {
+  display: grid;
+  grid-template-columns: 64px 1fr 22px;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+}
+
+.cx-tags li span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cx-tags li i {
+  display: block;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+.cx-tags li b {
+  text-align: right;
+  font-weight: 600;
+}
+
+.cx-photos .pg-root {
+  flex: 1;
+}
+
+.cx-photos__title {
+  margin: 0 0 5px;
+  font-size: 13px;
+}
+
+.cx-photos__empty {
+  flex: 1;
+  margin: 0;
+  padding: 24px 12px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  text-align: center;
+}

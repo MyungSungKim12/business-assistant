@@ -7,6 +7,7 @@ import { useStable } from './useStable';
 import { ConsultationDialog } from './ConsultationDialog';
 import { EventsDialog } from './EventsDialog';
 import { SaleDraftDialog } from './SaleDraftDialog';
+import { TreatmentPhotos } from './TreatmentPhotos';
 import {
   ALL_CATEGORIES, consultationReady, emptyForm, errorStatus, filterCustomers, filterRecords, formDirty, formFromRecord, isLocked, localTime, newOperationId,
   sortRecords, statusLabel, todayIso, validateForm, type FormState, type RecordFilters,
@@ -347,6 +348,8 @@ export function TreatmentPage({ api, organizationId, readOnly, initialCustomerId
           </form>
         </section>
       </div>
+
+      <TreatmentPhotos api={api} organizationId={organizationId} customerId={customerId} customerName={customer?.name} treatmentDate={record?.treatment_date ?? null} readOnly={readOnly} />
 
       {message && <p role={message.tone === 'error' ? 'alert' : 'status'} className={message.tone === 'error' ? 'form-error' : 'muted'}>{message.text}</p>}
 

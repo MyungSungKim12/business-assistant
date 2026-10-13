@@ -1,0 +1,44 @@
+/* 시술관리 하단 사진 패널: 높이 고정(접으면 머리글만), 내부 스크롤. */
+.treatment-photos {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 4px;
+  height: 322px;
+  min-width: 0;
+  padding: 6px;
+  overflow: hidden;
+}
+
+.treatment-photos.is-collapsed {
+  height: auto;
+}
+
+.treatment-photos__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.treatment-photos__head h2 {
+  margin: 0;
+  font-size: 13px;
+}
+
+.treatment-photos__body {
+  flex: 1;
+  min-height: 0;
+}
+
+.treatment-photos__body[hidden] {
+  display: none;
+}
+
+.treatment-photos__empty {
+  margin: 0;
+  padding: 24px 12px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  text-align: center;
+}

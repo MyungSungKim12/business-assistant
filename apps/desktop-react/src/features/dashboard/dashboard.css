@@ -1,0 +1,384 @@
+/* 홈(대시보드) — 12px 밀도, 작업 영역 높이를 꽉 채우는 12열 격자. 색은 공통 토큰만 쓴다. */
+.dash {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 6px;
+  min-width: 0;
+  min-height: 520px;
+}
+
+/* 인사 + 빠른 실행 */
+.dash-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.dash-head__title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.dash-head__title h1 {
+  margin: 0;
+  font-size: 16px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dash-head__date {
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.dash-actions {
+  display: flex;
+  gap: 4px;
+  flex: none;
+}
+
+.dash-actions button,
+.dash-refresh {
+  min-height: 26px;
+  white-space: nowrap;
+}
+
+/* 지표 카드 */
+.dash-cards {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.dash-card {
+  display: grid;
+  grid-template-rows: auto auto auto;
+  gap: 1px;
+  min-width: 0;
+  min-height: 64px;
+  padding: 6px 9px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--surface-panel);
+  text-align: left;
+}
+
+.dash-card:hover:not(:disabled) {
+  background: var(--row-hover);
+}
+
+.dash-card__label {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.dash-card__value {
+  font-size: 17px;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dash-card__sub {
+  color: var(--text-muted);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dash-card--warn {
+  border-color: color-mix(in srgb, var(--warning) 45%, var(--border));
+}
+
+.dash-card--warn .dash-card__value {
+  color: var(--warning);
+}
+
+.dash-card--bad {
+  border-color: color-mix(in srgb, var(--error) 45%, var(--border));
+}
+
+.dash-card--bad .dash-card__value {
+  color: var(--error);
+}
+
+.dash-card--error .dash-card__value,
+.dash-card--error .dash-card__sub {
+  color: var(--text-muted);
+}
+
+/* 패널 격자 */
+.dash-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  grid-template-rows: repeat(3, minmax(0, 1fr));
+  grid-template-areas:
+    "tl tl tl tl tk tk tk tk vs vs vs vs"
+    "tl tl tl tl tk tk tk tk rc rc rc rc"
+    "tl tl tl tl ch ch ch ch st st wl wl";
+  gap: 6px;
+  min-height: 0;
+}
+
+.dash-area-timeline { grid-area: tl; }
+.dash-area-tasks { grid-area: tk; }
+.dash-area-visits { grid-area: vs; }
+.dash-area-recent { grid-area: rc; }
+.dash-area-chart { grid-area: ch; }
+.dash-area-stock { grid-area: st; }
+.dash-area-wallet { grid-area: wl; }
+
+.dash-panel {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--surface-panel);
+  overflow: hidden;
+}
+
+.dash-panel__head {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-height: 28px;
+  padding: 2px 6px 2px 8px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-muted);
+}
+
+.dash-panel__head h2 {
+  margin: 0;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dash-panel__extra {
+  display: flex;
+  align-items: center;
+  flex: none;
+  gap: 6px;
+}
+
+.dash-panel__body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.dash-count {
+  color: var(--text-muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+/* 로딩·오류·빈 상태 */
+.dash-state {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin: 0;
+  padding: 10px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.dash-state--error strong,
+.dash-state--forbidden strong {
+  color: var(--error);
+}
+
+.dash-state--unavailable strong {
+  color: var(--warning);
+}
+
+/* 목록 행 */
+.dash-list,
+.dash-groups {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dash-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 30px;
+  padding: 2px 8px;
+  border: 0;
+  border-bottom: 1px solid var(--divider);
+  border-radius: 0;
+  background: transparent;
+  text-align: left;
+}
+
+.dash-row:hover:not(:disabled) {
+  background: var(--row-hover);
+}
+
+.dash-row__main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.dash-row__main strong,
+.dash-row__main small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dash-row small {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.dash-row__date {
+  flex: none;
+  white-space: nowrap;
+}
+
+.dash-row time {
+  flex: none;
+  width: 40px;
+  font-weight: 700;
+}
+
+.dash-group__title {
+  margin: 0;
+  padding: 3px 8px;
+  background: var(--row-alt);
+  border-bottom: 1px solid var(--divider);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.dash-group__title--bad { color: var(--error); }
+.dash-group__title--warn { color: var(--warning); }
+
+.dash-note {
+  padding: 10px 8px;
+  color: var(--text-muted);
+}
+
+/* 상태 배지 */
+.dash-badge {
+  flex: none;
+  padding: 0 6px;
+  border-radius: 8px;
+  background: var(--surface-muted);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.dash-badge--reserved { background: var(--selection); color: var(--accent); }
+.dash-badge--confirmed { background: color-mix(in srgb, var(--warning) 18%, var(--surface-panel)); color: var(--warning); }
+.dash-badge--checked_in { background: var(--success-soft); color: var(--success); }
+.dash-badge--completed { background: var(--surface-muted); color: var(--text-muted); }
+.dash-badge--canceled,
+.dash-badge--no_show { background: var(--error-soft); color: var(--error); }
+
+.dash-row--completed,
+.dash-row--canceled,
+.dash-row--no_show { opacity: 0.65; }
+
+/* 수입·지출 차트 */
+.dash-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.dash-legend::before {
+  width: 8px;
+  height: 8px;
+  border-radius: 1px;
+  content: "";
+}
+
+.dash-legend--income::before { background: var(--chart-2); }
+.dash-legend--expense::before { background: var(--chart-4); }
+
+.dash-chart {
+  display: grid;
+  flex: 1;
+  grid-template-columns: 34px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) 14px;
+  gap: 2px 4px;
+  min-height: 0;
+  padding: 8px 8px 4px 4px;
+}
+
+.dash-chart__axis {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  color: var(--text-muted);
+  font-size: 10px;
+  text-align: right;
+}
+
+.dash-chart__svg {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.dash-chart__grid {
+  stroke: var(--divider);
+  stroke-width: 1;
+}
+
+.dash-chart__income { fill: var(--chart-2); }
+.dash-chart__expense { fill: var(--chart-4); }
+
+.dash-chart__labels {
+  display: grid;
+  grid-column: 2;
+  grid-template-columns: repeat(14, minmax(0, 1fr));
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.dash-chart__labels span {
+  overflow: visible;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.dash-chart__empty {
+  margin: 0;
+  padding: 0 8px 4px;
+  color: var(--text-muted);
+  font-size: 11px;
+  text-align: center;
+}

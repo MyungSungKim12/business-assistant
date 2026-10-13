@@ -1,13 +1,4 @@
 /* customers.css */
-.customer-layout {
-  height: calc(100% - 49px);
-  display: grid;
-  grid-template-columns: minmax(520px,1.15fr) minmax(390px,.85fr);
-  gap: 6px;
-}
-
-.customer-list,
-.customer-detail,
 .calendar-panel,
 .appointment-form,
 .data-surface,
@@ -18,16 +9,6 @@
   background: var(--surface-panel);
 }
 
-.customer-list,
-.customer-detail {
-  padding: 6px;
-}
-
-.customer-detail {
-  overflow: auto;
-}
-
-.customer-detail h2,
 .editor-panel h2,
 .appointment-form h2 {
   margin: 0 0 6px;
@@ -68,28 +49,24 @@
   gap: 4px;
 }
 
-.activity-panel,
-.photo-panel {
+.activity-panel {
   margin-top: 8px;
   padding-top: 7px;
   border-top: 1px solid var(--border);
 }
 
-.activity-panel h3,
-.photo-panel h3 {
+.activity-panel h3 {
   margin: 0 0 5px;
   font-size: 12px;
 }
 
-.activity-panel ol,
-.photo-panel ul {
+.activity-panel ol {
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.activity-panel li,
-.photo-panel li {
+.activity-panel li {
   padding: 5px 2px;
   border-bottom: 1px solid var(--divider);
 }
@@ -102,18 +79,5 @@
 
 .activity-panel p {
   margin: 2px 0;
-}
-
-.photo-panel>div {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.photo-panel img {
-  display: block;
-  max-width: 100%;
-  max-height: 220px;
-  margin-top: 4px;
 }
 
