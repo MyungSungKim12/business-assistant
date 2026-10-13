@@ -1,4 +1,4 @@
-done |done 코드·구성·문서(서명 키·업데이트 서버·인증서는 사용자 준비 후 검증) |done(GitHub Actions 첫 실행 결과 확인 대기) |done(릴리스 경로 없음, production 시작 거부) |done 서버(040 운영 DB 적용 대기) |done(단일 인스턴스 메모리 기반) |done 서버·데스크톱 연동(관리자 서버 별도 기동) |done 서버(배포 연동 대기) |# 개선·추가 작업 목록 (Backlog)
+done |done 코드·구성·문서(서명 키 등록됨, 첫 릴리스 시험 대기) |done(CI 통과 확인) |done(릴리스 경로 없음, production 시작 거부) |done(040 적용됨) |done(단일 인스턴스 메모리 기반) |done 서버·데스크톱 연동(관리자 서버 별도 기동) |done 서버(배포 연동 대기) |done |done 코드·구성·문서(서명 키·업데이트 서버·인증서는 사용자 준비 후 검증) |done(GitHub Actions 첫 실행 결과 확인 대기) |done(릴리스 경로 없음, production 시작 거부) |done 서버(040 운영 DB 적용 대기) |done(단일 인스턴스 메모리 기반) |done 서버·데스크톱 연동(관리자 서버 별도 기동) |done 서버(배포 연동 대기) |# 개선·추가 작업 목록 (Backlog)
 
 기준일: 2026-10-13. React/Tauri + Node API 전환 이후 남은 보완 사항과 추가 기능을 한곳에서 관리한다. 각 항목은 고정 ID와 상태(`planned / in-progress / done`)를 가진다. 진행하면 상태와 검증 근거를 이 문서와 [변경 이력](changelog.md)에 함께 남긴다.
 
