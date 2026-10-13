@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ApiClient } from '../../api/client';
 import { ApiError } from '../../api/errors';
 import { emptyCustomer, type Customer } from './types';
@@ -8,6 +8,9 @@ import { InsightsPanel } from './InsightsPanel';
 import { ActivityPanel } from './activities/ActivityPanel';
 import { PhotoPanel } from './photos/PhotoPanel';
 import { confirmDiscard } from './changeGuard';
+import { ExportButton } from '../../lib/io/ExportButton';
+import { customerExportColumns } from './io/customerExport';
+import { CustomerImportDialog } from './io/CustomerImportDialog';
 import './customers.css';
 
 type Props = { api: ApiClient; organizationId: string; readOnly: boolean };
@@ -33,6 +36,8 @@ export function CustomerPage({ api, organizationId, readOnly }: Props) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [dirty, setDirty] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const closeImport = useCallback(() => setImporting(false), []);
 
   const load = async () => {
     setLoading(true);
@@ -91,7 +96,11 @@ export function CustomerPage({ api, organizationId, readOnly }: Props) {
     <section className="cx-page">
       <div className="page-toolbar">
         <div><h1>고객관리</h1><p className="muted">고객 프로필과 상담 정보를 관리합니다.</p></div>
-        {!readOnly && <button className="primary-button" onClick={() => void changeCustomer(null)}>새 고객</button>}
+        <div className="cx-toolbar-actions">
+          <ExportButton title="고객 목록" columns={customerExportColumns} rows={filtered} allRows={rows} disabled={loading} />
+          {!readOnly && <button onClick={() => setImporting(true)}>가져오기</button>}
+          {!readOnly && <button className="primary-button" onClick={() => void changeCustomer(null)}>새 고객</button>}
+        </div>
       </div>
       <div className="cx-board">
         <section className="cx-panel cx-list" aria-label="고객 목록 영역">
@@ -133,6 +142,7 @@ export function CustomerPage({ api, organizationId, readOnly }: Props) {
             </section>
           )}
       </div>
+      {importing && <CustomerImportDialog api={api} organizationId={organizationId} existing={rows} onClose={closeImport} onImported={() => void load()} />}
     </section>
   );
 }

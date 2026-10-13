@@ -1,0 +1,129 @@
+/* 가져오기·내보내기(io-*): 글꼴은 상속, 색은 공통 토큰만 사용한다. */
+.io-note {
+  margin: 0 0 6px;
+  color: var(--text-muted);
+}
+
+.io-note--warn {
+  color: var(--warning);
+}
+
+.io-steps {
+  display: flex;
+  gap: 4px;
+  margin: 0 0 8px;
+  padding: 0;
+  list-style: none;
+}
+
+.io-steps li {
+  flex: 1;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  background: var(--surface-muted);
+}
+
+.io-steps li[aria-current='step'] {
+  color: var(--text);
+  border-color: var(--accent);
+  background: var(--selection);
+  font-weight: 600;
+}
+
+.io-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 280px;
+  max-height: 62vh;
+  overflow: auto;
+}
+
+.io-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.io-table-wrap {
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.io-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.io-table th,
+.io-table td {
+  padding: 3px 6px;
+  border-bottom: 1px solid var(--divider);
+  text-align: left;
+  vertical-align: top;
+  white-space: nowrap;
+}
+
+.io-table th {
+  position: sticky;
+  top: 0;
+  background: var(--grid-head);
+  color: var(--label);
+}
+
+.io-table tr.is-error td {
+  background: var(--error-soft);
+}
+
+.io-table tr.is-ok td:first-child {
+  color: var(--success);
+}
+
+.io-error-text {
+  color: var(--error);
+  white-space: normal;
+}
+
+.io-progress {
+  width: 100%;
+  height: 8px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-muted);
+}
+
+.io-progress > span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+
+.io-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: 0;
+}
+
+.io-summary strong {
+  font-weight: 600;
+}
+
+.io-ok {
+  color: var(--success);
+}
+
+.io-bad {
+  color: var(--error);
+}
+
+.io-radio {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}

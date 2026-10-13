@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { DataGrid, ErrorState, LoadingState, Modal, Select, confirm, notify, type Column } from '@business-assistant/react-ui';
 import type { ApiClient } from '../../api/client';
 import { isDefiniteRejection, useOperationTracker } from '../appointment-resources/operationIds';
+import { ExportButton } from '../../lib/io/ExportButton';
+import { movementExportColumns, productExportColumns } from '../../lib/io/domainColumns';
 import { catalogApi, type ProductInput, type StockChangeKind } from './api';
 import { movementLabel, won, type CatalogProduct, type StockMovement } from './schemas';
 import './catalog.css';
@@ -154,7 +156,10 @@ export function InventoryPage({ api, organizationId, readOnly }: InventoryPagePr
     <section className="catalog-page">
       <div className="page-toolbar">
         <div><h1>상품 · 회원권 · 재고</h1><p className="muted">판매 조건은 장바구니에 담는 순간 고정됩니다. 실물 상품은 입고 수량 안에서만 결제할 수 있습니다.</p></div>
-        {!readOnly && <button type="button" className="primary-button" disabled={busy} onClick={startNew}>새 상품</button>}
+        <div className="catalog-toolbar-actions">
+          <ExportButton title="상품 목록" columns={productExportColumns} rows={visible} disabled={loading || loadError !== ''} />
+          {!readOnly && <button type="button" className="primary-button" disabled={busy} onClick={startNew}>새 상품</button>}
+        </div>
       </div>
       {loadError ? <ErrorState message={loadError} onRetry={() => void load()} /> : loading ? <LoadingState label="상품과 회원권을 불러오는 중…" /> : (
         <div className="catalog-layout">
@@ -202,6 +207,7 @@ export function InventoryPage({ api, organizationId, readOnly }: InventoryPagePr
       )}
       {history && (
         <Modal title={`${history.product.name} · 재고 변동 이력`} size="lg" onClose={() => setHistory(null)}>
+          <div className="form-actions"><ExportButton title={`${history.product.name} 재고 이력`} columns={movementExportColumns} rows={history.movements} /></div>
           <DataGrid<StockMovement> rows={history.movements} rowKey={(row) => row.id} ariaLabel="재고 변동 이력" emptyText="재고 변동 이력이 없습니다."
             columns={[
               { key: 'at', header: '일시', width: 150, value: (row) => row.created_at, render: (row) => row.created_at.slice(0, 16).replace('T', ' ') },

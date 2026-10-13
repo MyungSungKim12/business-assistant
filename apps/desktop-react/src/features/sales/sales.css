@@ -55,3 +55,9 @@
 @media (max-width: 1100px) {
   .sales-layout, .finance-layout { grid-template-columns: 1fr; }
 }
+
+.sales-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}

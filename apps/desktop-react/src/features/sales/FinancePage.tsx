@@ -3,6 +3,8 @@ import { DateField, Select, confirm, notify } from '@business-assistant/react-ui
 import type { ApiClient } from '../../api/client';
 import { ApiError } from '../../api/errors';
 import { salesApi, type TransactionInput } from './api';
+import { ExportButton } from '../../lib/io/ExportButton';
+import { transactionExportColumns } from '../../lib/io/domainColumns';
 import { errorMessage, formatWon, isDefinitive, kst, moneyText, newOperationId, today, wholeAmount } from './format';
 import type { FinanceSummary, Settlement, Transaction } from './types';
 import './sales.css';
@@ -120,6 +122,7 @@ function LedgerPanel({ api, organizationId, readOnly, onDirty }: { api: ApiClien
         <label>시작일<DateField aria-label="시작일" value={from} onChange={setFrom} /></label>
         <label>종료일<DateField aria-label="종료일" value={to} onChange={setTo} /></label>
         <button type="button" onClick={() => void load()}>조회</button>
+        <ExportButton title="수입지출 내역" columns={transactionExportColumns} rows={rows} disabled={loading} />
       </div>
       {summary && <div className="sales-cards" data-testid="finance-summary">
         <div className="sales-card">수입 {formatWon(summary.income_total)}</div>

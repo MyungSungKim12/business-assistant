@@ -4,6 +4,8 @@ import type { ApiClient } from '../../api/client';
 import type { Customer } from '../../api/schemas';
 import { salesApi } from './api';
 import { errorMessage, formatWon, isDefinitive, kst, moneyText, newOperationId, visitStatusLabel, wholeAmount } from './format';
+import { ExportButton } from '../../lib/io/ExportButton';
+import { visitExportColumns } from '../../lib/io/domainColumns';
 import { PaymentDialog } from './PaymentDialog';
 import type { CartBundle, CartLine, CatalogItem, SaleDraft, Visit } from './types';
 import './sales.css';
@@ -100,6 +102,12 @@ export function SalesPage({ api, organizationId, readOnly }: { api: ApiClient; o
   useEffect(() => { void load(); }, [load]);
 
   const customerVisits = useMemo(() => visits.filter((visit) => visit.customer_id === customerId && visit.status !== 'canceled'), [visits, customerId]);
+  const visitRows = useMemo(() => {
+    const names = new Map(customers.map((customer) => [customer.id, customer.name]));
+    return [...visits]
+      .sort((a, b) => b.opened_at.localeCompare(a.opened_at))
+      .map((visit) => ({ visit, customerName: names.get(visit.customer_id) ?? '' }));
+  }, [visits, customers]);
   const filteredCustomers = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return customers.filter((customer) => customer.status !== 'archived' && `${customer.name} ${customer.phone ?? ''}`.toLowerCase().includes(needle));
@@ -213,7 +221,10 @@ export function SalesPage({ api, organizationId, readOnly }: { api: ApiClient; o
   return <section className="sales-page">
     <div className="page-toolbar">
       <div><p className="eyebrow">SALES</p><h1>방문 결제 장바구니</h1><p className="muted">시술 청구 초안을 방문별로 검토합니다. 검토 완료 후 실제 받은 금액을 수납 기록에 남기세요.</p></div>
-      <button type="button" disabled={busy || pending !== null} onClick={() => void reload()}>자료 새로고침</button>
+      <div className="sales-toolbar-actions">
+        <ExportButton title="방문 내역" columns={visitExportColumns} rows={visitRows} />
+        <button type="button" disabled={busy || pending !== null} onClick={() => void reload()}>자료 새로고침</button>
+      </div>
     </div>
     {readOnly && <p className="permission-banner">조회 전용입니다. 장바구니 변경과 수납 기록은 관리자만 할 수 있습니다.</p>}
     {warning && <p role="alert" className="form-error">{warning}</p>}

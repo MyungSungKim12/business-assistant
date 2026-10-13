@@ -93,7 +93,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             config::get_config, http::http_request, credentials::token_load, credentials::token_save,
-            credentials::token_clear, files::pick_images, files::pick_files, files::upload_binary, files::download_binary,
+            credentials::token_clear, files::pick_images, files::pick_files, files::upload_binary, files::download_binary, files::pick_data_file, files::save_data_file,
             autostart_is_enabled, autostart_set, show_main, app_exit, tray_set_status, logfile::log_write
         ])
         .run(tauri::generate_context!())

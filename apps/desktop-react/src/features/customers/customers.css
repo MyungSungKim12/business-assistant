@@ -274,3 +274,9 @@
   border-radius: var(--radius-sm);
   text-align: center;
 }
+
+.cx-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
