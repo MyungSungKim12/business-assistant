@@ -123,6 +123,9 @@ HTTPS로 `latest.json` 과 설치 파일을 제공하는 아무 정적 서버(Ng
 | `TAURI_SIGNING_PRIVATE_KEY` | 시크릿 | 예 | 업데이트 서명 비밀키 내용 |
 | `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | 시크릿 | 암호가 있으면 | 비밀키 암호 |
 | `TAURI_UPDATER_PUBKEY` | 변수 | 예 | 업데이트 공개키(.pub 내용) |
+| `BUSINESS_ASSISTANT_API_BASE` | 변수 | **예** | 설치된 앱이 접속할 HTTPS API 주소(예: `https://api.example.com/api/v1`). 설치 파일에 박혀 들어간다. 없으면 릴리스 빌드가 멈춘다 |
+| `BUSINESS_ASSISTANT_ADMIN_API_BASE` | 변수 | 아니오 | 관리자 API 주소. 비우면 앱의 구독 메뉴가 숨겨진다 |
+| `BUSINESS_ASSISTANT_STORAGE_HOST` | 변수 | 아니오 | 사진·파일 서명 URL을 허용할 Storage 호스트. 비우면 `*.supabase.co`만 허용 |
 | `BUSINESS_ASSISTANT_UPDATE_ENDPOINT` | 변수/환경변수 | 아니오 | 업데이트 주소(https). 비우면 이 저장소의 Releases `latest.json` |
 | `BUSINESS_ASSISTANT_UPDATE_AUTOCHECK` | 실행 환경변수 | 아니오 | `0` 이면 시작 30초 뒤 자동 확인을 끔 |
 | `WINDOWS_CERTIFICATE` | 시크릿 | 아니오 | 코드 서명 `.pfx`(base64) |

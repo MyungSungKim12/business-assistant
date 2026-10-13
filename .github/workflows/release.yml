@@ -42,8 +42,24 @@ jobs:
       RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
       RELEASE_NOTES: ${{ inputs.notes }}
       TAURI_UPDATER_PUBKEY: ${{ vars.TAURI_UPDATER_PUBKEY }}
+      # 설치된 앱이 접속할 서버 주소(빌드에 박힌다). 예: https://api.example.com/api/v1
+      BUSINESS_ASSISTANT_API_BASE_DEFAULT: ${{ vars.BUSINESS_ASSISTANT_API_BASE }}
+      BUSINESS_ASSISTANT_ADMIN_API_BASE_DEFAULT: ${{ vars.BUSINESS_ASSISTANT_ADMIN_API_BASE }}
+      BUSINESS_ASSISTANT_STORAGE_HOST_DEFAULT: ${{ vars.BUSINESS_ASSISTANT_STORAGE_HOST }}
       WINDOWS_TIMESTAMP_URL: ${{ vars.WINDOWS_TIMESTAMP_URL }}
     steps:
+      - name: 서버 주소 확인
+        shell: pwsh
+        run: |
+          if (-not $env:BUSINESS_ASSISTANT_API_BASE_DEFAULT) {
+            Write-Host "::error::변수 BUSINESS_ASSISTANT_API_BASE(설치된 앱이 접속할 HTTPS API 주소)가 없습니다. 예: https://api.example.com/api/v1"
+            exit 1
+          }
+          if ($env:BUSINESS_ASSISTANT_API_BASE_DEFAULT -notmatch '^https://') {
+            Write-Host "::error::BUSINESS_ASSISTANT_API_BASE는 https:// 로 시작해야 합니다."
+            exit 1
+          }
+
       - name: 태그 형식 확인
         shell: pwsh
         run: |
