@@ -15,6 +15,9 @@ const slot=async(id,staff,service,start,version=null,op=randomUUID(),customerId=
  [org,id,customerId,staff,service,start,'phone',version,op])).data;
 const move=async(id,status,version,reason=null,op=randomUUID())=>(await one(
  'select transition_appointment($1,$2,$3,$4,$5,$6) data',[org,id,status,reason,version,op])).data;
+const resourceSlot=async(id,staff,service,start,resources,version=null,op=randomUUID())=>(await one(
+ 'select save_appointment_with_resources($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) data',
+ [org,id,customer,staff,service,start,'phone',version,op,resources])).data;
 
 try {
  await db.exec(`create role anon;create role authenticated;create schema auth;create schema private;
@@ -35,10 +38,30 @@ try {
  await db.exec(await readFile(new URL('../../migrations/024_visit_sale_carts.sql',import.meta.url),'utf8'));
  await db.exec(await readFile(new URL('../../migrations/034_appointments.sql',import.meta.url),'utf8'));
  await db.exec(await readFile(new URL('../../migrations/037_appointment_availability.sql',import.meta.url),'utf8'));
+ await db.exec(await readFile(new URL('../../migrations/038_appointment_resources.sql',import.meta.url),'utf8'));
  await user();
  const staff=(await one('select create_appointment_staff($1,$2) data',[org,'담당자'])).data;
  const service=(await one('select create_appointment_service($1,$2,$3,$4) data',[org,'관리',60,10])).data;
  const otherStaff=(await one('select create_appointment_staff($1,$2) data',[org,'다른 담당자'])).data;
+ const roomCreateOp=randomUUID();
+ const room=(await one('select create_appointment_resource($1,$2,$3,$4) data',[
+  org,'관리실 1','room',roomCreateOp])).data;
+ assert.deepEqual((await one('select create_appointment_resource($1,$2,$3,$4) data',[
+  org,'관리실 1','room',roomCreateOp])).data,room);
+ await fail(()=>one('select create_appointment_resource($1,$2,$3,$4)',[
+  org,'다른 이름','room',roomCreateOp]),'P0001');
+ const equipment=(await one('select create_appointment_resource($1,$2,$3,$4) data',[
+  org,'레이저 1','equipment',randomUUID()])).data;
+ const requirementOp=randomUUID();
+ const requirementPayload=JSON.stringify([{kind:'room',quantity:1},{kind:'equipment',quantity:1}]);
+ const requirements=(await one('select replace_appointment_service_resource_requirements($1,$2,$3,$4,$5) data',[
+  org,service.id,requirementPayload,1,requirementOp])).data;
+ assert.equal(requirements.resource_version,2);
+ assert.equal(requirements.requirements.length,2);
+ assert.deepEqual((await one('select replace_appointment_service_resource_requirements($1,$2,$3,$4,$5) data',[
+  org,service.id,requirementPayload,1,requirementOp])).data,requirements);
+ await fail(()=>one('select replace_appointment_service_resource_requirements($1,$2,$3,$4,$5)',[
+  org,service.id,JSON.stringify([{kind:'room',quantity:2}]),1,requirementOp]),'P0001');
  const hoursOp=randomUUID();
  const hours=(await one('select replace_appointment_staff_hours($1,$2,$3,$4,$5,$6) data',[
   org,staff.id,'Asia/Seoul',JSON.stringify([
@@ -60,31 +83,46 @@ try {
   org,staff.id,'Asia/Seoul',JSON.stringify([{weekday:4,start:'10:00',end:'18:00'}]),1,hoursOp]),'P0001');
  const start='2026-10-08T10:00:00+09:00';
  const op=randomUUID();
- let appointment=await slot(null,staff.id,service.id,start,null,op);
- assert.deepEqual(await slot(null,staff.id,service.id,start,null,op),appointment);
- await fail(()=>slot(null,staff.id,service.id,'2026-10-08T11:00:00+09:00',null,op),'P0001');
- await fail(()=>slot(null,staff.id,service.id,'2026-10-08T11:00:00+09:00'),'P0001');
+ let appointment=await resourceSlot(null,staff.id,service.id,start,[room.id,equipment.id],null,op);
+ assert.deepEqual(await resourceSlot(null,staff.id,service.id,start,[room.id,equipment.id],null,op),appointment);
+ await fail(()=>resourceSlot(null,staff.id,service.id,'2026-10-08T11:00:00+09:00',[room.id,equipment.id],null,op),'P0001');
+ await fail(()=>resourceSlot(null,staff.id,service.id,'2026-10-08T11:00:00+09:00',[room.id,equipment.id]),'P0001');
+ await fail(()=>resourceSlot(null,otherStaff.id,service.id,'2026-10-09T12:00:00+09:00',[room.id,room.id,equipment.id]),'22023');
+ await fail(()=>one('select update_appointment_resource($1,$2,$3,$4,$5,$6)',[
+  org,room.id,'관리실 1',false,1,randomUUID()]),'P0001');
  await fail(()=>one('select save_appointment($1,$2,$3,$4,$5,$6,$7,$8,$9)',
   [org,null,customer,staff.id,service.id,start,null,null,randomUUID()]),'22023');
- assert.ok((await slot(null,staff.id,service.id,'2026-10-08T11:10:00+09:00')).id);
- await fail(()=>slot(null,staff.id,service.id,'2026-10-08T08:00:00+09:00'),'P0001');
- await fail(()=>slot(null,staff.id,service.id,'2026-10-08T17:00:00+09:00'),'P0001');
+ const room2=(await one('select create_appointment_resource($1,$2,$3,$4) data',[
+  org,'관리실 2','room',randomUUID()])).data;
+ const equipment2=(await one('select create_appointment_resource($1,$2,$3,$4) data',[
+  org,'레이저 2','equipment',randomUUID()])).data;
+ assert.ok((await resourceSlot(null,staff.id,service.id,'2026-10-08T11:10:00+09:00',[room.id,equipment.id])).id);
+ await fail(()=>resourceSlot(null,staff.id,service.id,'2026-10-08T08:00:00+09:00',[room.id,equipment.id]),'P0001');
+ await fail(()=>resourceSlot(null,staff.id,service.id,'2026-10-08T17:00:00+09:00',[room.id,equipment.id]),'P0001');
+ await fail(()=>resourceSlot(null,otherStaff.id,service.id,start,[room.id,equipment2.id]),'P0001');
+ assert.ok((await resourceSlot(null,otherStaff.id,service.id,start,[room2.id,equipment2.id])).id);
+ await fail(()=>resourceSlot(null,otherStaff.id,service.id,'2026-10-09T12:00:00+09:00',[room2.id]),'22023');
  const leave=(await one('select create_appointment_staff_time_off($1,$2,$3,$4,$5,$6) data',[
   org,staff.id,'2026-10-08T15:00:00+09:00','2026-10-08T16:00:00+09:00','교육',randomUUID()])).data;
  await fail(()=>one('select create_appointment_staff_time_off($1,$2,$3,$4,$5,$6)',[
   org,staff.id,'2026-10-08T15:30:00+09:00','2026-10-08T16:30:00+09:00','중복',randomUUID()]),'P0001');
- await fail(()=>slot(null,staff.id,service.id,'2026-10-08T14:30:00+09:00'),'P0001');
+ await fail(()=>resourceSlot(null,staff.id,service.id,'2026-10-08T14:30:00+09:00',[room.id,equipment.id]),'P0001');
  const canceledLeave=(await one('select cancel_appointment_staff_time_off($1,$2,$3,$4) data',[
   org,leave.id,1,randomUUID()])).data;
  assert.equal(canceledLeave.status,'canceled');
- assert.ok((await slot(null,staff.id,service.id,'2026-10-08T14:30:00+09:00')).id);
- assert.ok((await slot(null,otherStaff.id,service.id,start)).id);
- await fail(()=>slot(appointment.id,staff.id,service.id,'2026-10-08T13:00:00+09:00',99),'P0001');
- appointment=await slot(appointment.id,staff.id,service.id,'2026-10-08T13:00:00+09:00',appointment.version);
+ assert.ok((await resourceSlot(null,staff.id,service.id,'2026-10-08T14:30:00+09:00',[room.id,equipment.id])).id);
+ await fail(()=>resourceSlot(appointment.id,staff.id,service.id,'2026-10-08T13:00:00+09:00',[room.id,equipment.id],99),'P0001');
+ appointment=await resourceSlot(appointment.id,staff.id,service.id,'2026-10-08T13:00:00+09:00',[room.id,equipment.id],appointment.version);
  assert.equal(appointment.version,2);
+ appointment=await slot(
+  appointment.id,staff.id,service.id,'2026-10-08T12:30:00+09:00',appointment.version
+ );
+ assert.deepEqual(appointment.resource_ids.sort(),[room.id,equipment.id].sort());
  await user(member);
  await fail(()=>one('select create_appointment_staff($1,$2)',[org,'권한 없음']),'42501');
  await fail(()=>one('select create_appointment_service($1,$2,$3,$4)',[org,'권한 없음',60,0]),'42501');
+ await fail(()=>one('select update_appointment_resource($1,$2,$3,$4,$5,$6)',[
+  org,room2.id,'권한 없음',false,1,randomUUID()]),'42501');
  await fail(()=>one('select replace_appointment_staff_hours($1,$2,$3,$4,$5,$6)',[
   org,staff.id,'Asia/Seoul','[]',2,randomUUID()]),'42501');
  await fail(()=>one('select create_appointment_staff_time_off($1,$2,$3,$4,$5,$6)',[
@@ -97,11 +135,11 @@ try {
  appointment=await move(appointment.id,'completed',appointment.version);
  await fail(()=>move(appointment.id,'completed',appointment.version),'P0001');
  await user();
- const pending=await slot(null,staff.id,service.id,'2026-10-09T10:00:00+09:00');
+ const pending=await resourceSlot(null,staff.id,service.id,'2026-10-09T10:00:00+09:00',[room.id,equipment.id]);
  await fail(()=>move(pending.id,'canceled',pending.version),'22023');
  const canceled=await move(pending.id,'canceled',pending.version,'고객 요청');
  assert.equal(canceled.cancellation_reason,'고객 요청');
- assert.ok((await slot(null,staff.id,service.id,'2026-10-09T10:00:00+09:00')).id);
+ assert.ok((await resourceSlot(null,staff.id,service.id,'2026-10-09T10:00:00+09:00',[room.id,equipment.id])).id);
  await user(outsider);
  assert.equal((await q('select * from appointments where organization_id=$1',[org])).rows.length,0);
  await fail(()=>slot(null,staff.id,service.id,'2026-10-10T10:00:00+09:00'),'42501');
@@ -110,5 +148,5 @@ try {
  await fail(()=>one('select save_appointment($1,$2,$3,$4,$5,$6,$7,$8,$9)',[
   other,null,customer,staff.id,service.id,start,'phone',null,randomUUID()]),'42501');
  await fail(()=>q("update appointments set status='completed' where id=$1",[canceled.id]),'42501');
- console.log('PASS appointments: buffers, retries, versions, transitions, visit, roles, tenants');
+ console.log('PASS appointments: staff/resource conflicts, retries, transitions, roles, tenants');
 } finally {await db.close();}

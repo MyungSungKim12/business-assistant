@@ -21,11 +21,17 @@
 
 ## 공통 지원 모듈
 
+[Node/TypeScript API 전환 설계](../superpowers/specs/2026-10-13-node-api-migration-design.md): Python FastAPI를 Fastify 기반 Node API로 단계적으로 교체하는 API-001 계획. 현재 상태는 `in-progress`이며, Python 제거는 전체 API 동등성 및 Windows 인수 이후에만 수행한다.
+
+[React/Tauri 데스크톱 전환 설계](../superpowers/specs/2026-10-12-react-tauri-desktop-migration-design.md): 기존 PySide6를 백업으로 유지하고 LCID에서 제품에 맞는 UI·운영 기능을 선별 이식하는 UI-002 계획. 설계 승인 후 [고객관리 수직 기능 구현 계획](../superpowers/plans/2026-10-12-react-tauri-customer-vertical-slice.md)을 작성했으며 실제 구현 전이다.
+
 [데스크톱 디자인 기준 및 UI-001 진행](design-system.md): 공통 글꼴·컴포넌트 및 고객/시술 화면의 상품성 개선.
 
 [상품형 UI 전략](ui-product-strategy.md): Codex·Claude식 앱 셸, 정보 밀도, 상세 패널과 공통 상태 표현 기준.
 
 [2026-10-08 기능 인수 점검](functional-release-check-2026-10-08.md): 1~6 우선순위의 로컬 증거, 신규 SQL 순서, 실제 화면 인수와 미완료 범위.
+
+[예약 공간·장비 적용 안내](appointment-resources-release.md): 038 자원 마스터·서비스 필수 기준·동시간 충돌 차단과 실환경 인수 순서.
 
 [문서](modules/documents.md), [미디어](modules/media.md), [가져오기·내보내기](modules/import-export.md), [자동화](modules/automation.md), [AI](modules/ai.md), [알림](modules/notifications.md), [외부 연동](modules/integrations.md), [설정·권한·구독](modules/settings.md), [다지점](modules/multi-branch.md).
 
@@ -68,7 +74,7 @@
 
 2026-10-08 추가: SALE-005 1차 범위로 일 마감·미수 목록·관리자 승인 정정 기록을 로컬 구현했다. 운영 DB에는 030까지 적용했다고 보고받았으며 신규 적용 순서는 031 → 032 → 033이다. 실환경 검증 대기. [일 마감 적용 안내](sale-daily-settlement-release.md).
 
-2026-10-12 최신 사용자 보고: 031~036 SQL은 모두 실행했다. 현재 작업 환경에 서비스 키가 없어 독립 확인은 대기 중이다. 다음 로컬 구현 SQL은 037 예약 담당자 근무시간·휴무다. 기능별 검증 범위와 미완료 항목은 [예약](menus/03-appointments.md), [회원권](menus/06-memberships-packages.md), [직원](menus/08-staff-commissions.md), [손익](menus/09-expenses-settlement-profit.md)에 기록한다.
+2026-10-12 최신 사용자 보고: 031~036 SQL은 모두 실행했다. 현재 작업 환경에 서비스 키가 없어 독립 확인은 대기 중이다. 이후 로컬 구현 SQL은 037 예약 담당자 근무시간·휴무와 038 공간·장비 충돌이다. 실제 적용 순서는 037→038이며 기능별 검증 범위와 미완료 항목은 [예약](menus/03-appointments.md), [회원권](menus/06-memberships-packages.md), [직원](menus/08-staff-commissions.md), [손익](menus/09-expenses-settlement-profit.md)에 기록한다.
 
 TRT-001 상담 초안·주의 확인과 DOC-001 동의서·서식 버전 관리는 코드 구현 완료, Python·Qt·실환경 검증 대기(in-progress)다. 격리 DB 검증은 37개 묶음 통과했다. [서식 적용 안내](document-versions-release.md)에 호환성 변경과 다른 PC 검증 명령을 기록했다. 기존 9월 18일 실행 결과를 새 변경의 검증으로 해석하지 않는다.
 

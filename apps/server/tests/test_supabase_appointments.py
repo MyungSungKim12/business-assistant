@@ -161,3 +161,114 @@ def test_staff_availability_queries_and_mutations_are_scoped():
     assert requests[1].url.params["staff_id"] == f"eq.{staff_id}"
     assert requests[2].url.params["status"] == "eq.active"
     assert json.loads(requests[3].content)["p_organization_id"] == str(ORG)
+
+
+def test_resource_catalog_requirements_and_save_payload_are_scoped():
+    resource_id, service_id, customer_id, staff_id, appointment_id = (
+        uuid4(),
+        uuid4(),
+        uuid4(),
+        uuid4(),
+        uuid4(),
+    )
+    requests = []
+    resource = {
+        "id": str(resource_id),
+        "organization_id": str(ORG),
+        "name": "관리실 1",
+        "kind": "room",
+        "is_active": True,
+        "version": 1,
+    }
+    appointment = {
+        "id": str(appointment_id),
+        "organization_id": str(ORG),
+        "customer_id": str(customer_id),
+        "staff_id": str(staff_id),
+        "service_id": str(service_id),
+        "service_name_snapshot": "관리",
+        "duration_minutes": 60,
+        "buffer_minutes": 10,
+        "start_at": "2026-10-08T10:00:00+09:00",
+        "end_at": "2026-10-08T11:00:00+09:00",
+        "status": "reserved",
+        "source": "phone",
+        "cancellation_reason": None,
+        "version": 1,
+        "resource_ids": [str(resource_id)],
+    }
+
+    def serve(request):
+        requests.append(request)
+        path = request.url.path
+        if path.endswith("/appointment_resources"):
+            return httpx.Response(200, json=[resource])
+        if path.endswith("/appointment_service_resource_requirements"):
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "id": str(uuid4()),
+                        "organization_id": str(ORG),
+                        "service_id": str(service_id),
+                        "kind": "room",
+                        "quantity": 1,
+                    }
+                ],
+            )
+        if path.endswith("/rpc/create_appointment_resource"):
+            return httpx.Response(200, json=resource)
+        if path.endswith("/rpc/replace_appointment_service_resource_requirements"):
+            return httpx.Response(
+                200,
+                json={
+                    "service_id": str(service_id),
+                    "resource_version": 2,
+                    "requirements": [{"kind": "room", "quantity": 1}],
+                },
+            )
+        return httpx.Response(200, json=appointment)
+
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(serve)) as client:
+            repository = SupabaseAppointmentRepository(
+                "https://example.supabase.co", "public", "user-token", client
+            )
+            resources = await repository.list_resources(ORG)
+            requirements = await repository.list_service_resource_requirements(ORG, service_id)
+            created = await repository.create_resource(
+                ORG, "관리실 1", "room", uuid4()
+            )
+            replaced = await repository.replace_service_resource_requirements(
+                ORG,
+                service_id,
+                {
+                    "requirements": [{"kind": "room", "quantity": 1}],
+                    "expected_version": 1,
+                    "operation_id": uuid4(),
+                },
+            )
+            saved = await repository.save(
+                ORG,
+                None,
+                {
+                    "customer_id": customer_id,
+                    "staff_id": staff_id,
+                    "service_id": service_id,
+                    "start_at": "2026-10-08T10:00:00+09:00",
+                    "source": "phone",
+                    "expected_version": None,
+                    "operation_id": uuid4(),
+                    "resource_ids": [resource_id],
+                },
+            )
+            return resources, requirements, created, replaced, saved
+
+    resources, requirements, created, replaced, saved = asyncio.run(run())
+    assert resources[0].id == resource_id
+    assert requirements[0].kind == "room"
+    assert created.organization_id == ORG
+    assert replaced.resource_version == 2
+    assert saved.resource_ids == [resource_id]
+    save_body = json.loads(requests[-1].content)
+    assert save_body["p_resource_ids"] == [str(resource_id)]

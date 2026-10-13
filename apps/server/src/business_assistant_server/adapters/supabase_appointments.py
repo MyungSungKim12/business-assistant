@@ -32,6 +32,26 @@ class AppointmentService(AppointmentRow):
     duration_minutes: int = Field(ge=5, le=480)
     buffer_minutes: int = Field(ge=0, le=120)
     is_active: bool
+    resource_version: int = Field(default=1, ge=1)
+
+
+class AppointmentResource(AppointmentRow):
+    name: str
+    kind: Literal["room", "equipment"]
+    is_active: bool
+    version: int = Field(ge=1)
+
+
+class AppointmentServiceResourceRequirement(AppointmentRow):
+    service_id: UUID
+    kind: Literal["room", "equipment"]
+    quantity: int = Field(ge=1, le=10)
+
+
+class ServiceResourceRequirementsResult(BaseModel):
+    service_id: UUID
+    resource_version: int = Field(ge=1)
+    requirements: list[dict[str, object]]
 
 
 class Appointment(AppointmentRow):
@@ -47,6 +67,7 @@ class Appointment(AppointmentRow):
     source: Literal["manual", "phone", "walk_in", "online"]
     cancellation_reason: str | None
     version: int = Field(ge=1)
+    resource_ids: list[UUID] = Field(default_factory=list, max_length=20)
 
 
 class AppointmentWorkingHour(AppointmentRow):
@@ -116,6 +137,19 @@ class SupabaseAppointmentRepository(SupabaseSaleCartRepository):
 
     async def list_services(self, organization_id: UUID) -> list[AppointmentService]:
         return await self._list("appointment_services", AppointmentService, organization_id)
+
+    async def list_resources(self, organization_id: UUID) -> list[AppointmentResource]:
+        return await self._list("appointment_resources", AppointmentResource, organization_id)
+
+    async def list_service_resource_requirements(
+        self, organization_id: UUID, service_id: UUID
+    ) -> list[AppointmentServiceResourceRequirement]:
+        return await self._list(
+            "appointment_service_resource_requirements",
+            AppointmentServiceResourceRequirement,
+            organization_id,
+            service_id=f"eq.{service_id}",
+        )
 
     async def get_staff_availability(
         self, organization_id: UUID, staff_id: UUID
@@ -196,15 +230,70 @@ class SupabaseAppointmentRepository(SupabaseSaleCartRepository):
             p_buffer_minutes=buffer_minutes,
         )
 
+    async def create_resource(
+        self, organization_id: UUID, name: str, kind: str, operation_id: UUID
+    ) -> AppointmentResource:
+        return await self._single(
+            "create_appointment_resource",
+            AppointmentResource,
+            organization_id,
+            p_name=name,
+            p_kind=kind,
+            p_operation_id=str(operation_id),
+        )
+
+    async def update_resource(
+        self, organization_id: UUID, resource_id: UUID, values: dict[str, object]
+    ) -> AppointmentResource:
+        result = await self._single(
+            "update_appointment_resource",
+            AppointmentResource,
+            organization_id,
+            p_resource_id=str(resource_id),
+            p_name=values["name"],
+            p_is_active=values["is_active"],
+            p_expected_version=values["expected_version"],
+            p_operation_id=str(values["operation_id"]),
+        )
+        if result.id != resource_id:
+            raise RepositoryUnavailableError()
+        return result
+
+    async def replace_service_resource_requirements(
+        self, organization_id: UUID, service_id: UUID, values: dict[str, object]
+    ) -> ServiceResourceRequirementsResult:
+        payload = await self._request(
+            "POST",
+            "rpc/replace_appointment_service_resource_requirements",
+            json={
+                "p_organization_id": str(organization_id),
+                "p_service_id": str(service_id),
+                "p_requirements": values["requirements"],
+                "p_expected_version": values["expected_version"],
+                "p_operation_id": str(values["operation_id"]),
+            },
+        )
+        try:
+            result = ServiceResourceRequirementsResult.model_validate(payload)
+        except ValidationError as error:
+            raise RepositoryUnavailableError() from error
+        if result.service_id != service_id:
+            raise RepositoryUnavailableError()
+        return result
+
     async def save(
         self, organization_id: UUID, appointment_id: UUID | None, values: dict[str, object]
     ) -> Appointment:
-        payload = {
-            f"p_{key}": str(value) if isinstance(value, UUID) else value
-            for key, value in values.items()
-        }
+        def json_value(value: object) -> object:
+            if isinstance(value, UUID):
+                return str(value)
+            if isinstance(value, list):
+                return [str(item) if isinstance(item, UUID) else item for item in value]
+            return value
+
+        payload = {f"p_{key}": json_value(value) for key, value in values.items()}
         result = await self._single(
-            "save_appointment",
+            "save_appointment_with_resources",
             Appointment,
             organization_id,
             p_appointment_id=str(appointment_id) if appointment_id else None,

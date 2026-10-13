@@ -40,6 +40,21 @@ def main() -> int:
             "appointment_staff_time_off",
             "id,organization_id,staff_id,status",
         ),
+        (
+            "038 appointment resources",
+            "appointment_resources",
+            "id,organization_id,kind,is_active,version",
+        ),
+        (
+            "038 service resource requirements",
+            "appointment_service_resource_requirements",
+            "id,organization_id,service_id,kind,quantity",
+        ),
+        (
+            "038 appointment resource assignments",
+            "appointments",
+            "id,organization_id,resource_ids",
+        ),
     )
     failed = False
     try:
