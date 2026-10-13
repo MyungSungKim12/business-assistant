@@ -45,7 +45,7 @@
 
 기존 [제품 개요](https://github.com/MyungSungKim12/business-assistant/blob/main/docs/01-product-overview.md), [아키텍처](https://github.com/MyungSungKim12/business-assistant/blob/main/docs/02-architecture.md), [메뉴 모듈](https://github.com/MyungSungKim12/business-assistant/blob/main/docs/03-menu-modules.md), [구현 로드맵](https://github.com/MyungSungKim12/business-assistant/blob/main/docs/06-implementation-roadmap.md)은 범용 앱의 배경과 기술 설명이다. 이 디렉터리는 뷰티 매장 제품의 상세 요구사항과 검증 추적을 담당한다. 기존 README의 구현 완료 문구를 상용 업무 완료의 증거로 사용하지 않는다.
 
-2026-09-17 읽기 확인: `apps/desktop/src/business_assistant_desktop/menu_catalog.py`에는 15개 범용 메뉴가 있다. 고객·활동·시술 관련 API 소스가 있으나 이번 문서 작성에서는 API 실행, 데이터베이스 접근, 실환경 검증을 수행하지 않았다. 일정 권한 코드는 기존 설명의 `task.basic`과 카탈로그의 `schedule.basic`이 달라 통합 시 계약을 확인해야 한다. 목표 12개 메뉴의 권한 코드는 기존 코드에 임의로 매핑하지 않고 설정 모듈에서 결정한다.
+2026-09-17 읽기 확인 기록은 이전 PySide6 클라이언트 기준이다. 2026-10-13부터 메뉴 기준은 `apps/desktop-react/src/features/shell/TopBar.tsx`와 `apps/desktop-react/src/app/routes.tsx`이며, 미전환 메뉴는 React 기능 계획에 따라 구현한다.
 
 
 ## 최신 진행 — 2026-09-18

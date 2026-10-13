@@ -5,9 +5,10 @@
 - Windows PowerShell
 - Git
 - 인터넷 연결(처음 의존성을 내려받을 때 필요)
-- `uv` 패키지·Python 관리 도구
+- Node.js 24 이상과 Corepack
+- Native 앱 빌드용 Rust MSVC 도구 체인
 
-Python을 따로 설치하지 않아도 됩니다. `bootstrap.ps1`이 uv를 통해 Python 3.13을 선택·설치하고 프로젝트 의존성을 동기화합니다.
+현재 제품 서버와 데스크톱은 Node.js·React·Tauri를 사용합니다. Python/uv는 이전 마이그레이션과 일부 문서 도구를 확인할 때만 필요합니다.
 
 ## 처음 한 번 실행
 
@@ -27,16 +28,16 @@ powershell -ExecutionPolicy Bypass -File scripts/check.ps1
 
 이 명령은 Ruff 린트, Ruff 포맷 검사, mypy 타입 검사, pytest를 순서대로 실행합니다. 한 명령이라도 실패하면 즉시 멈춥니다. 개별 테스트는 `uv run pytest`, 포맷 자동 적용은 `uv run ruff format .`로 실행할 수 있습니다.
 
-## 서버와 데스크톱 시작
+## 서버와 React/Tauri 데스크톱 시작
 
 각 명령은 별도 PowerShell 창에서 실행하세요.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/run-server.ps1
-powershell -ExecutionPolicy Bypass -File scripts/run-desktop.ps1
+powershell -ExecutionPolicy Bypass -File scripts/run-react-desktop.ps1
 ```
 
-서버는 기본적으로 `http://127.0.0.1:8000`에서 시작하며 상태 확인 주소는 `http://127.0.0.1:8000/api/v1/health`입니다. 데스크톱 스크립트는 PySide6 창을 엽니다.
+서버는 기본적으로 `http://127.0.0.1:8000`에서 시작하며 상태 확인 주소는 `http://127.0.0.1:8000/api/v1/health`입니다. 두 번째 명령은 Native Tauri 창을 엽니다. `scripts/run-react-web.ps1`은 UI 개발용 브라우저 미리보기입니다.
 
 ## 환경 변수
 
@@ -48,7 +49,7 @@ Copy-Item .env.example .env
 
 `APP_ENVIRONMENT`와 `APP_API_BASE_URL`은 로컬 예시 값입니다.
 데스크톱은 시작할 때 `.env`를 명시적으로 읽되 현재 셸에 설정된 값을 덮어쓰지 않으며,
-`APP_API_BASE_URL`만 FastAPI 연결 주소로 사용합니다. 이전 `BUSINESS_ASSISTANT_API_URL`은
+`APP_API_BASE_URL`만 Node/Fastify API 연결 주소로 사용합니다. 이전 `BUSINESS_ASSISTANT_API_URL`은
 호환성용 대체값일 뿐 `APP_API_BASE_URL`이 항상 우선합니다. 데스크톱은 `.env`의 Supabase·서비스 키·데이터베이스 값을 읽거나 출력하지 않습니다.
 `APP_SUPABASE_URL`과 `APP_SUPABASE_PUBLISHABLE_KEY`는 Supabase Auth 클라이언트가
 사용하는 설정입니다. publishable key는 공개 클라이언트 흐름에만 사용할 수 있고 서비스 키를
@@ -67,11 +68,6 @@ Supabase 프로젝트 생성, 키 확인, 마이그레이션 적용, 인증·권
 
 `C:\Users\<사용자>\.local\bin\uv.exe`가 있는지 확인합니다. 없다면 uv를 설치하고 새 PowerShell을 엽니다. 스크립트는 전역 PATH를 변경하지 않고 실행 중인 프로세스에서만 이 경로를 사용합니다.
 
-### Qt 테스트가 화면 또는 플랫폼 오류로 실패함
+### Native Tauri 창을 시작할 수 없음
 
-`check.ps1`은 `QT_QPA_PLATFORM=offscreen`을 설정해 창을 띄우지 않고 테스트합니다. 직접 테스트할 때도 다음처럼 설정하세요.
-
-```powershell
-$env:QT_QPA_PLATFORM = "offscreen"
-uv run pytest apps/desktop/tests
-```
+`cargo --version`으로 Rust/Cargo 설치를 확인하고, Windows MSVC C++ 빌드 도구가 설치되어 있는지 확인한 뒤 `scripts/run-react-desktop.ps1`을 다시 실행합니다. `scripts/run-react-web.ps1`은 기능 확인용 브라우저 미리보기이며 제품 앱 배포 결과가 아닙니다.

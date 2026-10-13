@@ -31,3 +31,13 @@ if ($LASTEXITCODE -ne 0) {
     Invoke-Uv python install 3.13
 }
 Invoke-Uv sync --all-packages
+
+$pnpmCommand = Get-Command pnpm -ErrorAction SilentlyContinue
+if ($null -eq $pnpmCommand) {
+    throw "pnpm을 찾을 수 없습니다. Node.js 24 이상과 pnpm 11.19.0을 설치한 뒤 PowerShell을 다시 열고 이 스크립트를 실행하세요."
+}
+
+& $pnpmCommand.Source install
+if ($LASTEXITCODE -ne 0) {
+    throw "React/Tauri 의존성 설치에 실패했습니다."
+}

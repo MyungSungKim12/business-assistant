@@ -1,6 +1,6 @@
 # Business Assistant
 
-업종에 관계없이 사용할 수 있는 **구독형 데스크톱 업무 관리 프로그램**입니다. 현재 PySide6 운영 앱을 유지하면서 React/Tauri 앱을 단계적으로 전환하고 있습니다.
+업종에 관계없이 사용할 수 있는 **구독형 React/Tauri 데스크톱 업무 관리 프로그램**입니다.
 
 > 현재 상태: Supabase Auth, 조직 역할, 구독 기능 권한과 CRM·일정·문서·재무·파일 관리 구현 완료
 
@@ -33,10 +33,10 @@ Supabase 인증과 조직별 권한 API를 실행하려면 `.env.example`을 `.e
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/run-server.ps1
-powershell -ExecutionPolicy Bypass -File scripts/run-desktop.ps1
+powershell -ExecutionPolicy Bypass -File scripts/run-react-desktop.ps1
 ```
 
-React 웹 미리보기와 Native Tauri 실행 방법은 [React/Tauri 운영 안내](docs/guide/admin/react-tauri.md)를 참고하세요. React 전환 전 메뉴는 기존 PySide6 앱에서 계속 이용합니다.
+두 번째 명령은 브라우저 주소가 아닌 Windows 앱 창을 엽니다. `run-react-web.ps1`은 UI 개발용 브라우저 미리보기입니다. Native Tauri 준비물과 환경 변수는 [React/Tauri 운영 안내](docs/guide/admin/react-tauri.md)를 참고하세요.
 
 처음 개발하는 경우에는 [개발 환경 안내](docs/05-development-guide.md)를 먼저 읽으세요.
 
@@ -80,7 +80,7 @@ pull request에서는 문서 빌드만 검사하고, `main` 브랜치에 반영�
 ## 시스템 구조
 
 ```text
-PySide6 Desktop
+React/Tauri Desktop
   ├─ 로그인과 세션
   ├─ 메뉴와 업무 화면
   └─ 로컬 파일·Excel·PDF 처리
@@ -106,7 +106,7 @@ Supabase
 |---|---|
 | 언어 | Python 3.13 |
 | 패키지·가상환경 | uv |
-| 데스크톱 UI | PySide6 |
+| 데스크톱 UI | React 19 + Tauri 2 |
 | API 서버 | FastAPI + Uvicorn |
 | 데이터 계층 | SQLAlchemy 2.x + Alembic |
 | 운영 데이터베이스 | Supabase PostgreSQL |
@@ -193,7 +193,7 @@ PRO
 ```text
 business-assistant/
 ├─ apps/
-│  ├─ desktop/                 # PySide6 데스크톱 앱
+│  ├─ desktop-react/           # React/Tauri 데스크톱 앱
 │  └─ server/                  # FastAPI 백엔드
 ├─ packages/
 │  └─ common/                  # 공통 타입과 API 계약
@@ -215,7 +215,7 @@ business-assistant/
 
 - [x] uv와 Python 3.13 개발환경
 - [x] 모노레포 및 공통 설정
-- [x] PySide6 최소 실행 화면
+- [x] React/Tauri 데스크톱 기본 화면
 - [x] FastAPI 상태 확인 API
 - [x] 테스트, 린트, 타입 검사
 - [x] 개발 및 Git 문서

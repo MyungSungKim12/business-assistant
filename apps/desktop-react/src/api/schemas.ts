@@ -12,6 +12,9 @@ export const customerActivitiesSchema = z.array(customerActivitySchema);
 export const customerPhotoSchema=z.object({id:z.uuid(),organization_id:z.uuid(),customer_id:z.uuid(),original_name:z.string(),storage_path:z.string(),content_type:z.string(),size_bytes:z.number(),caption:z.string(),created_at:z.string()});
 export const taskSchema=z.object({id:z.uuid(),organization_id:z.uuid(),created_by:z.uuid(),title:z.string(),description:z.string(),due_at:z.string().nullable(),status:z.string(),priority:z.string()});export const tasksSchema=z.array(taskSchema);
 export const customerPhotosSchema=z.array(customerPhotoSchema); export const signedPhotoSchema=z.object({photo:customerPhotoSchema,signed_url:z.string().url(),expires_in:z.number()});
+export const appointmentSchema=z.object({id:z.uuid(),organization_id:z.uuid(),customer_id:z.uuid(),staff_id:z.uuid(),service_id:z.uuid(),service_name_snapshot:z.string(),duration_minutes:z.number(),buffer_minutes:z.number(),start_at:z.string(),end_at:z.string(),status:z.string(),source:z.string(),cancellation_reason:z.string().nullable(),version:z.number()});export const appointmentsSchema=z.array(appointmentSchema);
+export const appointmentStaffSchema=z.object({id:z.uuid(),organization_id:z.uuid(),name:z.string(),is_active:z.boolean(),schedule_version:z.number()});export const appointmentStaffListSchema=z.array(appointmentStaffSchema);export const appointmentServiceSchema=z.object({id:z.uuid(),organization_id:z.uuid(),name:z.string(),duration_minutes:z.number(),buffer_minutes:z.number(),is_active:z.boolean()});export const appointmentServiceListSchema=z.array(appointmentServiceSchema);
+export const operationRecordSchema=z.record(z.string(),z.unknown());export const operationRecordsSchema=z.array(operationRecordSchema);
 
 export type AuthUser = z.infer<typeof userSchema>;
 export type Session = z.infer<typeof sessionSchema>;
@@ -21,3 +24,6 @@ export type Customer = z.infer<typeof customerSchema>;
 export type CustomerActivity = z.infer<typeof customerActivitySchema>;
 export type CustomerPhoto=z.infer<typeof customerPhotoSchema>; export type SignedPhoto=z.infer<typeof signedPhotoSchema>;
 export type Task=z.infer<typeof taskSchema>;
+export type Appointment=z.infer<typeof appointmentSchema>;
+export type AppointmentStaff=z.infer<typeof appointmentStaffSchema>;export type AppointmentService=z.infer<typeof appointmentServiceSchema>;
+export type OperationRecord=z.infer<typeof operationRecordsSchema>[number];

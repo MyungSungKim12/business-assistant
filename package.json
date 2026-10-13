@@ -6,6 +6,9 @@
     "node": ">=24"
   },
   "scripts": {
+    "api:dev": "pnpm --filter @business-assistant/api dev",
+    "api:test": "pnpm --filter @business-assistant/api test",
+    "api:build": "pnpm --filter @business-assistant/api build",
     "react:dev": "pnpm --filter @business-assistant/desktop-react dev",
     "react:test": "pnpm --recursive --if-present test",
     "react:build": "pnpm --filter @business-assistant/desktop-react build"

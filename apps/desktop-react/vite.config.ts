@@ -7,7 +7,11 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react()],
+    clearScreen: false,
+    build: { target: 'chrome105' },
     server: {
+      port: 1420,
+      strictPort: true,
       proxy: {
         '/api/v1': {
           target: apiTarget,

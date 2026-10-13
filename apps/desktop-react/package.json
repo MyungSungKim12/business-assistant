@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "test": "vitest"
+    "test": "vitest run",
+    "icons": "node scripts/gen-icons.mjs",
+    "tauri": "tauri"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.12.1",

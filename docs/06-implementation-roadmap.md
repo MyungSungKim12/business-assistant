@@ -4,9 +4,9 @@
 
 ## 1단계 — 프로젝트 기반
 
-**산출물**: uv/Python 3.13 워크스페이스, 공통 패키지, FastAPI 상태 확인 API, PySide6 최소 창, PowerShell 개발 스크립트, 입문 문서.
+**산출물**: uv/Python 3.13 워크스페이스, 공통 패키지, FastAPI 상태 확인 API, React/Tauri 데스크톱 앱, PowerShell 개발 스크립트, 입문 문서.
 
-**완료 기준**: `scripts/bootstrap.ps1`으로 새 환경을 구성하고 `scripts/check.ps1`이 통과합니다. 서버의 `/api/v1/health`가 응답하고, 데스크톱 메뉴 셸이 Qt offscreen 테스트에서 생성됩니다.
+**완료 기준**: `scripts/bootstrap.ps1`으로 새 환경을 구성하고 `scripts/check.ps1`이 통과합니다. 서버의 `/api/v1/health`가 응답하고, React 웹 개발 서버가 시작됩니다.
 
 ## 2단계 — 사용자와 조직
 

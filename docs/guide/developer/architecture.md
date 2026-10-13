@@ -5,7 +5,7 @@
 ```text
 business-assistant/
 ├─ apps/
-│  ├─ desktop/       PySide6 데스크톱 앱
+│  ├─ desktop-react/ React/Tauri 데스크톱 앱
 │  └─ server/        FastAPI 서버와 Supabase 어댑터
 ├─ packages/common/  공통 모델, 오류와 API 계약
 ├─ migrations/       번호 순서의 Supabase SQL
@@ -23,7 +23,7 @@ business-assistant/
 ```mermaid
 sequenceDiagram
   actor User as 사용자
-  participant Desktop as PySide6 Desktop
+  participant Desktop as React/Tauri Desktop
   participant API as FastAPI Server
   participant Auth as Supabase Auth
   participant DB as PostgreSQL + RLS
@@ -44,7 +44,7 @@ sequenceDiagram
 
 ## 메뉴와 구현 페이지
 
-메뉴의 기준은 `apps/desktop/src/business_assistant_desktop/menu_catalog.py`입니다. `main_window.py`가 기능 권한에 따라 실제 페이지나 준비 중 페이지를 연결합니다. 메뉴를 추가할 때는 다음을 함께 변경합니다.
+메뉴의 기준은 `apps/desktop-react/src/features/shell/TopBar.tsx`와 `apps/desktop-react/src/app/routes.tsx`입니다. 메뉴를 추가할 때는 다음을 함께 변경합니다.
 
 1. 기능 ID와 제품 계획
 2. 공통 API 계약

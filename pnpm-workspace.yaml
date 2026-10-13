@@ -1,3 +1,7 @@
 packages:
+  - apps/api
   - apps/desktop-react
+  - packages/api-contract
   - packages/react-ui
+allowBuilds:
+  esbuild: true

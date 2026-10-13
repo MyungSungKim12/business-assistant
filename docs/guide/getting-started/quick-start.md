@@ -4,7 +4,8 @@
 
 - Windows PC
 - Git
-- Python 3.13과 `uv`
+- Node.js 24 이상
+- Native 데스크톱 앱 실행용 Rust MSVC 도구 체인(`cargo`)
 - 활성 상태의 Supabase 프로젝트
 - 저장소의 `.env`에 입력할 Supabase URL과 키
 
@@ -45,24 +46,27 @@ powershell -ExecutionPolicy Bypass -File .\scripts\run-server.ps1
 아래 문구가 보이면 서버가 준비된 상태입니다.
 
 ```text
-Application startup complete.
-Uvicorn running on http://127.0.0.1:8000
+Server listening at http://127.0.0.1:8000
 ```
 
 이 창은 프로그램을 사용하는 동안 닫지 않습니다.
 
-## 3. 데스크톱 앱 실행
+## 3. React 데스크톱 앱 실행
 
 두 번째 PowerShell 창에서 실행합니다.
 
 ```powershell
 Set-Location -LiteralPath "C:\path\to\business-assistant"
-powershell -ExecutionPolicy Bypass -File .\scripts\run-desktop.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\run-react-desktop.ps1
 ```
 
-![로그인 화면](../../screenshots/remodel-login.png)
+브라우저가 아닌 `Business Assistant` Native Tauri 창이 열립니다. 로그인 후 조직을 선택하면 홈 대시보드가 열립니다.
 
-로그인 후 조직을 선택하면 홈 대시보드가 열립니다. 메뉴가 회색이거나 클릭되지 않으면 해당 조직의 구독 기능 권한을 먼저 확인합니다.
+UI만 빠르게 확인할 때는 아래 브라우저 미리보기를 사용할 수 있습니다. 이 명령은 제품 앱 실행 명령이 아닙니다.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\run-react-web.ps1
+```
 
 ## 4. 종료
 

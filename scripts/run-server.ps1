@@ -1,22 +1,23 @@
-﻿$ErrorActionPreference = "Stop"
-
+$ErrorActionPreference = 'Stop'
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
 Set-Location -LiteralPath $repositoryRoot
-
-$standardUvDirectory = Join-Path $env:USERPROFILE ".local\bin"
-$standardUvPath = Join-Path $standardUvDirectory "uv.exe"
-$uvCommand = Get-Command uv -ErrorAction SilentlyContinue
-
-if ($null -ne $uvCommand) {
-    $uv = $uvCommand.Source
-} elseif (Test-Path -LiteralPath $standardUvPath) {
-    $env:Path = "$standardUvDirectory$([System.IO.Path]::PathSeparator)$env:Path"
-    $uv = "uv"
+$envFile = Join-Path $repositoryRoot '.env'
+if (-not (Test-Path -LiteralPath $envFile)) { throw '.env is missing. Copy .env.example to .env and configure Supabase.' }
+foreach ($line in Get-Content -LiteralPath $envFile -Encoding UTF8) {
+    $trimmed = $line.Trim()
+    if (-not $trimmed -or $trimmed.StartsWith('#') -or -not $trimmed.Contains('=')) { continue }
+    $name, $value = $trimmed.Split('=', 2)
+    $value = $value.Trim()
+    if (($value.StartsWith('"') -and $value.EndsWith('"')) -or ($value.StartsWith("'") -and $value.EndsWith("'"))) { $value = $value.Substring(1, $value.Length - 2) }
+    Set-Item -LiteralPath "Env:$($name.Trim())" -Value $value
+}
+$pnpmCommand = Get-Command pnpm.cmd -ErrorAction SilentlyContinue
+$corepackCommand = Get-Command corepack.cmd -ErrorAction SilentlyContinue
+if ($null -ne $pnpmCommand) {
+    & $pnpmCommand.Source --filter '@business-assistant/api' dev
+} elseif ($null -ne $corepackCommand) {
+    & $corepackCommand.Source pnpm --filter '@business-assistant/api' dev
 } else {
-    throw "uv를 찾을 수 없습니다. C:\\Users\\<사용자>\\.local\\bin\\uv.exe에 설치했는지 확인하거나 https://docs.astral.sh/uv/getting-started/installation/ 안내를 따르세요."
+    throw 'Unable to run pnpm. Install Node.js 24 or newer, or run corepack enable once as Administrator.'
 }
-
-& $uv run --all-packages python -m business_assistant_server
-if ($LASTEXITCODE -ne 0) {
-    throw "서버 실행에 실패했습니다."
-}
+if ($LASTEXITCODE -ne 0) { throw 'Node API server failed to start.' }

@@ -4,14 +4,57 @@
   "version": "0.1.0",
   "identifier": "com.businessassistant.desktop",
   "build": {
-    "beforeDevCommand": "pnpm dev",
+    "beforeDevCommand": "corepack pnpm dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "pnpm build",
+    "beforeBuildCommand": "corepack pnpm build",
     "frontendDist": "../dist"
   },
   "app": {
-    "windows": [{ "title": "Business Assistant", "width": 1440, "height": 900, "minWidth": 1180, "minHeight": 720, "resizable": true, "center": true }],
-    "security": { "csp": "default-src 'self'; img-src 'self' asset: http://asset.localhost blob: data:; style-src 'self' 'unsafe-inline'; connect-src 'self' ipc: http://ipc.localhost" }
+    "windows": [
+      {
+        "label": "main",
+        "title": "Business Assistant · 뷰티 매장 운영",
+        "url": "index.html",
+        "width": 1366,
+        "height": 820,
+        "minWidth": 1180,
+        "minHeight": 700,
+        "resizable": true,
+        "center": true,
+        "visible": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' asset: http://asset.localhost blob: data:; connect-src 'self' ipc: http://ipc.localhost ws://localhost:1420; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
+      "devCsp": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' asset: http://asset.localhost blob: data:; connect-src 'self' http://localhost:1420 http://127.0.0.1:8000 ipc: http://ipc.localhost ws://localhost:1420; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
+    }
   },
-  "bundle": { "active": true, "targets": "all" }
+  "bundle": {
+    "active": true,
+    "targets": [
+      "nsis"
+    ],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.ico"
+    ],
+    "publisher": "Business Assistant",
+    "shortDescription": "뷰티 매장 운영 데스크톱",
+    "windows": {
+      "webviewInstallMode": {
+        "type": "embedBootstrapper",
+        "silent": true
+      },
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": [
+          "Korean"
+        ],
+        "displayLanguageSelector": false,
+        "installerIcon": "icons/icon.ico"
+      }
+    }
+  }
 }

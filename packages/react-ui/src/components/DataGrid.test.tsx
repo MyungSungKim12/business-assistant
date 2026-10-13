@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -39,8 +39,9 @@ describe('DataGrid', () => {
     first.focus();
     await user.keyboard('{ArrowDown}');
     expect(select).toHaveBeenLastCalledWith(rows[1]);
+    await waitFor(() => expect(screen.getAllByRole('row')[2]).toHaveFocus());
     await user.keyboard('{Enter}');
-    expect(activate).toHaveBeenCalledWith(rows[0]);
+    expect(activate).toHaveBeenCalledWith(rows[1]);
     await user.dblClick(screen.getAllByRole('row')[2]);
     expect(activate).toHaveBeenLastCalledWith(rows[1]);
   });

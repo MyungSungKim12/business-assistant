@@ -4,7 +4,7 @@
 
 ### 현재 구현
 
-현재는 공통 타입·환경설정, FastAPI 상태 확인 API, 그리고 PySide6 최소 화면과 메뉴 카탈로그만 구현되어 있습니다. `AuthPort`와 `StoragePort`는 향후 공급자 연결을 위한 인터페이스 정의일 뿐이며, 실제 Auth 연결, 데이터베이스 접근, RLS, 연결 풀링, 구독 권한 강제, 구조화된 운영 오류 응답은 아직 구현되지 않았습니다.
+현재는 Node/Fastify API 서버와 React/Tauri 데스크톱 클라이언트를 사용합니다. 로그인·조직 권한·고객·활동·사진·대시보드·예약·할 일과 운영 메뉴의 실제 데이터 조회가 전환되었습니다. 운영 메뉴의 생성·정정·승인 업무는 순차 이전합니다.
 
 ### 목표 설계
 
@@ -15,7 +15,7 @@
 데스크톱 앱은 사용자가 설치하는 프로그램이므로 신뢰할 수 없는 영역으로 봅니다. 앱에는 Supabase 서비스 키나 데이터베이스 비밀번호를 넣지 않으며, 데이터베이스에 직접 연결하지 않습니다. 모든 보호된 요청은 HTTPS로 FastAPI 서버에 보내고, 서버가 토큰·조직·역할·구독 권한을 다시 확인합니다.
 
 ```text
-PySide6 Desktop → FastAPI Server → Supabase Auth / PostgreSQL / Storage
+React/Tauri Desktop → Node/Fastify API → Supabase Auth / PostgreSQL / Storage
 ```
 
 ## 구성 요소의 책임 (목표 설계)

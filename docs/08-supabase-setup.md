@@ -102,7 +102,7 @@ powershell -ExecutionPolicy Bypass -File scripts/check.ps1
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/run-server.ps1
-powershell -ExecutionPolicy Bypass -File scripts/run-desktop.ps1
+powershell -ExecutionPolicy Bypass -File scripts/run-react-web.ps1
 ```
 
 `APP_SUPABASE_URL` 또는 `APP_SUPABASE_PUBLISHABLE_KEY`가 비어 있으면 인증 API는

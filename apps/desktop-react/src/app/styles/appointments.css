@@ -1,0 +1,64 @@
+/* appointments.css */
+.appointment-layout,
+.task-layout,
+.operation-layout {
+  height: calc(100% - 50px);
+  display: grid;
+  grid-template-columns: minmax(0,1fr) 300px;
+  gap: 6px;
+}
+
+.calendar-panel,
+.data-surface {
+  overflow: auto;
+}
+
+.appointment-form,
+.editor-panel {
+  align-content: start;
+  display: grid;
+  gap: 6px;
+  padding: 7px;
+  overflow: auto;
+}
+
+.appointment-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.appointment-list li {
+  display: grid;
+  grid-template-columns: 58px minmax(160px,1fr) 52px auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 4px 7px;
+  border-bottom: 1px solid var(--border);
+}
+
+.appointment-list li:hover,
+.task-item:hover,
+.data-surface tbody tr:hover {
+  background: var(--row-hover);
+}
+
+.appointment-list time {
+  font-weight: 700;
+}
+
+.appointment-list li>div:not(.row-actions) {
+  display: grid;
+}
+
+.appointment-list span {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.appointment-list em {
+  font-style: normal;
+  color: var(--accent);
+}
+

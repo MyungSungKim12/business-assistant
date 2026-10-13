@@ -11,6 +11,8 @@
 | `D:\LCID\CLIENT\src\platform` | 브라우저/Tauri 경계와 OS 자격 증명 개념을 참고 | Task 5~6에서 새로 작성 |
 | LCID 루트 | 별도 `LICENSE`, `COPYING`, `NOTICE` 파일을 찾지 못함 | 소스 직접 복사 금지, 동작만 참고 |
 
+2026-10-13 후속 정리에서는 LCID 화면에서 관찰한 상단 1단 메뉴, 조밀한 데이터 행, 낮은 높이의 입력 컨트롤과 간결한 팝업 헤더를 제품 요구사항으로 삼았다. 색상·CSS 선언·컴포넌트 코드는 복사하지 않고 Business Assistant의 베이지 토큰과 React 공통 컴포넌트로 다시 작성했다.
+
 ## 외부 패키지
 
 | 패키지 | 기준 버전 | 라이선스 확인 위치 |
@@ -25,4 +27,4 @@
 
 ## 글꼴
 
-SUIT 고정 TTF 400·500·600·700과 `SUIT-LICENSE.txt`는 기존 PySide6 앱에 포함된 동일 자산을 복사한다. 원본은 SUIT 프로젝트이며 SIL Open Font License 조건에 따라 라이선스 파일을 설치물에 함께 포함한다.
+SUIT 고정 TTF 400·500·600·700과 `SUIT-LICENSE.txt`는 이전 PySide6 앱에 포함했던 동일 자산에서 React 클라이언트로 옮겼다. 원본은 SUIT 프로젝트이며 SIL Open Font License 조건에 따라 라이선스 파일을 설치물에 함께 포함한다.

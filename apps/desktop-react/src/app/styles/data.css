@@ -1,0 +1,40 @@
+/* data.css */
+.data-surface table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.data-surface th,
+.data-surface td {
+  height: 28px;
+  padding: 0 7px;
+  overflow: hidden;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.data-surface th {
+  position: sticky;
+  z-index: 1;
+  top: 0;
+  background: var(--grid-head);
+  color: #514a44;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.data-surface tbody tr:nth-child(even) {
+  background: var(--row-alt);
+}
+
+.empty-state {
+  margin: 0;
+  padding: 34px 10px;
+  text-align: center;
+  color: var(--text-muted);
+}
+

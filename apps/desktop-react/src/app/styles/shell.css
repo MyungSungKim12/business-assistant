@@ -1,0 +1,200 @@
+/* shell.css */
+body {
+  margin: 0;
+  overflow: hidden;
+  background: var(--surface-app);
+  color: var(--text);
+  font-family: var(--ba-font-sans);
+}
+
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  min-width: 1080px;
+  background: var(--surface-app);
+}
+
+.topbar {
+  flex: none;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--topbar-line);
+  background: var(--topbar-bg);
+  color: var(--topbar-strong);
+  box-shadow: 0 1px 2px #0002;
+}
+
+.topbar__brand {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 180px;
+  white-space: nowrap;
+}
+
+.topbar__brand strong {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.topbar__brand em {
+  padding: 1px 5px;
+  border-radius: 2px;
+  background: #665c54;
+  color: #fff;
+  font-size: 10px;
+  font-style: normal;
+}
+
+.brand-mark {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 4px;
+  background: var(--accent);
+  color: white;
+  font-weight: 700;
+}
+
+.brand-mark--small {
+  width: 24px;
+  height: 24px;
+  border-radius: 3px;
+  font-size: 10px;
+}
+
+.topbar nav {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  min-width: 0;
+}
+
+.topbar nav>button,
+.topbar summary,
+.topbar__actions button {
+  height: 26px;
+  min-height: 26px;
+  padding: 2px 9px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--topbar-text);
+  font-size: 12px;
+  line-height: 20px;
+  list-style: none;
+}
+
+.topbar nav>button:hover,
+.topbar summary:hover,
+.topbar__actions button:hover {
+  border-color: var(--topbar-border);
+  background: var(--topbar-hover);
+  color: #fff;
+}
+
+.topbar nav>button.active {
+  border-color: var(--topbar-active-line);
+  background: var(--topbar-active);
+  color: #fff;
+  font-weight: 600;
+}
+
+.topbar details {
+  position: relative;
+}
+
+.topbar details[open] summary {
+  background: var(--topbar-hover);
+}
+
+.more-menu {
+  position: absolute;
+  z-index: 50;
+  top: 29px;
+  left: 0;
+  display: grid;
+  width: 150px;
+  padding: 4px;
+  border: 1px solid #a99d92;
+  border-radius: 3px;
+  background: #fff;
+  color: var(--text);
+  box-shadow: 0 8px 22px #0003;
+}
+
+.more-menu button {
+  height: 27px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 2px;
+  background: #fff;
+  text-align: left;
+}
+
+.more-menu button:hover,
+.more-menu button.active {
+  background: var(--selection);
+  color: var(--text);
+}
+
+.topbar__actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.user-name {
+  max-width: 155px;
+  overflow: hidden;
+  color: var(--topbar-muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+}
+
+.connection {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--topbar-muted);
+  font-size: 11px;
+}
+
+.connection i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #b99a62;
+}
+
+.connection--online i {
+  background: #65c486;
+}
+
+.connection--offline {
+  color: #ffb0a7;
+}
+
+.connection--offline i {
+  background: #e06b5f;
+}
+
+.workspace {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 8px;
+}
+
+.workspace>section {
+  height: 100%;
+  min-height: 0;
+}
+

@@ -1,0 +1,29 @@
+/* responsive.css */
+@media (max-width:1150px) {
+  .topbar__brand {
+    min-width: auto;
+  }
+  .user-name {
+    display: none;
+  }
+  .customer-layout {
+    grid-template-columns: 1fr 390px;
+  }
+}
+
+@media (max-width:900px) {
+  .app-shell {
+    min-width: 760px;
+  }
+  .customer-layout,
+  .appointment-layout,
+  .task-layout,
+  .operation-layout {
+    height: auto;
+    grid-template-columns: 1fr;
+  }
+  .workspace {
+    overflow: auto;
+  }
+}
+

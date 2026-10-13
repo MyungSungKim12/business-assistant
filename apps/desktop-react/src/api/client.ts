@@ -2,7 +2,7 @@ import type { z } from 'zod';
 
 import type { Platform } from '../platform/types';
 import { ApiError, apiError } from './errors';
-import { customerActivitySchema, customerActivitiesSchema, customerPhotoSchema, customerPhotosSchema, customerSchema, customersSchema, entitlementSchema, organizationsSchema, sessionSchema, signedPhotoSchema, taskSchema, tasksSchema, type Customer, type CustomerActivity, type CustomerPhoto, type Entitlement, type Organization, type Session, type SignedPhoto, type Task } from './schemas';
+import { appointmentSchema, appointmentsSchema, appointmentStaffListSchema, appointmentServiceListSchema, operationRecordSchema, operationRecordsSchema, customerActivitySchema, customerActivitiesSchema, customerPhotoSchema, customerPhotosSchema, customerSchema, customersSchema, entitlementSchema, organizationsSchema, sessionSchema, signedPhotoSchema, taskSchema, tasksSchema, type Customer, type CustomerActivity, type CustomerPhoto, type Entitlement, type Organization, type Session, type SignedPhoto, type Task, type Appointment, type AppointmentStaff, type AppointmentService, type OperationRecord } from './schemas';
 import type { HttpRequest, HttpResponse } from './transport';
 
 export class ApiClient {
@@ -57,6 +57,17 @@ export class ApiClient {
   archiveCustomerPhoto(o:string,c:string,id:string):Promise<CustomerPhoto>{return this.authed({method:'DELETE',path:`/organizations/${o}/customers/${c}/photos/${id}`,headers:{}},customerPhotoSchema)}
   get filePlatform(): Platform{return this.platform;}
   listTasks(organizationId:string):Promise<Task[]>{return this.authed({method:'GET',path:`/organizations/${organizationId}/tasks`,headers:{}},tasksSchema)}
+  createTask(organizationId:string,input:{title:string;description:string;due_at:string|null;priority:'low'|'normal'|'high'}):Promise<Task>{return this.authed({method:'POST',path:`/organizations/${organizationId}/tasks`,headers:{'Content-Type':'application/json'},body:JSON.stringify(input)},taskSchema)}
+  updateTask(organizationId:string,taskId:string,patch:Partial<{title:string;description:string;due_at:string|null;priority:'low'|'normal'|'high';status:'open'|'in_progress'|'done'|'canceled'}>):Promise<Task>{return this.authed({method:'PATCH',path:`/organizations/${organizationId}/tasks/${taskId}`,headers:{'Content-Type':'application/json'},body:JSON.stringify(patch)},taskSchema)}
+  async deleteTask(organizationId:string,taskId:string):Promise<void>{await this.authedVoid({method:'DELETE',path:`/organizations/${organizationId}/tasks/${taskId}`,headers:{}})}
+  listAppointments(organizationId:string):Promise<Appointment[]>{return this.authed({method:'GET',path:`/organizations/${organizationId}/appointments`,headers:{}},appointmentsSchema)}
+  listAppointmentStaff(o:string):Promise<AppointmentStaff[]>{return this.authed({method:'GET',path:`/organizations/${o}/appointment-staff`,headers:{}},appointmentStaffListSchema)}
+  listAppointmentServices(o:string):Promise<AppointmentService[]>{return this.authed({method:'GET',path:`/organizations/${o}/appointment-services`,headers:{}},appointmentServiceListSchema)}
+  createAppointment(o:string,input:{customer_id:string;staff_id:string;service_id:string;start_at:string;source:string;expected_version:null;operation_id:string}):Promise<Appointment>{return this.authed({method:'POST',path:`/organizations/${o}/appointments`,headers:{'Content-Type':'application/json'},body:JSON.stringify(input)},appointmentSchema)}
+  transitionAppointment(o:string,id:string,input:{target_status:string;reason:string|null;expected_version:number;operation_id:string}):Promise<Appointment>{return this.authed({method:'POST',path:`/organizations/${o}/appointments/${id}/transitions`,headers:{'Content-Type':'application/json'},body:JSON.stringify(input)},appointmentSchema)}
+  listOperationRecords(o:string,module:'treatments'|'sales'|'memberships'|'inventory'|'staff'|'finance'|'documents'|'files'):Promise<OperationRecord[]>{return this.authed({method:'GET',path:`/organizations/${o}/operations/${module}`,headers:{}},operationRecordsSchema)}
+  createOperationRecord(o:string,module:'treatments'|'finance'|'documents',input:Record<string,unknown>):Promise<OperationRecord>{return this.authed({method:'POST',path:`/organizations/${o}/operations/${module}`,headers:{'Content-Type':'application/json'},body:JSON.stringify(input)},operationRecordSchema)}
+  updateOperationRecord(o:string,module:'finance'|'documents',id:string,input:Record<string,unknown>):Promise<OperationRecord>{return this.authed({method:'PATCH',path:`/organizations/${o}/operations/${module}/${id}`,headers:{'Content-Type':'application/json'},body:JSON.stringify(input)},operationRecordSchema)}
 
   private async authed<T>(request: HttpRequest, schema: z.ZodType<T>): Promise<T> {
     if (!this.accessToken) throw new ApiError(401, 'NOT_AUTHENTICATED', '로그인이 필요합니다.', false);

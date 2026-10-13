@@ -47,6 +47,9 @@ export async function createTauriPlatform(invoke: TauriInvoke = tauriInvoke as T
       catch (error) { throw nativeError(error); }
     },
     subscribeConnection: monitor.subscribe,
+    notifyReady: () => call<void>('show_main'),
+    exitApp: () => call<void>('app_exit'),
+    log: (level, message) => { void call<void>('log_write', { level, message }).catch(() => undefined); },
     async pickImages() {
       const selected = await call<Array<{ name: string; contentType: string; size: number; path: string }> | null>('pick_images');
       return (selected ?? []).map((file) => ({ kind: 'path' as const, ...file }));

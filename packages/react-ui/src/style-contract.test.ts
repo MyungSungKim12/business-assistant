@@ -12,16 +12,16 @@ describe('React design contract', () => {
     expect(existsSync(tokenPath)).toBe(true);
 
     const css = readFileSync(tokenPath, 'utf8');
-    expect(css).toContain('--surface-app: #f7f3ed');
-    expect(css).toContain('--surface-panel: #fffdf9');
-    expect(css).toContain('--surface-muted: #efe7dd');
-    expect(css).toContain('--border: #ddd2c5');
-    expect(css).toContain('--text: #332f2b');
-    expect(css).toContain('--text-muted: #746b63');
-    expect(css).toContain('--accent: #a96f4f');
-    expect(css).toContain('--selection: #e9d7c8');
-    expect(css).toContain('--font-size-body: 13px');
-    expect(css).toContain('--data-row-height: 34px');
+    expect(css).toContain('--surface-app: #eee9e3');
+    expect(css).toContain('--surface-panel: #fffefa');
+    expect(css).toContain('--surface-muted: #e8e1d9');
+    expect(css).toContain('--border: #d1c7bd');
+    expect(css).toContain('--text: #2d2925');
+    expect(css).toContain('--text-muted: #726961');
+    expect(css).toContain('--accent: #8a6049');
+    expect(css).toContain('--selection: #e4d5c8');
+    expect(css).toContain('--font-size-body: 12px');
+    expect(css).toContain('--data-row-height: 28px');
   });
 
   it('bundles four fixed SUIT weights and keyboard focus styling', () => {

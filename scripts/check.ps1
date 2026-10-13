@@ -35,6 +35,15 @@ if ($trackedEnvironmentFile) {
 
 Invoke-Uv run ruff check .
 Invoke-Uv run ruff format --check .
-Invoke-Uv run python -m mypy apps/server/src apps/desktop/src packages/common/src
-$env:QT_QPA_PLATFORM = "offscreen"
+Invoke-Uv run python -m mypy apps/server/src packages/common/src
 Invoke-Uv run python -m pytest
+
+$pnpmCommand = Get-Command pnpm -ErrorAction SilentlyContinue
+if ($null -eq $pnpmCommand) {
+    throw "pnpm을 찾을 수 없습니다. Node.js 24 이상과 pnpm 11.19.0을 설치한 뒤 PowerShell을 다시 열고 이 스크립트를 실행하세요."
+}
+
+& $pnpmCommand.Source run react:build
+if ($LASTEXITCODE -ne 0) {
+    throw "React/Tauri 프로덕션 빌드 검사에 실패했습니다."
+}

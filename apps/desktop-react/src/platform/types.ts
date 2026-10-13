@@ -22,6 +22,9 @@ export interface Platform {
   pickImages?: () => Promise<BinarySource[]>;
   autostart?: { isEnabled(): Promise<boolean>; setEnabled(enabled: boolean): Promise<void> };
   checkUpdate?: () => Promise<{ version: string; notes?: string } | null>;
+  notifyReady?: () => Promise<void>;
+  exitApp?: () => Promise<void>;
+  log?: (level: 'INFO' | 'WARN' | 'ERROR', message: string) => void;
 }
 
 export function createConnectionMonitor(initial: ConnectionState = 'checking') {

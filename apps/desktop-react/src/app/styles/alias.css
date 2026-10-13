@@ -1,0 +1,13 @@
+/* alias.css: 패키지 토큰의 호환 이름 */
+:root {
+  --ba-color-bg: var(--surface-app);
+  --ba-color-surface: var(--surface-panel);
+  --ba-color-subtle: var(--surface-muted);
+  --ba-color-border: var(--border);
+  --ba-color-text: var(--text);
+  --ba-color-muted: var(--text-muted);
+  --ba-color-accent: var(--accent);
+  --ba-color-accent-soft: var(--selection);
+  --ba-font-sans: 'SUIT','Malgun Gothic',sans-serif;
+}
+
