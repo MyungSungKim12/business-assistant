@@ -132,6 +132,7 @@ nav:
       - 계획 인덱스: product/README.md
       - 단계별 로드맵: product/roadmap.md
       - 개선·추가 작업 목록: product/backlog.md
+      - 인수인계 (2026-10-13): product/handoff-2026-10-13.md
       - 기능 인수 점검: product/functional-release-check-2026-10-08.md
       - 변경 이력: product/changelog.md
       - 품질 기준: product/quality-gates.md
