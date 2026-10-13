@@ -18,6 +18,16 @@ fn validate_image(path: &Path, size: u64) -> Result<(&str, String), String> {
     Ok((name, content_type.into()))
 }
 
+fn validate_magic(bytes: &[u8], content_type: &str) -> Result<(), String> {
+    let valid = match content_type {
+        "image/jpeg" => bytes.starts_with(&[0xff, 0xd8, 0xff]),
+        "image/png" => bytes.starts_with(b"\x89PNG\r\n\x1a\n"),
+        "image/webp" => bytes.len() >= 12 && &bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WEBP",
+        _ => false,
+    };
+    if valid { Ok(()) } else { Err("파일 내용이 선언된 이미지 형식과 일치하지 않습니다.".into()) }
+}
+
 #[tauri::command]
 pub fn pick_images() -> Result<Option<Vec<PickedImage>>, String> {
     let selected = rfd::FileDialog::new().add_filter("사진", &["jpg", "jpeg", "png", "webp"]).pick_files();
@@ -37,6 +47,7 @@ pub async fn upload_binary(url: String, path: String, content_type: String, size
     if detected != content_type { return Err("파일 형식과 전송 형식이 일치하지 않습니다.".into()); }
     let bytes = std::fs::read(&file).map_err(|e| e.to_string())?;
     if bytes.len() as u64 != size { return Err("선택 후 파일 크기가 변경되었습니다.".into()); }
+    validate_magic(&bytes, &detected)?;
     let response = reqwest::Client::new().put(target).header("Content-Type", detected).body(bytes).send().await.map_err(|e| e.to_string())?;
     if !response.status().is_success() { return Err(format!("사진 업로드에 실패했습니다. ({})", response.status())); }
     Ok(())
@@ -55,7 +66,8 @@ pub async fn download_binary(url: String) -> Result<Vec<u8>, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{validate_image, MAX_IMAGE_BYTES}; use std::path::Path;
+    use super::{validate_image, validate_magic, MAX_IMAGE_BYTES}; use std::path::Path;
     #[test] fn accepts_supported_images() { assert_eq!(validate_image(Path::new("고객사진.JPEG"), 20).unwrap().1, "image/jpeg"); assert_eq!(validate_image(Path::new("a.webp"), 20).unwrap().1, "image/webp"); }
     #[test] fn rejects_bad_extension_or_size() { assert!(validate_image(Path::new("a.gif"), 20).is_err()); assert!(validate_image(Path::new("a.png"), MAX_IMAGE_BYTES + 1).is_err()); }
+    #[test] fn rejects_disguised_image_content() { assert!(validate_magic(b"not an image", "image/jpeg").is_err()); assert!(validate_magic(&[0xff, 0xd8, 0xff, 0x00], "image/jpeg").is_ok()); }
 }
