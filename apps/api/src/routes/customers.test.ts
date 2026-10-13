@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createApp } from '../app.js';
+import { createCustomerGateway, customerSearchFilter, LEGACY_LIST_LIMIT, parseContentRangeTotal } from '../supabase/customers.js';
+import { decodeCursor, encodeCursor } from './customers.js';
 
 const organizationId = 'a9cc39fd-8e8c-4df8-a623-1f23a3a936bd';
 const customerId = 'c9cc39fd-8e8c-4df8-a623-1f23a3a936bd';
@@ -80,5 +82,162 @@ describe('customer HTTP flow', () => {
     expect(missing.statusCode).toBe(404);
     expect((await app.inject({ method: 'DELETE', url: `${base}/not-a-uuid`, headers: { authorization: 'Bearer access' } })).statusCode).toBe(422);
     await app.close();
+  });
+});
+
+const secondaryId = 'd9cc39fd-8e8c-4df8-a623-1f23a3a936bd';
+const operationId = 'e9cc39fd-8e8c-4df8-a623-1f23a3a936bd';
+const auth = { authorization: 'Bearer access' };
+const apiBase = `/api/v1/organizations/${organizationId}`;
+const mergeResult = { primary: customer, secondary_id: secondaryId, moved: { appointments: 2, customer_photos: 1 } };
+
+function toolsFixture(overrides: Record<string, unknown> = {}, audit?: unknown) {
+  const calls: Array<{ name: string; args: unknown[] }> = [];
+  const record = (name: string, result: unknown) => async (_token: string, _organization: string, ...args: unknown[]) => { calls.push({ name, args }); return result; };
+  const accessCalls: boolean[] = [];
+  const access = { requireAccess: async (_token: string, _id: string, _feature: string, write = false) => { accessCalls.push(write); return 'owner'; } };
+  const customers = {
+    list: async () => [customer], create: async () => customer, update: async () => customer, remove: async () => true,
+    search: record('search', { items: [customer], total: 120 }),
+    listTags: record('listTags', [{ tag: '재방문', count: 3 }]),
+    renameTag: record('renameTag', { updated: 2 }),
+    mergeTags: record('mergeTags', { updated: 4 }),
+    deleteTag: record('deleteTag', { updated: 1 }),
+    duplicateGroups: record('duplicateGroups', []),
+    merge: record('merge', mergeResult),
+    ...overrides,
+  };
+  return { app: createApp({ organizations: access as never, customers: customers as never, ...(audit ? { audit: audit as never } : {}) }), calls, accessCalls };
+}
+
+describe('customer search route', () => {
+  it('returns items, total and a cursor that continues after the returned page', async () => {
+    const { app, calls } = toolsFixture();
+    const first = await app.inject({ url: `${apiBase}/customers/search?q=%EA%B9%80&status=all&sort=created_at&limit=50`, headers: auth });
+    expect(first.statusCode).toBe(200);
+    const body = first.json() as { items: unknown[]; total: number; next_cursor: string | null };
+    expect(body.total).toBe(120);
+    expect(body.items).toEqual([customer]);
+    expect(body.next_cursor).toEqual(expect.any(String));
+    expect(calls[0]!.args[0]).toMatchObject({ q: '김', status: 'all', sort: 'created_at', direction: 'desc', limit: 50, offset: 0 });
+    await app.inject({ url: `${apiBase}/customers/search?cursor=${body.next_cursor}`, headers: auth });
+    expect(calls[1]!.args[0]).toMatchObject({ offset: 1, status: 'active', sort: 'name', direction: 'asc', limit: 50 });
+    await app.close();
+  });
+
+  it('ends paging with a null cursor and rejects malformed input', async () => {
+    const { app } = toolsFixture({ search: async () => ({ items: [customer], total: 1 }) });
+    expect((await app.inject({ url: `${apiBase}/customers/search`, headers: auth })).json()).toMatchObject({ total: 1, next_cursor: null });
+    for (const query of ['limit=0', 'limit=201', 'status=bogus', 'sort=password', 'cursor=not-a-cursor', `q=${'a'.repeat(101)}`]) {
+      expect((await app.inject({ url: `${apiBase}/customers/search?${query}`, headers: auth })).statusCode, query).toBe(422);
+    }
+    await app.close();
+  });
+
+  it('answers 503 when the gateway has no search support and requires a bearer token', async () => {
+    const { app } = toolsFixture({ search: undefined });
+    expect((await app.inject({ url: `${apiBase}/customers/search`, headers: auth })).statusCode).toBe(503);
+    expect((await app.inject({ url: `${apiBase}/customers/search` })).statusCode).toBe(401);
+    await app.close();
+  });
+});
+
+describe('customer tag routes', () => {
+  it('lists, renames, merges and deletes tags through the gateway as write operations', async () => {
+    const { app, calls, accessCalls } = toolsFixture();
+    expect((await app.inject({ url: `${apiBase}/customer-tags`, headers: auth })).json()).toEqual([{ tag: '재방문', count: 3 }]);
+    expect((await app.inject({ method: 'POST', url: `${apiBase}/customer-tags/rename`, headers: auth, payload: { from: ' 재방문 ', to: '단골' } })).json()).toEqual({ updated: 2 });
+    expect((await app.inject({ method: 'POST', url: `${apiBase}/customer-tags/merge`, headers: auth, payload: { from: ['a', 'b'], to: 'c' } })).json()).toEqual({ updated: 4 });
+    expect((await app.inject({ method: 'POST', url: `${apiBase}/customer-tags/delete`, headers: auth, payload: { tag: '단골' } })).json()).toEqual({ updated: 1 });
+    expect(calls.find((call) => call.name === 'renameTag')!.args).toEqual(['재방문', '단골']);
+    expect(accessCalls).toEqual([false, true, true, true]);
+    await app.close();
+  });
+
+  it('rejects invalid tag bodies and unknown keys', async () => {
+    const { app } = toolsFixture();
+    const bad: Array<[string, object]> = [['rename', { from: '', to: 'x' }], ['rename', { from: 'a', to: 'b', extra: 1 }], ['merge', { from: [], to: 'x' }], ['delete', { tag: 'x'.repeat(51) }]];
+    for (const [path, payload] of bad) {
+      expect((await app.inject({ method: 'POST', url: `${apiBase}/customer-tags/${path}`, headers: auth, payload })).statusCode, path).toBe(422);
+    }
+    await app.close();
+  });
+});
+
+describe('customer merge route', () => {
+  it('merges the secondary into the customer in the path as a write operation', async () => {
+    const { app, calls, accessCalls } = toolsFixture();
+    const payload = { secondary_id: secondaryId, operation_id: operationId, resolved: { name: '김대표', notes: '합친 메모', tags: ['a'] } };
+    const result = await app.inject({ method: 'POST', url: `${apiBase}/customers/${customerId}/merge`, headers: auth, payload });
+    expect(result.statusCode).toBe(200);
+    expect(result.json()).toMatchObject({ secondary_id: secondaryId, moved: { appointments: 2 } });
+    expect(calls[0]!.args).toEqual([customerId, { secondaryId, operationId, resolved: payload.resolved }]);
+    expect(accessCalls).toEqual([true]);
+    await app.close();
+  });
+
+  it('rejects merging a customer into itself, bad ids and unknown fields', async () => {
+    const { app } = toolsFixture();
+    const url = `${apiBase}/customers/${customerId}/merge`;
+    const bad = [
+      { secondary_id: customerId, operation_id: operationId },
+      { secondary_id: 'nope', operation_id: operationId },
+      { secondary_id: secondaryId },
+      { secondary_id: secondaryId, operation_id: operationId, resolved: { organization_id: organizationId } },
+    ];
+    for (const payload of bad) expect((await app.inject({ method: 'POST', url, headers: auth, payload })).statusCode).toBe(422);
+    await app.close();
+  });
+
+  it('records an audit event without personal data', async () => {
+    const events: Array<{ action: string; metadata?: Record<string, unknown> }> = [];
+    const audit = { record: async (_token: string, event: { action: string; metadata?: Record<string, unknown> }) => { events.push(event); }, recordRequired: async () => undefined };
+    const { app } = toolsFixture({}, audit);
+    await app.inject({ method: 'POST', url: `${apiBase}/customers/${customerId}/merge`, headers: auth, payload: { secondary_id: secondaryId, operation_id: operationId } });
+    expect(events).toEqual(expect.arrayContaining([expect.objectContaining({ action: 'customer.merge', metadata: { secondary_id: secondaryId, moved_total: 3 } })]));
+    await app.close();
+  });
+});
+
+describe('customer gateway search', () => {
+  const config = { APP_SUPABASE_URL: 'https://example.supabase.co', APP_SUPABASE_PUBLISHABLE_KEY: 'pk' } as never;
+
+  it('builds a PostgREST query with filters, order and exact count and reads the total from Content-Range', async () => {
+    const seen: Array<{ url: URL; headers: Record<string, string> }> = [];
+    const fetcher = (async (input: URL, init: { headers: Record<string, string> }) => {
+      seen.push({ url: input, headers: init.headers });
+      return new Response(JSON.stringify([customer]), { status: 200, headers: { 'content-range': '50-99/412' } });
+    }) as never;
+    const gateway = createCustomerGateway(config, fetcher);
+    const result = await gateway.search('t', organizationId, { q: '010-1234', status: 'active', sort: 'last_visit_date', direction: 'desc', limit: 50, offset: 50 });
+    expect(result).toEqual({ items: [customer], total: 412 });
+    const params = seen[0]!.url.searchParams;
+    expect(params.get('organization_id')).toBe(`eq.${organizationId}`);
+    expect(params.get('status')).toBe('eq.active');
+    expect(params.get('order')).toBe('last_visit_date.desc.nullslast,id.asc');
+    expect(params.get('limit')).toBe('50');
+    expect(params.get('offset')).toBe('50');
+    expect(params.get('or')).toContain('phone.ilike."*0*1*0*1*2*3*4*"');
+    expect(seen[0]!.headers.Prefer).toBe('count=exact');
+  });
+
+  it('caps the legacy full list at the server limit', async () => {
+    let limit = '';
+    const fetcher = (async (input: URL) => { limit = input.searchParams.get('limit') ?? ''; return new Response('[]', { status: 200 }); }) as never;
+    await createCustomerGateway(config, fetcher).list('t', organizationId);
+    expect(limit).toBe(String(LEGACY_LIST_LIMIT));
+  });
+
+  it('neutralizes characters that would break the or() filter', () => {
+    expect(customerSearchFilter('  ')).toBeNull();
+    const filter = customerSearchFilter('a",b)(*%_\\{x}')!;
+    expect(filter).not.toMatch(/[\\%_]/);
+    expect(filter).toContain('tags.cs.{a b x}');
+    expect(filter.match(/"/g)!.length).toBe(6);
+    expect(parseContentRangeTotal('0-0/7')).toBe(7);
+    expect(parseContentRangeTotal('*/0')).toBe(0);
+    expect(parseContentRangeTotal(null)).toBeNull();
+    expect(decodeCursor(encodeCursor(250))).toBe(250);
+    expect(decodeCursor('###')).toBeUndefined();
   });
 });

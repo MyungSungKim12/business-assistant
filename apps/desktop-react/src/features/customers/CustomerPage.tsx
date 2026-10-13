@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { confirm, notify } from '@business-assistant/react-ui';
 import type { ApiClient } from '../../api/client';
-import { ApiError } from '../../api/errors';
 import { emptyCustomer, type Customer } from './types';
 import { CustomerGrid } from './CustomerGrid';
 import { CustomerForm } from './CustomerForm';
@@ -11,54 +11,71 @@ import { confirmDiscard } from './changeGuard';
 import { ExportButton } from '../../lib/io/ExportButton';
 import { customerExportColumns } from './io/customerExport';
 import { CustomerImportDialog } from './io/CustomerImportDialog';
+import { DuplicateMergeDialog } from './DuplicateMergeDialog';
+import { TagManagerDialog } from './TagManagerDialog';
+import { filterCustomers, SORT_LABELS, type CustomerSort, type StatusFilter } from './customerSearch';
+import { isMergeArchive, restoreConfirmText } from './restore';
+import { useCustomerList } from './useCustomerList';
 import './customers.css';
+import './crmTools.css';
 
-type Props = { api: ApiClient; organizationId: string; readOnly: boolean };
-
-function loadErrorText(error: unknown): string {
-  const status = (error as ApiError).status;
-  if (status === 403) return '고객관리 권한이 없습니다.';
-  if (status === 404) return '고객 정보를 찾을 수 없습니다.';
-  return '고객 목록을 불러오지 못했습니다.';
-}
-
-const matches = (customer: Customer, query: string) => `${customer.name} ${customer.phone ?? ''} ${customer.tags.join(' ')}`.toLowerCase().includes(query.toLowerCase());
+type Props = {
+  api: ApiClient;
+  organizationId: string;
+  readOnly: boolean;
+  /** 전체 검색 등에서 고객을 고른 채 화면을 열 때 선택할 고객. focusNonce가 바뀌면 같은 고객도 다시 선택한다. */
+  focusCustomerId?: string;
+  focusNonce?: number;
+};
 
 /**
  * 고객관리: 위쪽은 목록(왼쪽, 크기 고정)과 선택 고객 상세(오른쪽),
  * 아래쪽은 업무 인사이트(왼쪽)와 선택 고객의 사진 갤러리(오른쪽).
+ * 고객이 많으면(LOCAL_LIMIT 초과) 서버 검색·페이지로 일부만 불러오고, 적으면 예전처럼 전체를 불러와 화면에서 거른다.
  */
-export function CustomerPage({ api, organizationId, readOnly }: Props) {
-  const [rows, setRows] = useState<Customer[]>([]);
+export function CustomerPage({ api, organizationId, readOnly, focusCustomerId, focusNonce }: Props) {
   const [selected, setSelected] = useState<Customer | null>(null);
   const [query, setQuery] = useState('');
-  const [status, setStatus] = useState('active');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [status, setStatus] = useState<StatusFilter>('active');
+  const [sort, setSort] = useState<CustomerSort>('name');
+  const [actionError, setActionError] = useState('');
   const [dirty, setDirty] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [tagsOpen, setTagsOpen] = useState(false);
+  const [mergeOpen, setMergeOpen] = useState(false);
+  const [restoring, setRestoring] = useState(false);
   const closeImport = useCallback(() => setImporting(false), []);
+  const closeTags = useCallback(() => setTagsOpen(false), []);
+  const closeMerge = useCallback(() => setMergeOpen(false), []);
 
-  const load = async () => {
-    setLoading(true);
-    setError('');
-    try {
-      const result = await api.listCustomers(organizationId);
-      setRows(result);
-      setSelected((current) => result.find((row) => row.id === current?.id) ?? null);
-    } catch (e) {
-      setError(loadErrorText(e));
-    } finally {
-      setLoading(false);
-    }
-  };
-  useEffect(() => { void load(); }, [organizationId]);
+  const list = useCustomerList(api, organizationId, { query, status, sort });
+  const { rows, setRows, mode } = list;
+  const paged = mode === 'paged';
+
+  // 목록이 다시 읽히면 선택한 고객을 새 값으로 바꾼다. 전체 모드에서 사라졌으면 선택을 푼다(일부만 읽는 모드는 유지).
+  useEffect(() => {
+    setSelected((current) => (current ? rows.find((row) => row.id === current.id) ?? (paged ? current : null) : null));
+  }, [rows, paged]);
+
+  // 검색에서 넘어온 고객을 선택한다. 현재 목록에 없으면(보관 고객 등) 상태 필터를 '전체'로 넓혀 한 번 더 찾는다.
+  const [pendingFocus, setPendingFocus] = useState<{ id: string; widened: boolean } | null>(null);
+  useEffect(() => {
+    if (focusCustomerId) setPendingFocus({ id: focusCustomerId, widened: false });
+  }, [focusCustomerId, focusNonce]);
+  useEffect(() => {
+    if (!pendingFocus || list.loading) return;
+    const found = rows.find((row) => row.id === pendingFocus.id);
+    if (found) { setSelected(found); setDirty(false); setPendingFocus(null); return; }
+    if (!pendingFocus.widened && status !== 'all') { setStatus('all'); setPendingFocus({ ...pendingFocus, widened: true }); return; }
+    setPendingFocus(null);
+  }, [pendingFocus, rows, list.loading, status]);
 
   const filtered = useMemo(
-    () => rows.filter((customer) => (status === 'all' || customer.status === status) && matches(customer, query)),
-    [rows, query, status],
+    () => (paged ? rows.filter((customer) => status === 'all' || customer.status === status) : filterCustomers(rows, { query, status, sort })),
+    [rows, paged, query, status, sort],
   );
   const input = selected ? { ...selected } : emptyCustomer();
+  const error = actionError || list.error;
 
   const changeCustomer = async (next: Customer | null) => {
     if (!await confirmDiscard(dirty)) return;
@@ -77,7 +94,7 @@ export function CustomerPage({ api, organizationId, readOnly }: Props) {
       setRows((old) => (old.some((row) => row.id === saved.id) ? old.map((row) => (row.id === saved.id ? saved : row)) : [saved, ...old]));
       setSelected(saved);
     } catch {
-      setError('저장하지 못했습니다. 작성 내용은 유지됩니다.');
+      setActionError('저장하지 못했습니다. 작성 내용은 유지됩니다.');
     }
   }
 
@@ -88,16 +105,47 @@ export function CustomerPage({ api, organizationId, readOnly }: Props) {
       setRows((old) => old.map((row) => (row.id === archived.id ? archived : row)));
       setSelected(archived);
     } catch {
-      setError('고객 보관에 실패했습니다. 다시 시도해 주세요.');
+      setActionError('고객 보관에 실패했습니다. 다시 시도해 주세요.');
     }
   }
+
+  /** 보관 고객을 활성으로 되돌린다. 한 명씩 순서대로 처리하고 실패한 수를 알린다. */
+  async function restore(targets: Customer[]) {
+    if (targets.length === 0 || readOnly) return;
+    if (!(await confirm({ title: '보관 고객 복원', message: restoreConfirmText(targets), confirmLabel: '복원' }))) return;
+    setRestoring(true);
+    setActionError('');
+    const restored: Customer[] = [];
+    for (const target of targets) {
+      try {
+        restored.push(await api.updateCustomer(organizationId, target.id, { status: 'active' }));
+      } catch {
+        // 실패한 고객은 아래에서 개수로 알린다.
+      }
+    }
+    setRestoring(false);
+    if (restored.length > 0) {
+      const byId = new Map(restored.map((row) => [row.id, row]));
+      setRows((old) => old.map((row) => byId.get(row.id) ?? row));
+      setSelected((current) => (current ? byId.get(current.id) ?? current : current));
+      notify.success(`${restored.length}명을 활성 고객으로 복원했습니다.`);
+    }
+    if (restored.length < targets.length) setActionError(`${targets.length - restored.length}명은 복원하지 못했습니다. 다시 시도해 주세요.`);
+  }
+
+  const restorable = filtered.filter((customer) => customer.status === 'archived');
+  const selectedArchived = selected?.status === 'archived' ? selected : null;
+  const countText = list.loading ? '' : paged ? `${filtered.length} / ${list.total}명` : `${filtered.length}명`;
+  const scopeNote = paged ? `불러온 ${rows.length}명 기준입니다 (전체 ${list.organizationTotal}명 중 일부). 전체 집계가 아닙니다.` : undefined;
 
   return (
     <section className="cx-page">
       <div className="page-toolbar">
         <div><h1>고객관리</h1><p className="muted">고객 프로필과 상담 정보를 관리합니다.</p></div>
         <div className="cx-toolbar-actions">
-          <ExportButton title="고객 목록" columns={customerExportColumns} rows={filtered} allRows={rows} disabled={loading} />
+          <ExportButton title="고객 목록" columns={customerExportColumns} rows={filtered} allRows={rows} disabled={list.loading} />
+          {!readOnly && <button onClick={() => setTagsOpen(true)}>태그 관리</button>}
+          {!readOnly && <button onClick={() => setMergeOpen(true)}>중복 병합</button>}
           {!readOnly && <button onClick={() => setImporting(true)}>가져오기</button>}
           {!readOnly && <button className="primary-button" onClick={() => void changeCustomer(null)}>새 고객</button>}
         </div>
@@ -105,23 +153,40 @@ export function CustomerPage({ api, organizationId, readOnly }: Props) {
       <div className="cx-board">
         <section className="cx-panel cx-list" aria-label="고객 목록 영역">
           <div className="cx-controls">
-            <input aria-label="고객 검색" placeholder="이름, 연락처, 태그 검색" value={query} onChange={(e) => setQuery(e.target.value)} />
-            <select aria-label="상태 필터" value={status} onChange={(e) => setStatus(e.target.value)}>
+            <input aria-label="고객 검색" placeholder="이름, 연락처, 이메일, 태그 검색" value={query} onChange={(e) => setQuery(e.target.value)} />
+            <select aria-label="상태 필터" value={status} onChange={(e) => setStatus(e.target.value as StatusFilter)}>
               <option value="active">활성 고객</option>
               <option value="archived">보관 고객</option>
               <option value="all">전체</option>
             </select>
-            <span className="muted cx-count">{loading ? '' : `${filtered.length}명`}</span>
+            <select aria-label="정렬" value={sort} onChange={(e) => setSort(e.target.value as CustomerSort)}>
+              {(Object.keys(SORT_LABELS) as CustomerSort[]).map((key) => <option key={key} value={key}>{SORT_LABELS[key]}</option>)}
+            </select>
+            <span className="muted cx-count">{countText}</span>
           </div>
-          {error && <div role="alert" className="form-error cx-error">{error} <button onClick={() => void load()}>다시 시도</button></div>}
+          {status === 'archived' && !readOnly && (
+            <div className="cxt-restore" role="group" aria-label="보관 고객 복원">
+              <span className="muted">보관 고객을 활성으로 되돌립니다.</span>
+              <button type="button" disabled={restoring || !selectedArchived} onClick={() => selectedArchived && void restore([selectedArchived])}>선택 고객 복원</button>
+              <button type="button" disabled={restoring || restorable.length === 0} onClick={() => void restore(restorable)}>표시된 {restorable.length}명 복원</button>
+            </div>
+          )}
+          {error && <div role="alert" className="form-error cx-error">{error} <button onClick={() => { setActionError(''); void list.reload(); }}>다시 시도</button></div>}
           <div className="cx-grid-slot">
-            <CustomerGrid customers={filtered} selectedId={selected?.id} loading={loading} onSelect={changeCustomer} />
+            <CustomerGrid customers={filtered} selectedId={selected?.id} loading={list.loading} onSelect={changeCustomer} />
           </div>
+          {paged && (
+            <div className="cx-pager">
+              <span className="muted">고객이 많아 서버에서 {filtered.length}명씩 나눠 불러옵니다.</span>
+              <button type="button" disabled={!list.hasMore || list.loadingMore} onClick={() => void list.loadMore()}>{list.loadingMore ? '불러오는 중…' : list.hasMore ? '더 보기' : '모두 불러옴'}</button>
+            </div>
+          )}
         </section>
 
         <aside className="cx-panel cx-detail" aria-label="고객 상세">
           <h2>{selected ? selected.name : '새 고객 등록'}</h2>
           <div className="cx-detail__scroll">
+            {selected && isMergeArchive(selected) && <p className="muted cx-hint">다른 고객에 병합되어 보관된 고객입니다. 복원하면 중복 고객이 다시 생깁니다.</p>}
             <CustomerForm value={input} readOnly={readOnly} onDirtyChange={setDirty} onSave={save} onArchive={selected && !readOnly ? archive : undefined} />
             {selected
               ? <ActivityPanel api={api} organizationId={organizationId} customerId={selected.id} readOnly={readOnly} />
@@ -130,7 +195,7 @@ export function CustomerPage({ api, organizationId, readOnly }: Props) {
         </aside>
 
         <section className="cx-panel cx-insights-slot" aria-label="고객 인사이트 영역">
-          <InsightsPanel customers={rows} selectedId={selected?.id} onSelect={(customer) => void pickFromInsight(customer)} />
+          <InsightsPanel customers={rows} selectedId={selected?.id} scopeNote={scopeNote} onSelect={(customer) => void pickFromInsight(customer)} />
         </section>
 
         {selected
@@ -142,7 +207,9 @@ export function CustomerPage({ api, organizationId, readOnly }: Props) {
             </section>
           )}
       </div>
-      {importing && <CustomerImportDialog api={api} organizationId={organizationId} existing={rows} onClose={closeImport} onImported={() => void load()} />}
+      {importing && <CustomerImportDialog api={api} organizationId={organizationId} existing={rows} onClose={closeImport} onImported={() => void list.reload()} />}
+      {tagsOpen && <TagManagerDialog api={api} organizationId={organizationId} onChanged={() => void list.reload()} onClose={closeTags} />}
+      {mergeOpen && <DuplicateMergeDialog api={api} organizationId={organizationId} customers={rows} complete={!paged} onMerged={() => void list.reload()} onClose={closeMerge} />}
     </section>
   );
 }

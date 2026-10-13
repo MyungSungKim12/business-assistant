@@ -1,5 +1,5 @@
 import type { Customer } from './types';
-import { daysBetween, isDateOnly } from './kst';
+import { daysBetween, isDateOnly, kstDate } from './kst';
 
 export const UPCOMING_DAYS = 7;
 export const LAPSED_DAYS = 60;
@@ -91,4 +91,26 @@ export function birthdayCustomers(customers: Customer[], today: string): Birthda
     rows.push({ customer, birthDate: customer.birth_date, day, isToday: day === todayDay });
   }
   return rows.sort((a, b) => a.day - b.day || byName(a.customer, b.customer));
+}
+
+export type NewCustomerSummary = { /** 이번 달(KST) 등록한 활성 고객 수. 등록일(created_at)이 하나도 없으면 null. */ count: number | null };
+export type RecentCustomer = { customer: Customer; createdDate: string };
+
+const createdDateOf = (customer: Customer): string => (customer.created_at ? kstDate(customer.created_at) : '');
+
+/** 이번 달 신규: created_at 기준. 서버가 등록일을 주지 않으면 null(화면은 '이번 달 방문'을 대신 보여 준다). */
+export function newThisMonth(customers: Customer[], today: string): NewCustomerSummary {
+  if (!customers.some((customer) => customer.created_at)) return { count: null };
+  const month = today.slice(0, 7);
+  return { count: customers.filter((customer) => customer.status !== 'archived' && createdDateOf(customer).startsWith(month)).length };
+}
+
+/** 최근 등록한 활성 고객(최신 순). 등록일이 없는 고객은 제외한다. */
+export function recentlyRegistered(customers: Customer[], limit = 8): RecentCustomer[] {
+  return customers
+    .filter((customer) => isActive(customer) && createdDateOf(customer) !== '')
+    .map((customer) => ({ customer, createdDate: createdDateOf(customer), createdAt: customer.created_at ?? '' }))
+    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : byName(a.customer, b.customer)))
+    .slice(0, limit)
+    .map(({ customer, createdDate }) => ({ customer, createdDate }));
 }

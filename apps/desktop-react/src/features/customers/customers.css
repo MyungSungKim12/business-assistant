@@ -89,8 +89,19 @@
   min-height: 0;
   display: grid;
   grid-template-columns: 1fr 1fr;
-  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-rows: repeat(3, minmax(104px, 1fr));
   gap: 4px;
+  overflow-y: auto;
+}
+
+.cx-insight--wide {
+  grid-column: 1 / -1;
+}
+
+.cx-insight__scope {
+  margin: 0;
+  padding: 2px 7px;
+  font-size: var(--font-size-small);
 }
 
 .cx-insight {

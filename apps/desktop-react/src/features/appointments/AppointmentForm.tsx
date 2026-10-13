@@ -3,7 +3,9 @@ import type { ApiClient } from '../../api/client';
 import { appointmentSchema, type Appointment, type AppointmentService, type AppointmentStaff, type Customer } from '../../api/schemas';
 import { ResourcePicker, describeRequirements, isDefiniteRejection, missingRequirements, useOperationTracker } from '../appointment-resources';
 import type { AppointmentResource, ResourceRequirement } from '../appointment-resources';
-import { kstIso, toKstLocalInput } from './appointmentTime';
+import { kstIso, todayKstKey, toKstLocalInput } from './appointmentTime';
+import { AvailabilityChips } from './AvailabilityChips';
+import { dateOfLocalInput, type AvailabilityQuery } from './availability';
 
 export interface FormValues {
   customer_id: string;
@@ -69,6 +71,16 @@ export function AppointmentForm({ api, organizationId, customers, staff, service
   const serviceOptions = editing && !services.some((row) => row.id === appointment.service_id)
     ? [{ id: appointment.service_id, name: appointment.service_name_snapshot, duration_minutes: appointment.duration_minutes }, ...services]
     : services;
+
+  const availabilityDate = dateOfLocalInput(values.start_at) ?? todayKstKey();
+  const availabilityQuery: AvailabilityQuery | null = values.service_id
+    ? { serviceId: values.service_id, date: availabilityDate, staffId: values.staff_id || undefined, resourceIds: values.resource_ids, excludeAppointmentId: appointment?.id }
+    : null;
+  /** 칩을 누르면 그 날짜·시각을 채우고, 담당자를 아직 안 골랐다면 그 시각에 가능한 첫 담당자로 채운다. */
+  function pickTime(time: string, availableStaffIds: string[]) {
+    const staffId = values.staff_id || availableStaffIds[0] || '';
+    set({ start_at: `${availabilityDate}T${time}`, staff_id: staffId });
+  }
 
   const set = (patch: Partial<FormValues>) => { setValues((old) => ({ ...old, ...patch })); setConflict(false); };
 
@@ -141,6 +153,7 @@ export function AppointmentForm({ api, organizationId, customers, staff, service
       <label>시작 시각
         <input required type="datetime-local" value={values.start_at} onChange={(e) => set({ start_at: e.target.value })} />
       </label>
+      <AvailabilityChips api={api} organizationId={organizationId} query={availabilityQuery} startAt={values.start_at} onPick={pickTime} />
       <ResourcePicker
         api={api}
         organizationId={organizationId}

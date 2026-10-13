@@ -1,0 +1,219 @@
+/* 태그 관리·중복 병합·보관 복원(cxt-*): 글꼴은 상속, 색은 공통 토큰만 사용한다. */
+.cxt-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 260px;
+  max-height: 68vh;
+}
+
+.cxt-note {
+  margin: 0;
+}
+
+.cxt-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.cxt-bar input {
+  flex: 1;
+}
+
+.cxt-count {
+  min-width: 44px;
+  text-align: right;
+}
+
+.cxt-inline {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-muted);
+}
+
+.cxt-inline label {
+  flex: 1;
+  display: grid;
+  gap: 2px;
+}
+
+.cxt-list {
+  flex: 1;
+  min-height: 120px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.cxt-row {
+  display: grid;
+  grid-template-columns: 28px 1fr 80px 190px;
+  align-items: center;
+  gap: 4px;
+  min-height: 26px;
+  padding: 0 6px;
+  border-bottom: 1px solid var(--divider);
+}
+
+.cxt-row--head {
+  position: sticky;
+  top: 0;
+  background: var(--surface-muted);
+  color: var(--label);
+  font-weight: 600;
+}
+
+.cxt-tag {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cxt-num {
+  text-align: right;
+}
+
+.cxt-actions {
+  display: flex;
+  gap: 3px;
+}
+
+.cxt-rename {
+  display: flex;
+  gap: 3px;
+}
+
+.cxt-rename input {
+  flex: 1;
+  min-width: 0;
+}
+
+.cxt-empty {
+  margin: 0;
+  padding: 10px 8px;
+}
+
+.cxt-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+/* 중복 병합: 왼쪽 후보 목록 | 오른쪽 병합 설정. 각 열이 안에서만 스크롤한다. */
+.cxt-merge__cols {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: 6px;
+}
+
+.cxt-groups {
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.cxt-groups button {
+  display: grid;
+  gap: 1px;
+  width: 100%;
+  padding: 4px 7px;
+  border: 0;
+  border-bottom: 1px solid var(--divider);
+  border-radius: 0;
+  background: transparent;
+  text-align: left;
+}
+
+.cxt-groups button:hover {
+  background: var(--row-hover);
+}
+
+.cxt-groups button[aria-pressed='true'] {
+  background: var(--selection);
+}
+
+.cxt-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  overflow: auto;
+}
+
+.cxt-primary {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.cxt-primary label,
+.cxt-field__options label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.cxt-fields {
+  display: grid;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.cxt-field {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  gap: 4px;
+  padding: 3px 6px;
+  border-bottom: 1px solid var(--divider);
+}
+
+.cxt-field__options {
+  display: grid;
+  gap: 1px;
+}
+
+.cxt-text {
+  display: grid;
+  gap: 2px;
+}
+
+.cxt-text textarea {
+  resize: vertical;
+}
+
+/* 보관 고객 복원 줄 */
+.cxt-restore {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 5px;
+}
+
+.cxt-restore .muted {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 목록 아래 페이지 줄 */
+.cx-pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-top: 4px;
+}

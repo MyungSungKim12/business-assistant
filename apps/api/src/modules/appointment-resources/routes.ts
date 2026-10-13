@@ -16,6 +16,11 @@ const staffRequest = z.object({ name: name(120) }).strict();
 const serviceRequest = z.object({
   name: name(160), duration_minutes: z.number().int().min(5).max(480), buffer_minutes: z.number().int().min(0).max(120).default(0),
 }).strict();
+const serviceUpdate = z.object({
+  name: name(160), duration_minutes: z.number().int().min(5).max(480), buffer_minutes: z.number().int().min(0).max(120),
+  price_krw: z.number().int().min(0).max(1_000_000_000), category: z.string().max(60).transform((value) => value.trim()),
+  is_active: z.boolean(), expected_version: version, operation_id: operationId,
+}).strict();
 const resourceRequest = z.object({ name: name(120), kind, operation_id: operationId }).strict();
 const resourceUpdate = z.object({ name: name(120), is_active: z.boolean(), expected_version: version, operation_id: operationId }).strict();
 const requirementsRequest = z.object({
@@ -92,6 +97,18 @@ export function registerAppointmentResourceRoutes(app: FastifyInstance, organiza
     const input = body(serviceRequest, request);
     await authorize(c.token, c.params.organizationId, true);
     return reply.code(201).send(await c.gateway.createService(c.token, c.params.organizationId, input.name, input.duration_minutes, input.buffer_minutes));
+  });
+  /** Node 전용 확장 목록: 가격·카테고리·편집 버전(service_version)을 포함한다(기존 GET /appointment-services 응답은 바꾸지 않는다). */
+  app.get(`${base}/appointment-service-details`, async (request) => {
+    const c = context(request);
+    await authorize(c.token, c.params.organizationId, false);
+    return c.gateway.listServices(c.token, c.params.organizationId);
+  });
+  app.put(`${base}/appointment-services/:serviceId`, async (request) => {
+    const c = context(request, { serviceId: z.uuid() });
+    const input = body(serviceUpdate, request);
+    await authorize(c.token, c.params.organizationId, true);
+    return c.gateway.updateService(c.token, c.params.organizationId, c.params.serviceId, input);
   });
   app.get(`${base}/appointment-services/:serviceId/resource-requirements`, async (request) => {
     const c = context(request, { serviceId: z.uuid() });

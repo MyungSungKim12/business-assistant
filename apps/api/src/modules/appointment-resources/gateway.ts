@@ -14,6 +14,9 @@ export const staffSchema = z.object({ ...row, name: z.string(), is_active: z.boo
 export const serviceSchema = z.object({
   ...row, name: z.string(), duration_minutes: z.number().int().min(5).max(480), buffer_minutes: z.number().int().min(0).max(120),
   is_active: z.boolean(), resource_version: z.number().int().min(1).default(1),
+  /** 041 이후 컬럼. 적용 전 서버·구버전 응답에도 안전하도록 기본값을 둔다. */
+  price_krw: z.number().int().min(0).max(1_000_000_000).default(0), category: z.string().max(60).default(''),
+  service_version: z.number().int().min(1).default(1),
 });
 export const resourceSchema = z.object({ ...row, name: z.string(), kind, is_active: z.boolean(), version: z.number().int().min(1) });
 const requirementRowSchema = z.object({ ...row, service_id: z.uuid(), kind, quantity: z.number().int().min(1).max(10) });
@@ -44,6 +47,10 @@ export type ResourceAppointment = z.infer<typeof appointmentSchema>;
 export type ResourceKind = z.infer<typeof kind>;
 export type Requirement = { kind: ResourceKind; quantity: number };
 export type WorkingHourInput = { weekday: number; start: string; end: string };
+export type ServiceUpdateInput = {
+  name: string; duration_minutes: number; buffer_minutes: number; price_krw: number; category: string; is_active: boolean;
+  expected_version: number; operation_id: string;
+};
 export type AppointmentSaveInput = {
   customer_id: string; staff_id: string; service_id: string; start_at: string; source: 'manual' | 'phone' | 'walk_in' | 'online';
   expected_version: number | null; operation_id: string; resource_ids: string[];
@@ -91,6 +98,16 @@ export function createAppointmentResourceGateway(config: ServerConfig, fetcher: 
     createStaff: (token: string, organizationId: string, name: string) => single(token, 'create_appointment_staff', organizationId, { p_name: name }, staffSchema),
     createService: (token: string, organizationId: string, name: string, durationMinutes: number, bufferMinutes: number) =>
       single(token, 'create_appointment_service', organizationId, { p_name: name, p_duration_minutes: durationMinutes, p_buffer_minutes: bufferMinutes }, serviceSchema),
+
+    /** 서비스 수정·비활성(이름·소요·여유·가격·카테고리·활성). 낙관적 잠금은 service_version. */
+    async updateService(token: string, organizationId: string, serviceId: string, input: ServiceUpdateInput) {
+      const result = await single(token, 'update_appointment_service', organizationId, {
+        p_service_id: serviceId, p_name: input.name, p_duration_minutes: input.duration_minutes, p_buffer_minutes: input.buffer_minutes,
+        p_price_krw: input.price_krw, p_category: input.category, p_is_active: input.is_active, p_expected_version: input.expected_version, p_operation_id: input.operation_id,
+      }, serviceSchema);
+      if (result.id !== serviceId) throw fail();
+      return result;
+    },
 
     createResource: (token: string, organizationId: string, name: string, resourceKind: ResourceKind, operationId: string) =>
       single(token, 'create_appointment_resource', organizationId, { p_name: name, p_kind: resourceKind, p_operation_id: operationId }, resourceSchema),

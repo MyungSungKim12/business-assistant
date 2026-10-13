@@ -458,6 +458,78 @@ button.apt-slot:focus-visible {
   gap: 4px;
 }
 
+
+/* APT-12 가능 시간 칩 */
+.apt-avail {
+  display: grid;
+  gap: 4px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface-muted);
+}
+
+.apt-avail__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.apt-avail__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  max-height: 96px;
+  overflow-y: auto;
+}
+
+.apt-chip {
+  min-width: 44px;
+  padding: 1px 6px;
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  background: var(--surface-panel);
+  color: var(--accent);
+  line-height: 1.5;
+}
+
+.apt-chip:hover {
+  background: var(--row-hover);
+}
+
+.apt-chip.is-selected {
+  background: var(--selection);
+  font-weight: 600;
+}
+
+.apt-chip.is-blocked {
+  border-color: var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  text-decoration: line-through;
+  cursor: not-allowed;
+}
+
+.apt-avail__empty,
+.apt-avail__note {
+  margin: 0;
+  font-size: 11px;
+}
+
+.apt-avail__status {
+  margin: 0;
+  font-size: 11px;
+}
+
+.apt-avail__status.is-ok {
+  color: var(--success);
+}
+
+.apt-avail__status.is-blocked {
+  color: var(--warning);
+}
+
 @media (max-width: 900px) {
   .apt-page {
     height: auto;
