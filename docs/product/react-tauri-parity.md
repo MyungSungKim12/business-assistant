@@ -28,4 +28,4 @@ Rust/Cargo가 이 PC에 없어 Native 패키지 빌드와 Windows 설치 인수�
 
 2026-10-13 전환 완료: 남아 있던 Python 서버(apps/server)의 라우트 102개를 Node API(apps/api/src/modules/*)로 옮기고 React 화면을 연결했다. 모든 Python 라우트가 Node에 존재하는지 프로브로 확인했고(누락 4건은 조직 생성·회원가입·고객 삭제·빈 경로 라우트로, 앞의 세 가지를 추가했으며 나머지는 기존 라우트와 동일), 이후 Python 서버·공통 패키지·uv 설정을 삭제했다.
 
-검증: API 543개, 공통 UI 15개, 데스크톱 React 253개 vitest와 Rust 11개 단위 테스트를 통과했다. 실제 Supabase로는 시술 이력 조회만 앱 화면에서 확인했다. 매출 화면은 실 DB에서 일부 자료를 불러오지 못했는데, 시드 마이그레이션(002)에 `finance.basic` 기능이 없어 구독 플랜이 해당 기능을 갖지 못했을 가능성이 있다(서버가 `crm.basic`+`finance.basic`을 요구). 매출·재고·정산 실환경 인수 전에 플랜 기능을 확인해야 한다.
+검증: API 543개, 공통 UI 15개, 데스크톱 React 253개 vitest와 Rust 11개 단위 테스트를 통과했다. 실제 Supabase로는 시술 이력 조회만 앱 화면에서 확인했다. 매출 화면은 실 DB에서 일부 자료를 불러오지 못했는데, 시드 마이그레이션(002)에 `finance.basic` 기능이 없어 구독 플랜이 해당 기능을 갖지 못했을 가능성이 있었다(서버가 `crm.basic`+`finance.basic`을 요구). `039_finance_basic_feature.sql`이 이 키를 모든 요금제에 추가한다. 운영 DB에 적용한 뒤 매출·재고·정산 화면을 다시 확인해야 한다.

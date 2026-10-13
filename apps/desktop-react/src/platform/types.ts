@@ -26,6 +26,10 @@ export interface Platform {
   checkUpdate?: () => Promise<{ version: string; notes?: string } | null>;
   notifyReady?: () => Promise<void>;
   exitApp?: () => Promise<void>;
+  /** 트레이 메뉴의 로그아웃·종료 요청을 받는다(데스크톱 전용). 해제 함수를 돌려준다. */
+  subscribeTray?: (handler: (action: 'logout' | 'exit') => void) => Promise<() => void>;
+  /** 서버 연결 상태를 트레이 메뉴에 표시한다(데스크톱 전용). */
+  setTrayStatus?: (state: ConnectionState) => void;
   log?: (level: 'INFO' | 'WARN' | 'ERROR', message: string) => void;
 }
 

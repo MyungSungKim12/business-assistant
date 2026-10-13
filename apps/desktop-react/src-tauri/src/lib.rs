@@ -4,36 +4,37 @@ mod files;
 mod http;
 #[macro_use]
 mod logfile;
+mod tray;
 
 use std::time::Duration;
 
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Manager, WindowEvent};
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 
-/// 자동 시작 때 넘기는 인자. 이 인자로 시작하면 창을 최소화한 채 연다.
+/// 자동 시작 때 넘기는 인자. 이 인자로 시작하면 창을 열지 않고 트레이로만 시작한다.
 const START_MINIMIZED_ARG: &str = "--minimized";
 /// 프런트엔드가 준비 신호를 못 보낼 때를 대비한 최대 대기 시간
 const SHOW_FALLBACK: Duration = Duration::from_secs(12);
 
 fn show_window(app: &AppHandle) {
-    if let Some(window) = app.get_webview_window("main") {
-        let _ = window.unminimize();
-        let _ = window.show();
-        let _ = window.set_focus();
-    }
+    tray::show_main(app);
 }
 
 /// 첫 화면이 그려진 뒤 프런트엔드가 호출한다. 흰 화면 깜빡임 없이 창을 연다.
 #[tauri::command]
 fn show_main(app: AppHandle) {
+    // 자동 시작(--minimized)은 창 없이 트레이로만 시작한다. 사용자가 트레이에서 열면 그때 보인다.
     if std::env::args().any(|arg| arg == START_MINIMIZED_ARG) {
-        if let Some(window) = app.get_webview_window("main") {
-            let _ = window.minimize();
-            let _ = window.show();
-        }
+        ba_log!("INFO", "--minimized: 트레이로 시작합니다(창 숨김).");
         return;
     }
     show_window(&app);
+}
+
+/// 서버 연결 상태(online/offline/checking)를 트레이 메뉴에 표시한다.
+#[tauri::command]
+fn tray_set_status(app: AppHandle, state: String) {
+    tray::set_status(&app, &state);
 }
 
 #[tauri::command]
@@ -66,6 +67,7 @@ pub fn run() {
                 Ok(c) => ba_log!("INFO", "API 기준 주소 {} (debug 빌드 {})", c.api_base, cfg!(debug_assertions)),
                 Err(e) => ba_log!("ERROR", "설정 오류: {e}"),
             }
+            tray::create(app.handle())?;
             // 프런트엔드 준비 신호가 오지 않아도 창은 결국 열려야 오류 안내를 볼 수 있다.
             let handle = app.handle().clone();
             std::thread::spawn(move || {
@@ -79,10 +81,20 @@ pub fn run() {
             });
             Ok(())
         })
+        .on_window_event(|window, event| {
+            // 창 닫기(X)는 종료가 아니라 트레이로 숨김이다. 종료는 트레이 또는 상단 메뉴의 "종료"만 한다.
+            if window.label() == "main" {
+                if let WindowEvent::CloseRequested { api, .. } = event {
+                    api.prevent_close();
+                    ba_log!("INFO", "main 창 닫기: 트레이로 숨김");
+                    let _ = window.hide();
+                }
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             config::get_config, http::http_request, credentials::token_load, credentials::token_save,
             credentials::token_clear, files::pick_images, files::pick_files, files::upload_binary, files::download_binary,
-            autostart_is_enabled, autostart_set, show_main, app_exit, logfile::log_write
+            autostart_is_enabled, autostart_set, show_main, app_exit, tray_set_status, logfile::log_write
         ])
         .run(tauri::generate_context!())
         .expect("Business Assistant 실행에 실패했습니다.");
