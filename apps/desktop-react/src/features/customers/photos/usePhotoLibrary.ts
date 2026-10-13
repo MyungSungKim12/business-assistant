@@ -72,7 +72,7 @@ export function usePhotoLibrary(api: ApiClient, organizationId: string, customer
     }
   }, [organizationId, customerId]);
 
-  /** 보관(목록에서 제거). 성공하면 true. */
+  /** 삭제(서버에서 보관 처리되어 목록에서 사라진다). 성공하면 true. */
   const archive = useCallback(async (photo: CustomerPhoto): Promise<boolean> => {
     try {
       await apiRef.current.archiveCustomerPhoto(organizationId, customerId, photo.id);
@@ -80,10 +80,30 @@ export function usePhotoLibrary(api: ApiClient, organizationId: string, customer
       setNotice('');
       return true;
     } catch {
-      setNotice('사진 보관에 실패했습니다. 다시 시도해 주세요.');
+      setNotice('사진 삭제에 실패했습니다. 다시 시도해 주세요.');
       return false;
     }
   }, [organizationId, customerId]);
 
-  return { items, loading, loadError, notice, uploading, reload: load, upload, archive, clearNotice: () => setNotice('') };
+  /** 여러 장을 차례로 삭제한다. 일부가 실패해도 나머지는 계속하고 성공·실패 목록을 돌려준다. */
+  const archiveMany = useCallback(async (photos: CustomerPhoto[]): Promise<{ done: CustomerPhoto[]; failed: CustomerPhoto[] }> => {
+    const done: CustomerPhoto[] = [];
+    const failed: CustomerPhoto[] = [];
+    for (const photo of photos) {
+      try {
+        await apiRef.current.archiveCustomerPhoto(organizationId, customerId, photo.id);
+        done.push(photo);
+      } catch {
+        failed.push(photo);
+      }
+    }
+    if (done.length > 0) {
+      const removed = new Set(done.map((photo) => photo.id));
+      setItems((old) => old.filter((item) => !removed.has(item.id)));
+    }
+    setNotice(failed.length > 0 ? `${failed.length}장을 삭제하지 못했습니다. 다시 시도해 주세요.` : '');
+    return { done, failed };
+  }, [organizationId, customerId]);
+
+  return { items, loading, loadError, notice, uploading, reload: load, upload, archive, archiveMany, clearNotice: () => setNotice('') };
 }

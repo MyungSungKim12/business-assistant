@@ -121,15 +121,15 @@ describe('PhotoPanel / PhotoGallery', () => {
     const client = makeApi();
     renderPanel(client);
     fireEvent.click(await tile('new.jpg'));
-    fireEvent.click(await screen.findByRole('button', { name: '보관' }));
+    fireEvent.click(await screen.findByRole('button', { name: '삭제' }));
     fireEvent.click(await screen.findByRole('button', { name: '취소' }));
     await waitFor(() => expect(screen.queryByText(/목록에서 사라집니다/)).not.toBeInTheDocument());
     expect(client.archiveCustomerPhoto).not.toHaveBeenCalled();
     expect(screen.getByRole('heading', { name: 'new.jpg' })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: '보관' }));
+    fireEvent.click(screen.getByRole('button', { name: '삭제' }));
     const confirmDialog = (await screen.findByText(/목록에서 사라집니다/)).closest('[role="dialog"]') as HTMLElement;
-    fireEvent.click(within(confirmDialog).getByRole('button', { name: '보관' }));
+    fireEvent.click(within(confirmDialog).getByRole('button', { name: '삭제' }));
     await waitFor(() => expect(client.archiveCustomerPhoto).toHaveBeenCalledWith(org, cust, p1.id));
     expect(await screen.findByRole('heading', { name: 'new2.jpg' })).toBeInTheDocument();
     expect(screen.queryByLabelText('new.jpg 크게 보기')).not.toBeInTheDocument();
@@ -141,11 +141,11 @@ describe('PhotoPanel / PhotoGallery', () => {
     client.archiveCustomerPhoto.mockRejectedValueOnce(new Error('503'));
     renderPanel(client);
     fireEvent.click(await tile('new.jpg'));
-    fireEvent.click(await screen.findByRole('button', { name: '보관' }));
+    fireEvent.click(await screen.findByRole('button', { name: '삭제' }));
     const confirmDialog = (await screen.findByText(/목록에서 사라집니다/)).closest('[role="dialog"]') as HTMLElement;
-    fireEvent.click(within(confirmDialog).getByRole('button', { name: '보관' }));
+    fireEvent.click(within(confirmDialog).getByRole('button', { name: '삭제' }));
     expect((await screen.findAllByRole('alert')).length).toBeGreaterThan(0);
-    expect(screen.getAllByText('사진 보관에 실패했습니다. 다시 시도해 주세요.').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('사진 삭제에 실패했습니다. 다시 시도해 주세요.').length).toBeGreaterThan(0);
     expect(screen.getByLabelText('new.jpg 크게 보기')).toBeInTheDocument();
   });
 
@@ -205,7 +205,7 @@ describe('PhotoPanel / PhotoGallery', () => {
     renderPanel(makeApi(), true);
     fireEvent.click(await tile('new.jpg'));
     await screen.findByRole('dialog');
-    expect(screen.queryByRole('button', { name: '보관' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '삭제' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '사진 추가' })).not.toBeInTheDocument();
   });
 

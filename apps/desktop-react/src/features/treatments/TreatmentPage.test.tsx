@@ -434,7 +434,7 @@ describe('TreatmentPage', () => {
       expect(screen.queryByRole('button', { name: '사진 추가' })).not.toBeInTheDocument();
       fireEvent.click(screen.getByLabelText('day.jpg 크게 보기'));
       expect(await screen.findByRole('dialog')).toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: '보관' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: '삭제' })).not.toBeInTheDocument();
     });
 
     it('can be collapsed without losing the loaded photos', async () => {

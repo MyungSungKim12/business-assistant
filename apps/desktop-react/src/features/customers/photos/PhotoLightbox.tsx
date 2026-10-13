@@ -16,7 +16,7 @@ type Props = {
   onArchive: (photo: CustomerPhoto) => void;
 };
 
-/** 사진 크게 보기. 이전/다음(버튼·방향키), 캡션·파일명·크기·등록일, 다운로드, 보관. Esc로 닫는다. */
+/** 사진 크게 보기. 이전/다음(버튼·방향키), 캡션·파일명·크기·등록일, 다운로드, 삭제. Esc로 닫는다. */
 export function PhotoLightbox({ photos, index, loader, readOnly, error, onIndexChange, onClose, onArchive }: Props) {
   const photo = photos[index];
   const [url, setUrl] = useState<string | null>(() => loader.peek(photo.id));
@@ -63,7 +63,7 @@ export function PhotoLightbox({ photos, index, loader, readOnly, error, onIndexC
         <div className="pg-lightbox__actions">
           {failed && <button type="button" onClick={() => setAttempt((count) => count + 1)}>다시 시도</button>}
           {url ? <a className="pg-download" href={url} download={photo.original_name}>다운로드</a> : <button type="button" disabled>다운로드</button>}
-          {!readOnly && <button type="button" className="ba-danger" onClick={() => onArchive(photo)}>보관</button>}
+          {!readOnly && <button type="button" className="ba-danger" onClick={() => onArchive(photo)}>삭제</button>}
         </div>
       </div>
     </Modal>
