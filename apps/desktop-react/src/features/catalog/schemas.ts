@@ -7,6 +7,8 @@ export const productSchema = z.object({
   id: z.string(), organization_id: z.string(), sku: z.string(), name: z.string(), kind: z.enum(['product', 'membership']), unit_name: z.string(),
   sale_price: money, benefit_money: money, benefit_count: z.number(), valid_days: z.number().nullable(), is_active: z.boolean(),
   version: z.number(), stock_quantity: z.number(),
+  /** 상품별 안전재고(null=공통 기본값). 서버가 041 적용 전이면 필드가 없다. */
+  low_stock_threshold: z.number().nullable().optional(),
 });
 export const productsSchema = z.array(productSchema);
 export type CatalogProduct = z.infer<typeof productSchema>;
@@ -30,6 +32,27 @@ export const walletSchema = z.object({
 });
 export const walletsSchema = z.array(walletSchema);
 export type CustomerWallet = z.infer<typeof walletSchema>;
+
+/** 조직 전체 지갑 목록의 한 행(고객 이름·발급 혜택 포함). 회원권 화면용. */
+export const orgWalletSchema = z.object({
+  id: z.string(), organization_id: z.string(), customer_id: z.string(), customer_name: z.string(), product_id: z.string(), name_snapshot: z.string(),
+  money_balance: money, count_balance: z.number(), issued_money: money, issued_count: z.number(),
+  valid_from: z.string(), expires_on: z.string().nullable(), lifecycle_status: z.enum(['active', 'paused']).default('active'),
+  paused_on: z.string().nullable().default(null), lifecycle_version: z.number().default(1), created_at: z.string(),
+});
+export const orgWalletsSchema = z.array(orgWalletSchema);
+export type OrganizationWallet = z.infer<typeof orgWalletSchema>;
+
+export const walletEventTypeSchema = z.enum(['issue', 'use', 'use_refund', 'reversal', 'pause', 'resume', 'extend']);
+export const walletHistoryEventSchema = z.object({
+  id: z.string(), event_type: walletEventTypeSchema, occurred_at: z.string(), money_delta: money, count_delta: z.number(),
+  reason: z.string().nullable(), visit_id: z.string().nullable(), previous_expires_on: z.string().nullable(), expires_on: z.string().nullable(),
+});
+export const walletHistorySchema = z.array(walletHistoryEventSchema);
+export type WalletHistoryEvent = z.infer<typeof walletHistoryEventSchema>;
+export const walletEventLabel: Record<WalletHistoryEvent['event_type'], string> = {
+  issue: '발급', use: '사용', use_refund: '사용 취소', reversal: '구매 취소', pause: '정지', resume: '재개', extend: '기간 연장',
+};
 
 /** 장바구니·수납 결과는 매출 화면이 소유한다. 여기서는 사용하는 필드만 읽고 나머지는 통과시킨다. */
 export const cartBundleSchema = z.looseObject({ visit: z.looseObject({ id: z.string() }), cart: z.looseObject({ id: z.string(), version: z.number() }), lines: z.array(z.looseObject({ id: z.string() })) });

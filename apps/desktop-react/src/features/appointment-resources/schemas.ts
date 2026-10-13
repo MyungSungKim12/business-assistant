@@ -24,6 +24,8 @@ export type AppointmentStaffRow = z.infer<typeof staffSchema>;
 export const serviceSchema = z.object({
   id: z.string(), organization_id: z.string(), name: z.string(), duration_minutes: z.number(), buffer_minutes: z.number(),
   is_active: z.boolean(), resource_version: z.number().default(1),
+  /** 서비스 가격(원)·카테고리·편집 버전. 확장 목록(appointment-service-details)에만 있고 구버전 서버 응답에는 없다. */
+  price_krw: z.number().default(0), category: z.string().default(''), service_version: z.number().default(1),
 });
 export const serviceListSchema = z.array(serviceSchema);
 export type AppointmentServiceRow = z.infer<typeof serviceSchema>;

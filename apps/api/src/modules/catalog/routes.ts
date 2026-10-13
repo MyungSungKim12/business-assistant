@@ -42,6 +42,10 @@ const stockAdjustment = z.object({
   if (value.kind !== 'stocktake' && value.quantity === 0) ctx.addIssue({ code: 'custom', message: 'Return and disposal quantities must be positive' });
   if (value.kind !== 'stocktake' && value.quantity > 999_999) ctx.addIssue({ code: 'custom', message: 'Return and disposal quantities cannot exceed 999999' });
 });
+/** 안전재고만 바꾸는 요청. null 이면 공통 기본값을 쓴다. */
+const lowStock = z.object({
+  operation_id: operationId, expected_version: version, low_stock_threshold: z.number().int().min(0).max(1_000_000_000).nullable(),
+}).strict();
 const addCatalog = z.object({ operation_id: operationId, expected_version: version, product_id: z.uuid() }).strict();
 const useWallet = z.object({
   operation_id: operationId, wallet_id: z.uuid(), sale_line_id: z.uuid(), mode: z.enum(['money', 'count']),
@@ -108,6 +112,12 @@ export function registerCatalogRoutes(app: FastifyInstance, organizations: OrgAc
     await authorize(c.token, c.params.organizationId, true);
     return c.gateway.saveProduct(c.token, c.params.organizationId, c.params.productId, input.expected_version, input.operation_id, productValues(input));
   });
+  app.put(`${base}/catalog-products/:productId/low-stock`, async (request) => {
+    const c = context(request, { productId: z.uuid() });
+    const input = body(lowStock, request);
+    await authorize(c.token, c.params.organizationId, true);
+    return c.gateway.setLowStock(c.token, c.params.organizationId, c.params.productId, input.low_stock_threshold, input.expected_version, input.operation_id);
+  });
   app.post(`${base}/catalog-products/:productId/stock-receipts`, async (request) => {
     const c = context(request, { productId: z.uuid() });
     const input = body(receiveStock, request);
@@ -130,6 +140,17 @@ export function registerCatalogRoutes(app: FastifyInstance, organizations: OrgAc
     const c = context(request, { customerId: z.uuid() });
     await authorize(c.token, c.params.organizationId, false);
     return c.gateway.listWallets(c.token, c.params.organizationId, c.params.customerId);
+  });
+  /** 조직 전체 지갑 목록(고객 이름·발급 혜택 포함). 회원권 화면용. */
+  app.get(`${base}/wallets`, async (request) => {
+    const c = context(request);
+    await authorize(c.token, c.params.organizationId, false);
+    return c.gateway.listOrganizationWallets(c.token, c.params.organizationId);
+  });
+  app.get(`${base}/customers/:customerId/wallets/:walletId/history`, async (request) => {
+    const c = context(request, { customerId: z.uuid(), walletId: z.uuid() });
+    await authorize(c.token, c.params.organizationId, false);
+    return c.gateway.listWalletHistory(c.token, c.params.organizationId, c.params.customerId, c.params.walletId);
   });
   app.post(`${base}/customers/:customerId/wallets/:walletId/lifecycle`, async (request) => {
     const c = context(request, { customerId: z.uuid(), walletId: z.uuid() });

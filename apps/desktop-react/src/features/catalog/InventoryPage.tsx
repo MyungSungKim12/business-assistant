@@ -6,6 +6,8 @@ import { ExportButton } from '../../lib/io/ExportButton';
 import { movementExportColumns, productExportColumns } from '../../lib/io/domainColumns';
 import { catalogApi, type ProductInput, type StockChangeKind } from './api';
 import { movementLabel, won, type CatalogProduct, type StockMovement } from './schemas';
+import { StocktakeDialog } from './StocktakeDialog';
+import { emptyMovementFilter, filterMovements, isLowStock, lowStockLimit, parseLowStockInput, DEFAULT_LOW_STOCK, type MovementFilter } from './stock';
 import './catalog.css';
 
 type Form = { kind: 'product' | 'membership'; sku: string; name: string; unit_name: string; sale_price: string; benefit_money: string; benefit_count: string; valid_days: string; is_active: boolean };
@@ -16,6 +18,7 @@ const fromProduct = (row: CatalogProduct): Form => ({
   kind: row.kind, sku: row.sku, name: row.name, unit_name: row.unit_name, sale_price: row.sale_price, benefit_money: row.benefit_money,
   benefit_count: String(row.benefit_count), valid_days: row.valid_days === null ? '' : String(row.valid_days), is_active: row.is_active,
 });
+const lowText = (row: CatalogProduct | null): string => (row?.low_stock_threshold == null ? '' : String(row.low_stock_threshold));
 const PRICE = /^[1-9][0-9]{0,11}$/;
 const BENEFIT = /^(0|[1-9][0-9]{0,11})$/;
 
@@ -42,10 +45,14 @@ export function InventoryPage({ api, organizationId, readOnly }: InventoryPagePr
   const [loadError, setLoadError] = useState('');
   const [query, setQuery] = useState('');
   const [kindFilter, setKindFilter] = useState<'all' | 'product' | 'membership'>('all');
+  const [stockFilter, setStockFilter] = useState<'all' | 'low'>('all');
+  const [lowStockText, setLowStockText] = useState('');
+  const [stocktakeOpen, setStocktakeOpen] = useState(false);
+  const [movementFilter, setMovementFilter] = useState<MovementFilter>(emptyMovementFilter);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [form, setForm] = useState<Form>(emptyForm);
   const [stock, setStock] = useState<Stock>(emptyStock);
-  const [baseline, setBaseline] = useState(() => JSON.stringify([emptyForm(), emptyStock()]));
+  const [baseline, setBaseline] = useState(() => JSON.stringify([emptyForm(), emptyStock(), '']));
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [history, setHistory] = useState<{ product: CatalogProduct; movements: StockMovement[] } | null>(null);
@@ -54,7 +61,7 @@ export function InventoryPage({ api, organizationId, readOnly }: InventoryPagePr
   const adjustOp = useOperationTracker();
 
   const selected = rows.find((row) => row.id === selectedId) ?? null;
-  const dirty = JSON.stringify([form, stock]) !== baseline;
+  const dirty = JSON.stringify([form, stock, lowStockText]) !== baseline;
   const editable = !readOnly && !busy;
 
   const load = useCallback(async () => {
@@ -65,17 +72,17 @@ export function InventoryPage({ api, organizationId, readOnly }: InventoryPagePr
   }, [api, organizationId]);
   useEffect(() => { void load(); }, [load]);
 
-  const fill = (next: Form, nextStock: Stock) => { setForm(next); setStock(nextStock); setBaseline(JSON.stringify([next, nextStock])); };
+  const fill = (next: Form, nextStock: Stock, low = '') => { setForm(next); setStock(nextStock); setLowStockText(low); setBaseline(JSON.stringify([next, nextStock, low])); };
   /** 변경이 없으면 바로, 있으면 확인을 거친 뒤 실행한다(변경 없는 이동은 동기로 처리된다). */
   const guarded = (action: () => void) => {
     if (!dirty) { action(); return; }
     void confirm({ title: '작성 중인 상품·재고 변경', message: '저장하지 않은 내용을 버릴까요?', confirmLabel: '버리기', tone: 'danger' }).then((ok) => { if (ok) action(); });
   };
-  const select = (row: CatalogProduct) => { if (row.id !== selectedId) guarded(() => { setSelectedId(row.id); fill(fromProduct(row), emptyStock()); setMessage(''); }); };
+  const select = (row: CatalogProduct) => { if (row.id !== selectedId) guarded(() => { setSelectedId(row.id); fill(fromProduct(row), emptyStock(), lowText(row)); setMessage(''); }); };
   const startNew = () => guarded(() => { setSelectedId(null); fill(emptyForm(), emptyStock()); setMessage(''); });
   const applyRow = (saved: CatalogProduct, text: string) => {
     setRows((current) => (current.some((row) => row.id === saved.id) ? current.map((row) => (row.id === saved.id ? saved : row)) : [...current, saved]));
-    setSelectedId(saved.id); fill(fromProduct(saved), emptyStock()); setMessage(text); notify.success(text);
+    setSelectedId(saved.id); fill(fromProduct(saved), emptyStock(), lowText(saved)); setMessage(text); notify.success(text);
   };
   /** 실패 공통 처리: 충돌은 새로고침 안내, 결과를 알 수 없는 실패는 같은 요청으로 재시도하도록 operation_id를 유지한다. */
   function failed(error: unknown, tracker: { reset(): void }) {
@@ -129,23 +136,50 @@ export function InventoryPage({ api, organizationId, readOnly }: InventoryPagePr
     finally { setBusy(false); }
   }
 
+  const lowOp = useOperationTracker();
+  /** 안전재고만 저장한다. 판매 조건 저장과 별도 요청이라 입력 중인 다른 변경은 그대로 둔다. */
+  async function saveLowStock() {
+    if (!selected || selected.kind !== 'product') return;
+    const parsed = parseLowStockInput(lowStockText);
+    if (typeof parsed === 'string') { setMessage(parsed); return; }
+    setBusy(true);
+    try {
+      const saved = await catalogApi.setLowStock(api, organizationId, selected.id, {
+        low_stock_threshold: parsed, expected_version: selected.version, operation_id: lowOp.idFor(JSON.stringify([selected.id, selected.version, parsed])),
+      });
+      lowOp.reset();
+      setRows((current) => current.map((row) => (row.id === saved.id ? saved : row)));
+      setLowStockText(lowText(saved));
+      setBaseline((current) => JSON.stringify([...(JSON.parse(current) as unknown[]).slice(0, 2), lowText(saved)]));
+      setMessage('안전재고를 저장했습니다.'); notify.success('안전재고를 저장했습니다.');
+    } catch (error) { failed(error, lowOp); }
+    finally { setBusy(false); }
+  }
+
   async function showHistory() {
     if (!selected || selected.kind !== 'product') return;
     setBusy(true);
     try {
       const movements = await catalogApi.listStockLedger(api, organizationId, selected.id);
-      setHistory({ product: selected, movements }); setMessage(`최근 재고 변동 ${movements.length}건을 표시했습니다.`);
+      setMovementFilter(emptyMovementFilter()); setHistory({ product: selected, movements }); setMessage(`최근 재고 변동 ${movements.length}건을 표시했습니다.`);
     } catch { setMessage('재고 변동 이력을 불러오지 못했습니다.'); }
     finally { setBusy(false); }
   }
 
-  const visible = useMemo(() => rows.filter((row) => (kindFilter === 'all' || row.kind === kindFilter) && `${row.name} ${row.sku}`.toLowerCase().includes(query.trim().toLowerCase())), [rows, kindFilter, query]);
+  const visible = useMemo(() => rows.filter((row) => (kindFilter === 'all' || row.kind === kindFilter) && (stockFilter === 'all' || isLowStock(row)) && `${row.name} ${row.sku}`.toLowerCase().includes(query.trim().toLowerCase())), [rows, kindFilter, stockFilter, query]);
+  const lowCount = useMemo(() => rows.filter(isLowStock).length, [rows]);
+  const movements = useMemo(() => (history ? filterMovements(history.movements, movementFilter) : []), [history, movementFilter]);
+  const stocktakeProducts = useMemo(() => rows.filter((row) => row.kind === 'product'), [rows]);
+  /** 실사로 반영된 상품을 목록에 바로 반영한다. */
+  const applyStocktake = (saved: CatalogProduct) => setRows((current) => current.map((row) => (row.id === saved.id ? saved : row)));
   const columns: Column<CatalogProduct>[] = [
     { key: 'kind', header: '구분', width: 70, value: (row) => (row.kind === 'product' ? '상품' : '회원권') },
     { key: 'name', header: '이름', width: 180, value: (row) => row.name },
     { key: 'sku', header: 'SKU', width: 110, value: (row) => row.sku },
     { key: 'price', header: '판매가', width: 100, value: (row) => Number(row.sale_price), render: (row) => won(row.sale_price) },
-    { key: 'stock', header: '재고', width: 70, value: (row) => (row.kind === 'product' ? row.stock_quantity : -1), render: (row) => (row.kind === 'product' ? String(row.stock_quantity) : '-') },
+    { key: 'stock', header: '재고', width: 90, value: (row) => (row.kind === 'product' ? row.stock_quantity : -1),
+      render: (row) => (row.kind === 'product' ? <>{row.stock_quantity}{isLowStock(row) && <span className="stock-badge" title={`안전재고 ${lowStockLimit(row)}개 이하`}>부족</span>}</> : '-') },
+    { key: 'limit', header: '안전재고', width: 80, value: (row) => (row.kind === 'product' ? lowStockLimit(row) : -1), render: (row) => (row.kind === 'product' ? (row.low_stock_threshold == null ? `기본 ${DEFAULT_LOW_STOCK}` : String(row.low_stock_threshold)) : '-') },
     { key: 'state', header: '상태', width: 80, value: (row) => (row.is_active ? '판매 중' : '판매 중지') },
   ];
   const membership = form.kind === 'membership';
@@ -158,6 +192,7 @@ export function InventoryPage({ api, organizationId, readOnly }: InventoryPagePr
         <div><h1>상품 · 회원권 · 재고</h1><p className="muted">판매 조건은 장바구니에 담는 순간 고정됩니다. 실물 상품은 입고 수량 안에서만 결제할 수 있습니다.</p></div>
         <div className="catalog-toolbar-actions">
           <ExportButton title="상품 목록" columns={productExportColumns} rows={visible} disabled={loading || loadError !== ''} />
+          {!readOnly && <button type="button" disabled={busy || loading || loadError !== ''} onClick={() => guarded(() => setStocktakeOpen(true))}>재고 실사</button>}
           {!readOnly && <button type="button" className="primary-button" disabled={busy} onClick={startNew}>새 상품</button>}
         </div>
       </div>
@@ -167,6 +202,7 @@ export function InventoryPage({ api, organizationId, readOnly }: InventoryPagePr
             <div className="list-controls">
               <input aria-label="상품 검색" placeholder="이름, SKU 검색" value={query} onChange={(event) => setQuery(event.currentTarget.value)} />
               <Select<'all' | 'product' | 'membership'> aria-label="구분 필터" value={kindFilter} onChange={setKindFilter} options={[{ value: 'all', label: '전체' }, { value: 'product', label: '실물 상품' }, { value: 'membership', label: '회원권 · 패키지' }]} />
+              <Select<'all' | 'low'> aria-label="재고 필터" value={stockFilter} onChange={setStockFilter} options={[{ value: 'all', label: '재고 전체' }, { value: 'low', label: `재고 부족만 (${lowCount})` }]} />
             </div>
             <DataGrid rows={visible} columns={columns} rowKey={(row) => row.id} selectedKey={selectedId} onSelect={select} ariaLabel="상품 목록" storageKey="catalog-grid" emptyText="등록된 상품과 회원권이 없습니다." />
           </section>
@@ -198,7 +234,13 @@ export function InventoryPage({ api, organizationId, readOnly }: InventoryPagePr
                     </div>
                   </>
                 )}
-                <div className="form-actions"><button type="button" disabled={busy} onClick={() => void showHistory()}>재고 변동 이력</button></div>
+                <label className="full">안전재고 (이 수량 이하이면 재고 부족)
+                  <input type="number" min={0} aria-label="안전재고" placeholder={`비우면 기본 ${DEFAULT_LOW_STOCK}개`} value={lowStockText} disabled={busy || readOnly} onChange={(event) => setLowStockText(event.currentTarget.value)} />
+                </label>
+                <div className="form-actions">
+                  {!readOnly && <button type="button" disabled={busy} onClick={() => void saveLowStock()}>안전재고 저장</button>}
+                  <button type="button" disabled={busy} onClick={() => void showHistory()}>재고 변동 이력</button>
+                </div>
               </div>
             )}
             {message && <p aria-live="polite" className="catalog-message">{message}</p>}
@@ -207,8 +249,18 @@ export function InventoryPage({ api, organizationId, readOnly }: InventoryPagePr
       )}
       {history && (
         <Modal title={`${history.product.name} · 재고 변동 이력`} size="lg" onClose={() => setHistory(null)}>
-          <div className="form-actions"><ExportButton title={`${history.product.name} 재고 이력`} columns={movementExportColumns} rows={history.movements} /></div>
-          <DataGrid<StockMovement> rows={history.movements} rowKey={(row) => row.id} ariaLabel="재고 변동 이력" emptyText="재고 변동 이력이 없습니다."
+          <div className="inline-form movement-filter">
+            <label>시작일<input type="date" aria-label="이력 시작일" value={movementFilter.from} onChange={(event) => setMovementFilter({ ...movementFilter, from: event.currentTarget.value })} /></label>
+            <label>종료일<input type="date" aria-label="이력 종료일" value={movementFilter.to} onChange={(event) => setMovementFilter({ ...movementFilter, to: event.currentTarget.value })} /></label>
+            <label>변동 종류
+              <Select<MovementFilter['kind']> aria-label="이력 종류" value={movementFilter.kind} onChange={(kind) => setMovementFilter({ ...movementFilter, kind })}
+                options={[{ value: 'all', label: '전체' }, ...(Object.keys(movementLabel) as StockMovement['movement_kind'][]).map((kind) => ({ value: kind, label: movementLabel[kind] }))]} />
+            </label>
+            <button type="button" onClick={() => setMovementFilter(emptyMovementFilter())}>필터 해제</button>
+            <span className="muted" aria-live="polite">최근 {history.movements.length}건 중 {movements.length}건</span>
+            <ExportButton title={`${history.product.name} 재고 이력`} columns={movementExportColumns} rows={movements} />
+          </div>
+          <DataGrid<StockMovement> rows={movements} rowKey={(row) => row.id} ariaLabel="재고 변동 이력" emptyText={history.movements.length ? '조건에 맞는 이력이 없습니다.' : '재고 변동 이력이 없습니다.'}
             columns={[
               { key: 'at', header: '일시', width: 150, value: (row) => row.created_at, render: (row) => row.created_at.slice(0, 16).replace('T', ' ') },
               { key: 'kind', header: '변동 종류', width: 120, value: (row) => movementLabel[row.movement_kind] },
@@ -217,6 +269,7 @@ export function InventoryPage({ api, organizationId, readOnly }: InventoryPagePr
             ]} />
         </Modal>
       )}
+      {stocktakeOpen && <StocktakeDialog api={api} organizationId={organizationId} products={stocktakeProducts} onApplied={applyStocktake} onClose={() => { setStocktakeOpen(false); void load(); }} />}
     </section>
   );
 }

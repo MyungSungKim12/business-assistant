@@ -6,6 +6,10 @@ import {
 
 /** 이 기능이 쓰는 ApiClient의 부분. 테스트에서는 call만 가진 가짜를 넣는다. */
 export type CallApi = Pick<ApiClient, 'call'>;
+export type ServiceUpdate = {
+  name: string; duration_minutes: number; buffer_minutes: number; price_krw: number; category: string; is_active: boolean;
+  expected_version: number; operation_id: string;
+};
 const base = (organizationId: string) => `/organizations/${organizationId}`;
 
 export const resourceApi = {
@@ -16,6 +20,16 @@ export const resourceApi = {
     api.call('PUT', `${base(organizationId)}/appointment-resources/${resourceId}`, resourceSchema, input),
 
   listServices: (api: CallApi, organizationId: string) => api.call('GET', `${base(organizationId)}/appointment-services`, serviceListSchema),
+  /** 가격·카테고리·편집 버전이 포함된 서비스 목록. 아직 확장 경로가 없는 서버(404)에서는 기존 목록으로 대신한다. */
+  listServiceDetails: async (api: CallApi, organizationId: string) => {
+    try { return await api.call('GET', `${base(organizationId)}/appointment-service-details`, serviceListSchema); }
+    catch (error) {
+      if ((error as { status?: number }).status !== 404) throw error;
+      return api.call('GET', `${base(organizationId)}/appointment-services`, serviceListSchema);
+    }
+  },
+  updateService: (api: CallApi, organizationId: string, serviceId: string, input: ServiceUpdate) =>
+    api.call('PUT', `${base(organizationId)}/appointment-services/${serviceId}`, serviceSchema, input),
   createService: (api: CallApi, organizationId: string, input: { name: string; duration_minutes: number; buffer_minutes: number }) =>
     api.call('POST', `${base(organizationId)}/appointment-services`, serviceSchema, input),
   listRequirements: (api: CallApi, organizationId: string, serviceId: string) =>

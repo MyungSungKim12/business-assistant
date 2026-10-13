@@ -78,3 +78,63 @@
   align-items: center;
   gap: 4px;
 }
+
+.stock-badge {
+  margin-left: 4px;
+  padding: 0 4px;
+  border-radius: var(--radius-sm);
+  background: var(--error-soft);
+  color: var(--error);
+  font-size: var(--font-size-small);
+}
+
+.movement-filter {
+  margin: 0 0 6px;
+}
+
+.stocktake {
+  display: grid;
+  gap: 6px;
+}
+
+.stocktake-table {
+  max-height: 50vh;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.stocktake-table table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.stocktake-table th,
+.stocktake-table td {
+  padding: 2px 6px;
+  border-bottom: 1px solid var(--divider);
+  text-align: left;
+}
+
+.stocktake-table th {
+  position: sticky;
+  top: 0;
+  background: var(--grid-head);
+}
+
+.stocktake-table .num {
+  text-align: right;
+}
+
+.stocktake-table input {
+  width: 90px;
+  text-align: right;
+}
+
+.stocktake-table .diff-minus {
+  color: var(--error);
+}
+
+.service-page .catalog-form .form-actions {
+  flex-wrap: wrap;
+}

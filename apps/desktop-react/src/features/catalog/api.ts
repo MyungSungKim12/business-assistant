@@ -1,5 +1,5 @@
 import type { CallApi } from '../appointment-resources/api';
-import { cartBundleSchema, movementsSchema, productSchema, productsSchema, walletSchema, walletsSchema, walletUseResultSchema } from './schemas';
+import { cartBundleSchema, movementsSchema, orgWalletsSchema, productSchema, productsSchema, walletHistorySchema, walletSchema, walletsSchema, walletUseResultSchema } from './schemas';
 
 const base = (organizationId: string) => `/organizations/${organizationId}`;
 
@@ -15,6 +15,9 @@ export const catalogApi = {
   createProduct: (api: CallApi, organizationId: string, input: ProductInput & { operation_id: string }) => api.call('POST', `${base(organizationId)}/catalog-products`, productSchema, input),
   updateProduct: (api: CallApi, organizationId: string, productId: string, input: ProductInput & { operation_id: string; expected_version: number }) =>
     api.call('PUT', `${base(organizationId)}/catalog-products/${productId}`, productSchema, input),
+  /** 안전재고만 바꾼다(null=공통 기본값). 상품 저장과 별도 경로이며 expected_version으로 충돌을 막는다. */
+  setLowStock: (api: CallApi, organizationId: string, productId: string, input: { low_stock_threshold: number | null; expected_version: number; operation_id: string }) =>
+    api.call('PUT', `${base(organizationId)}/catalog-products/${productId}/low-stock`, productSchema, input),
   receiveStock: (api: CallApi, organizationId: string, productId: string, input: { quantity: number; reason: string; operation_id: string }) =>
     api.call('POST', `${base(organizationId)}/catalog-products/${productId}/stock-receipts`, productSchema, input),
   changeStock: (api: CallApi, organizationId: string, productId: string, input: { kind: StockChangeKind; quantity: number; reason: string; expected_version: number; operation_id: string }) =>
@@ -23,6 +26,9 @@ export const catalogApi = {
   addProductToCart: (api: CallApi, organizationId: string, visitId: string, input: { product_id: string; expected_version: number; operation_id: string }) =>
     api.call('POST', `${base(organizationId)}/visits/${visitId}/sale-cart/lines/catalog-product`, cartBundleSchema, input),
   listWallets: (api: CallApi, organizationId: string, customerId: string) => api.call('GET', `${base(organizationId)}/customers/${customerId}/wallets`, walletsSchema),
+  listOrganizationWallets: (api: CallApi, organizationId: string) => api.call('GET', `${base(organizationId)}/wallets`, orgWalletsSchema),
+  listWalletHistory: (api: CallApi, organizationId: string, customerId: string, walletId: string) =>
+    api.call('GET', `${base(organizationId)}/customers/${customerId}/wallets/${walletId}/history`, walletHistorySchema),
   manageWallet: (api: CallApi, organizationId: string, customerId: string, walletId: string, input: { action: WalletAction; extend_days: number | null; reason: string; expected_version: number; operation_id: string }) =>
     api.call('POST', `${base(organizationId)}/customers/${customerId}/wallets/${walletId}/lifecycle`, walletSchema, input),
   useWallet: (api: CallApi, organizationId: string, visitId: string, input: { wallet_id: string; sale_line_id: string; mode: 'money' | 'count'; amount: string | null; expected_cart_version: number; confirmed: true; operation_id: string }) =>

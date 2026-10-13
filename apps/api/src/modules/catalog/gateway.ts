@@ -22,6 +22,8 @@ export const productSchema = z.object({
   sale_price: wholeMoney, benefit_money: wholeMoney, benefit_count: z.number().int().min(0),
   valid_days: z.number().int().min(1).max(3650).nullable(), is_active: z.boolean(),
   version: z.number().int().min(1), stock_quantity: z.number().int().min(0),
+  /** 상품별 안전재고. null 이면 화면의 공통 기본값을 쓰고, 041 적용 전 서버 응답에는 없을 수 있다. */
+  low_stock_threshold: z.number().int().min(0).max(1_000_000_000).nullable().optional(),
 });
 export type CatalogProduct = z.infer<typeof productSchema>;
 
@@ -51,6 +53,23 @@ export const walletSchema = z.object({
   usage_history: z.array(walletUsageSchema).default([]),
 });
 export type CustomerWallet = z.infer<typeof walletSchema>;
+
+/** 조직 전체 지갑 목록의 한 행(고객 이름과 발급 혜택 포함). */
+export const organizationWalletSchema = z.object({
+  id: z.uuid(), organization_id: z.uuid(), customer_id: z.uuid(), customer_name: z.string(), product_id: z.uuid(), name_snapshot: z.string(),
+  money_balance: wholeMoney, count_balance: z.number().int().min(0), issued_money: wholeMoney, issued_count: z.number().int().min(0),
+  valid_from: z.iso.date(), expires_on: z.iso.date().nullable(), lifecycle_status: z.enum(['active', 'paused']),
+  paused_on: z.iso.date().nullable(), lifecycle_version: z.number().int().min(1), created_at: z.string(),
+});
+export type OrganizationWallet = z.infer<typeof organizationWalletSchema>;
+
+/** 지갑 잔액 변동 이력의 한 줄(발급·사용·사용 취소·구매 취소·정지·재개·연장). */
+export const walletHistoryEventSchema = z.object({
+  id: z.uuid(), event_type: z.enum(['issue', 'use', 'use_refund', 'reversal', 'pause', 'resume', 'extend']), occurred_at: z.string(),
+  money_delta: signedDecimal, count_delta: z.number().int(), reason: z.string().nullable(), visit_id: z.uuid().nullable(),
+  previous_expires_on: z.iso.date().nullable(), expires_on: z.iso.date().nullable(),
+});
+export type WalletHistoryEvent = z.infer<typeof walletHistoryEventSchema>;
 
 /** 장바구니·수납 결과는 매출 모듈이 소유한다. 여기서는 식별자 일치만 확인하고 나머지 필드는 그대로 전달한다. */
 const cartBundleSchema = z.looseObject({
@@ -89,6 +108,10 @@ export function createCatalogGateway(config: ServerConfig, fetcher: typeof fetch
       const row = await call(token, 'save_catalog_product', organizationId, { p_product_id: productId, p_expected_version: expectedVersion, p_operation_id: operationId, p_values: values }, productSchema);
       return product(row, organizationId, productId ?? undefined);
     },
+    async setLowStock(token: string, organizationId: string, productId: string, threshold: number | null, expectedVersion: number, operationId: string) {
+      const row = await call(token, 'set_catalog_low_stock_threshold', organizationId, { p_product_id: productId, p_threshold: threshold, p_expected_version: expectedVersion, p_operation_id: operationId }, productSchema);
+      return product(row, organizationId, productId);
+    },
     async receiveStock(token: string, organizationId: string, productId: string, quantity: number, reason: string, operationId: string) {
       const row = await call(token, 'receive_catalog_stock', organizationId, { p_product_id: productId, p_quantity: quantity, p_reason: reason, p_operation_id: operationId }, productSchema);
       return product(row, organizationId, productId);
@@ -114,6 +137,17 @@ export function createCatalogGateway(config: ServerConfig, fetcher: typeof fetch
       const rows = await call(token, 'list_customer_wallets', organizationId, { p_customer_id: customerId }, z.array(walletSchema));
       unique(rows);
       if (rows.some((row) => row.organization_id !== organizationId || row.customer_id !== customerId || (row.expires_on !== null && row.expires_on < row.valid_from))) throw fail();
+      return rows;
+    },
+    async listOrganizationWallets(token: string, organizationId: string) {
+      const rows = await call(token, 'list_organization_wallets', organizationId, {}, z.array(organizationWalletSchema));
+      unique(rows);
+      if (rows.some((row) => row.organization_id !== organizationId || (row.expires_on !== null && row.expires_on < row.valid_from))) throw fail();
+      return rows;
+    },
+    async listWalletHistory(token: string, organizationId: string, customerId: string, walletId: string) {
+      const rows = await call(token, 'list_wallet_history', organizationId, { p_customer_id: customerId, p_wallet_id: walletId }, z.array(walletHistoryEventSchema));
+      unique(rows);
       return rows;
     },
     async manageWallet(token: string, organizationId: string, customerId: string, walletId: string, action: string, extendDays: number | null, reason: string, expectedVersion: number, operationId: string) {

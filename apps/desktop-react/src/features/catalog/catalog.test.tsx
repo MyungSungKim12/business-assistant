@@ -156,8 +156,9 @@ describe('InventoryPage', () => {
     fireEvent.click(await screen.findByText('보습 크림'));
     fireEvent.click(screen.getByRole('button', { name: '재고 변동 이력' }));
     const dialog = await screen.findByRole('dialog', { name: '보습 크림 · 재고 변동 이력' });
-    expect(within(dialog).getAllByText('거래처 반품')).toHaveLength(2);
-    expect(within(dialog).getByText('-2 개')).toBeInTheDocument();
+    const grid = within(within(dialog).getByRole('grid', { name: '재고 변동 이력' }));
+    expect(grid.getAllByText('거래처 반품')).toHaveLength(2);
+    expect(grid.getByText('-2 개')).toBeInTheDocument();
   });
 
   it('읽기 전용(member)은 저장·입고·변동 기록 UI가 없고 이력만 본다', async () => {
@@ -234,10 +235,10 @@ describe('StaffPage', () => {
   });
 });
 
-const serviceRow = { id: 's1', organization_id: ORG, name: '관리', duration_minutes: 60, buffer_minutes: 10, is_active: true };
+const serviceRow = { id: 's1', organization_id: ORG, name: '관리', duration_minutes: 60, buffer_minutes: 10, is_active: true, resource_version: 1, price_krw: 0, category: '', service_version: 1 };
 describe('ServicePage', () => {
   it('서비스를 추가하고 입력 범위를 검사한다', async () => {
-    const { api, calls } = server({ 'GET /appointment-services': () => [serviceRow], 'POST /appointment-services': (call) => ({ ...serviceRow, id: 's2', ...(call.body as object) }) });
+    const { api, calls } = server({ 'GET /appointment-service-details': () => [serviceRow], 'POST /appointment-services': (call) => ({ ...serviceRow, id: 's2', ...(call.body as object) }) });
     render(<><NoticeHost /><ServicePage api={api as never} organizationId={ORG} readOnly={false} /></>);
     expect(await screen.findByText('관리')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '서비스 추가' }));
@@ -253,7 +254,7 @@ describe('ServicePage', () => {
   });
 
   it('읽기 전용에서는 추가 UI가 없고 공간·장비는 볼 수 있다', async () => {
-    const { api } = server({ 'GET /appointment-services': () => [serviceRow], 'GET /appointment-resources': () => [], 'GET /appointment-services/s1/resource-setup': () => ({ service_id: 's1', resource_version: 1, requirements: [] }) });
+    const { api } = server({ 'GET /appointment-service-details': () => [serviceRow], 'GET /appointment-resources': () => [], 'GET /appointment-services/s1/resource-setup': () => ({ service_id: 's1', resource_version: 1, requirements: [] }) });
     render(<ServicePage api={api as never} organizationId={ORG} readOnly />);
     await screen.findByText('관리');
     expect(screen.queryByRole('button', { name: '서비스 추가' })).not.toBeInTheDocument();

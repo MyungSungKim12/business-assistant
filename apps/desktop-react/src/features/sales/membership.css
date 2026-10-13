@@ -1,0 +1,88 @@
+/* 회원권 화면: 좌측 지갑 목록, 우측 상세·이력. 페이지는 스크롤하지 않고 목록·패널만 내부에서 스크롤한다. */
+.membership-page {
+  font-size: 12px;
+}
+
+.membership-layout {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(480px, 1.3fr) minmax(340px, .9fr);
+  gap: 6px;
+  align-items: stretch;
+}
+
+.membership-layout > * {
+  min-height: 0;
+  overflow: auto;
+}
+
+.membership-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-panel);
+}
+
+.membership-list > .ba-grid-wrap {
+  flex: 1;
+  min-height: 0;
+}
+
+.membership-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px;
+}
+
+.membership-detail h2,
+.membership-detail h3 {
+  margin: 0;
+  font-size: 12px;
+}
+
+.membership-summary {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 8px;
+  margin: 0;
+}
+
+.membership-summary > div {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.membership-summary dt {
+  color: var(--text-muted);
+  font-size: var(--font-size-small);
+}
+
+.membership-summary dd {
+  margin: 0;
+}
+
+.membership-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.membership-history {
+  min-height: 140px;
+  flex: 1;
+}
+
+.membership-soon {
+  margin-left: 4px;
+  padding: 0 4px;
+  border-radius: var(--radius-sm);
+  background: var(--error-soft);
+  color: var(--warning);
+  font-size: var(--font-size-small);
+}
