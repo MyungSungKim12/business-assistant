@@ -1,6 +1,6 @@
 # Business Assistant
 
-업종에 관계없이 사용할 수 있는 **구독형 Python 데스크톱 업무 관리 프로그램**입니다. 공통 업무 기능을 먼저 제공하고, 이후 학원·미용실·부동산 등 업종별 기능을 모듈 형태로 확장합니다.
+업종에 관계없이 사용할 수 있는 **구독형 데스크톱 업무 관리 프로그램**입니다. 현재 PySide6 운영 앱을 유지하면서 React/Tauri 앱을 단계적으로 전환하고 있습니다.
 
 > 현재 상태: Supabase Auth, 조직 역할, 구독 기능 권한과 CRM·일정·문서·재무·파일 관리 구현 완료
 
@@ -35,6 +35,8 @@ Supabase 인증과 조직별 권한 API를 실행하려면 `.env.example`을 `.e
 powershell -ExecutionPolicy Bypass -File scripts/run-server.ps1
 powershell -ExecutionPolicy Bypass -File scripts/run-desktop.ps1
 ```
+
+React 웹 미리보기와 Native Tauri 실행 방법은 [React/Tauri 운영 안내](docs/guide/admin/react-tauri.md)를 참고하세요. React 전환 전 메뉴는 기존 PySide6 앱에서 계속 이용합니다.
 
 처음 개발하는 경우에는 [개발 환경 안내](docs/05-development-guide.md)를 먼저 읽으세요.
 

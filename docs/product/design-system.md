@@ -2,6 +2,8 @@
 
 UI-001 · in-progress · 2026-09-30 · 담당 Codex
 
+UI-002 · in-progress · 2026-10-13 · React/Tauri 전환 첫 수직 기능은 밝은 베이지 토큰, SUIT 서체, 상단 앱 셸, 데이터 표·팝업·입력 공통 계약을 사용한다. Rust 도구 체인과 Windows 설치 인수 전에는 verified로 올리지 않는다.
+
 ## 서체·공통 메뉴 후속 — 2026-10-08
 
 UI-001 · in-progress. 기존 기능과 입력 보호에 의존하며 API/DB 변경은 없다. 사용자는 단순 축소가 아니라 작은 크기에서도 선명하고 세련된 서체를 요청했다. 이 항목이 아래 Pretendard/FullHinting 기준보다 우선한다.
