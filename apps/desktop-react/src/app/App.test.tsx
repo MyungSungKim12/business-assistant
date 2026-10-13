@@ -11,7 +11,7 @@ const organizations = [{ id: '22222222-2222-4222-8222-222222222222', name: 'ë² ì
 function services(overrides: Partial<AppServices['api']> = {}): AppServices {
   const api = {
     login: vi.fn(async () => session), restoreSession: vi.fn(async () => ({ authenticated: false as const })), logout: vi.fn(async () => undefined),
-    listOrganizations: vi.fn(async () => organizations), getEntitlements: vi.fn(async () => ({ organization_id: organizations[0].id, plan_code: 'pro', features: ['crm.basic'] })),
+    listOrganizations: vi.fn(async () => organizations), getEntitlements: vi.fn(async () => ({ organization_id: organizations[0].id, plan_code: 'pro', features: ['crm.basic'] })), listCustomers: vi.fn(async()=>[]), listTasks:vi.fn(async()=>[]),
     ...overrides,
   };
   return { api, platform: { kind: 'browser', apiBase: '/api/v1', tokenStore: {} as never, request: vi.fn(), uploadBinary: vi.fn(), downloadBinary: vi.fn(), subscribeConnection(listener) { listener('online'); return () => undefined; } } };

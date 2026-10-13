@@ -2,7 +2,7 @@ import type { z } from 'zod';
 
 import type { Platform } from '../platform/types';
 import { ApiError, apiError } from './errors';
-import { customerActivitySchema, customerActivitiesSchema, customerPhotoSchema, customerPhotosSchema, customerSchema, customersSchema, entitlementSchema, organizationsSchema, sessionSchema, signedPhotoSchema, type Customer, type CustomerActivity, type CustomerPhoto, type Entitlement, type Organization, type Session, type SignedPhoto } from './schemas';
+import { customerActivitySchema, customerActivitiesSchema, customerPhotoSchema, customerPhotosSchema, customerSchema, customersSchema, entitlementSchema, organizationsSchema, sessionSchema, signedPhotoSchema, taskSchema, tasksSchema, type Customer, type CustomerActivity, type CustomerPhoto, type Entitlement, type Organization, type Session, type SignedPhoto, type Task } from './schemas';
 import type { HttpRequest, HttpResponse } from './transport';
 
 export class ApiClient {
@@ -56,6 +56,7 @@ export class ApiClient {
   createPhotoDownloadUrl(o:string,c:string,id:string):Promise<SignedPhoto>{return this.authed({method:'POST',path:`/organizations/${o}/customers/${c}/photos/${id}/download-url`,headers:{}},signedPhotoSchema)}
   archiveCustomerPhoto(o:string,c:string,id:string):Promise<CustomerPhoto>{return this.authed({method:'DELETE',path:`/organizations/${o}/customers/${c}/photos/${id}`,headers:{}},customerPhotoSchema)}
   get filePlatform(): Platform{return this.platform;}
+  listTasks(organizationId:string):Promise<Task[]>{return this.authed({method:'GET',path:`/organizations/${organizationId}/tasks`,headers:{}},tasksSchema)}
 
   private async authed<T>(request: HttpRequest, schema: z.ZodType<T>): Promise<T> {
     if (!this.accessToken) throw new ApiError(401, 'NOT_AUTHENTICATED', '로그인이 필요합니다.', false);

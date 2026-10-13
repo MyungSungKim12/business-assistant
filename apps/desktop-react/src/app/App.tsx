@@ -9,6 +9,7 @@ import { TopBar, type MenuId } from '../features/shell/TopBar';
 import { SettingsDialog } from '../features/settings/SettingsDialog';
 import { CustomerPage } from '../features/customers/CustomerPage';
 import type { ApiClient } from '../api/client';
+import { DashboardPage } from '../features/dashboard/DashboardPage';
 import type { AppServices } from './services';
 import './app.css';
 
@@ -26,5 +27,5 @@ export function App({ services }: { services: AppServices }) {
   if (phase === 'empty') return <main className="center-layout"><section className="empty-card"><h1>접근 가능한 매장이 없습니다.</h1><p>관리자에게 매장 초대를 요청해 주세요.</p><button onClick={async () => { await services.api.logout(); reset(); setPhase('login'); }}>로그아웃</button></section></main>;
   if (phase === 'organizations' || !organization || !entitlement || !user) return <><OrganizationPicker organizations={organizations} onSelect={choose}/>{error && <div className="permission-banner" role="alert">{error}</div>}</>;
   const customerEnabled = entitlement.features.includes('crm.basic'); const readOnly = organization.role === 'member';
-  return <div className="app-shell"><TopBar organization={organization} user={user} connection={connection} active={active} customerEnabled={customerEnabled} readOnly={readOnly} onNavigate={setActive} onSettings={() => setSettings(true)} onLogout={async () => { await services.api.logout(); reset(); setPhase('login'); }}/><main className="workspace">{active === 'customers' ? <CustomerPage api={services.api as ApiClient} organizationId={organization.id} readOnly={readOnly}/> : <><p className="eyebrow">{active.toUpperCase()}</p><h1>{active === 'dashboard' ? '오늘의 매장' : '아직 React 전환 전'}</h1>{active !== 'dashboard' && <p className="muted">이 업무는 안정화 전까지 기존 PySide6 앱에서 이용해 주세요.</p>}</>}</main>{settings && <SettingsDialog platform={services.platform} onClose={() => setSettings(false)}/>}<NoticeHost/></div>;
+  return <div className="app-shell"><TopBar organization={organization} user={user} connection={connection} active={active} customerEnabled={customerEnabled} readOnly={readOnly} onNavigate={setActive} onSettings={() => setSettings(true)} onLogout={async () => { await services.api.logout(); reset(); setPhase('login'); }}/><main className="workspace">{active === 'customers' ? <CustomerPage api={services.api as ApiClient} organizationId={organization.id} readOnly={readOnly}/> : active==='dashboard'?<DashboardPage api={services.api as ApiClient} organizationId={organization.id} onNavigate={setActive}/>:<><p className="eyebrow">{active.toUpperCase()}</p><h1>아직 React 전환 전</h1><p className="muted">이 업무는 안정화 전까지 기존 PySide6 앱에서 이용해 주세요.</p></>}</main>{settings && <SettingsDialog platform={services.platform} onClose={() => setSettings(false)}/>}<NoticeHost/></div>;
 }
