@@ -1,4 +1,4 @@
-done(릴리스 경로 없음, production 시작 거부) |done 서버(040 운영 DB 적용 대기) |done(단일 인스턴스 메모리 기반) |done 서버·데스크톱 연동(관리자 서버 별도 기동) |done 서버(배포 연동 대기) |# 개선·추가 작업 목록 (Backlog)
+done |done 코드·구성·문서(서명 키·업데이트 서버·인증서는 사용자 준비 후 검증) |done(GitHub Actions 첫 실행 결과 확인 대기) |done(릴리스 경로 없음, production 시작 거부) |done 서버(040 운영 DB 적용 대기) |done(단일 인스턴스 메모리 기반) |done 서버·데스크톱 연동(관리자 서버 별도 기동) |done 서버(배포 연동 대기) |# 개선·추가 작업 목록 (Backlog)
 
 기준일: 2026-10-13. React/Tauri + Node API 전환 이후 남은 보완 사항과 추가 기능을 한곳에서 관리한다. 각 항목은 고정 ID와 상태(`planned / in-progress / done`)를 가진다. 진행하면 상태와 검증 근거를 이 문서와 [변경 이력](changelog.md)에 함께 남긴다.
 
@@ -12,7 +12,7 @@ done(릴리스 경로 없음, production 시작 거부) |done 서버(040 운영 
 | 2 | 예약 | APT-10 일·주 달력 보기, APT-11 예약 수정·노쇼 | done |
 | 3 | 데이터 입출력 | IO-01 고객 엑셀 가져오기·내보내기, IO-02 매출·재고·재무 내보내기 | done |
 | 4 | 보안 P1 | SEC-01 API 배포 구조, SEC-02 서비스 키 분리, SEC-03 로그인 보호, SEC-04 감사 로그, SEC-05 개발용 자동 로그인 점검 | done(040 적용·배포 연동 대기) |
-| 5 | 운영 품질 | OPS-01 CI, OPS-02 설치본 서명·자동 업데이트, OPS-03 오류 경계·진단 로그 | planned |
+| 5 | 운영 품질 | OPS-01 CI, OPS-02 설치본 서명·자동 업데이트, OPS-03 오류 경계·진단 로그 | done |
 | 6 | 메뉴별 기능 | 아래 3장의 P2·P3 항목 | planned |
 
 ## 1. 보안·운영 (공통)
@@ -27,6 +27,7 @@ done(릴리스 경로 없음, production 시작 거부) |done 서버(040 운영 
 | SEC-09 | P2 | 시도 제한 외부 저장소 | 다중 인스턴스에서는 Redis 등 외부 저장소나 프록시·WAF 제한이 필요하다 | planned |
 | SEC-10 | P2 | 감사 로그 조회 화면·보관 정책 | `GET /organizations/{id}/audit-events`를 쓰는 화면과 보관·파기 정책 | planned |
 | SEC-11 | P1 | 세션 복원 오류 구분 | 429·5xx에서 저장된 refresh token을 지우지 않는다 | done |
+| OPS-04 | P3 | 업데이트 알림 UI·자동 확인 끄기 옵션·HSM 인증서용 signCommand | `update:available` 이벤트를 받는 알림, 설정에서 자동 확인 끄기, 토큰 방식 인증서 지원 | planned |
 | SEC-06 | P2 | 권한 검사 비용 | 요청마다 구독·멤버십을 조회한다(최대 6회). 짧은 캐시와 무효화 규칙을 둔다 | planned |
 | SEC-07 | P2 | 개인정보 | 전화번호 마스킹 표시 옵션, 보관 기간·파기 정책, 마케팅 수신 동의 항목 | planned |
 | SEC-08 | P2 | 세션 | 유휴 자동 잠금·로그아웃, 다른 기기 로그아웃 | planned |

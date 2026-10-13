@@ -5,6 +5,7 @@ mod http;
 #[macro_use]
 mod logfile;
 mod tray;
+mod update;
 
 use std::time::Duration;
 
@@ -60,7 +61,9 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_window_state::Builder::default().with_state_flags(tauri_plugin_window_state::StateFlags::all() - tauri_plugin_window_state::StateFlags::VISIBLE).build())
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec![START_MINIMIZED_ARG])))
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
+            update::setup(app.handle());
             let note = logfile::init(app.handle());
             ba_log!("INFO", "Business Assistant {} 시작, 로그 폴더 {note}", env!("CARGO_PKG_VERSION"));
             match config::load() {
@@ -94,7 +97,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             config::get_config, http::http_request, credentials::token_load, credentials::token_save,
             credentials::token_clear, files::pick_images, files::pick_files, files::upload_binary, files::download_binary, files::pick_data_file, files::save_data_file,
-            autostart_is_enabled, autostart_set, show_main, app_exit, tray_set_status, logfile::log_write
+            autostart_is_enabled, autostart_set, show_main, app_exit, tray_set_status, logfile::log_write,
+            update::update_check, update::update_install
         ])
         .run(tauri::generate_context!())
         .expect("Business Assistant 실행에 실패했습니다.");

@@ -2,7 +2,7 @@ import { invoke as tauriInvoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { ApiError } from '../api/errors';
 import type { HttpRequest, HttpResponse } from '../api/transport';
-import type { BinarySource, Platform } from './types';
+import type { BinarySource, Platform, UpdateCheckResult, UpdateProgress } from './types';
 import { createConnectionMonitor } from './types';
 
 export type TauriInvoke = (command: string, args?: Record<string, unknown>) => Promise<unknown>;
@@ -64,6 +64,12 @@ export async function createTauriPlatform(invoke: TauriInvoke = tauriInvoke as T
     async pickFiles() {
       const selected = await call<Array<{ name: string; contentType: string; size: number; path: string }> | null>('pick_files');
       return (selected ?? []).map((file) => ({ kind: 'path' as const, ...file }));
+    },
+    appVersion: async () => String((await call<string | null>('plugin:app|version')) ?? ''),
+    checkUpdate: () => call<UpdateCheckResult>('update_check').catch((error) => { throw nativeError(error); }),
+    installUpdate: () => call<void>('update_install').catch((error) => { throw nativeError(error); }),
+    async onUpdateProgress(handler) {
+      return listen<UpdateProgress>('update:progress', (event) => handler(event.payload));
     },
     autostart: {
       isEnabled: () => call<boolean>('autostart_is_enabled'),

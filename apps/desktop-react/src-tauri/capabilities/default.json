@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "Business Assistant main window capabilities",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "permissions": ["core:default", "updater:default"]
 }

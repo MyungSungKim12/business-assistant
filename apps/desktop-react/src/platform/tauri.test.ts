@@ -58,4 +58,18 @@ describe('createTauriPlatform', () => {
     expect(states).toEqual(['checking', 'checking', 'offline']);
     unsubscribe();
   });
+
+  it('routes update commands to the native updater', async () => {
+    const invoke = vi.fn(async (command: string) => {
+      if (command === 'get_config') return { apiBase: 'http://127.0.0.1:8000/api/v1', storageHost: '' };
+      if (command === 'update_check') return { configured: false, currentVersion: '0.1.0', reason: 'endpoint' };
+      if (command === 'plugin:app|version') return '0.1.0';
+      return null;
+    });
+    const platform = await createTauriPlatform(invoke);
+    await expect(platform.checkUpdate!()).resolves.toMatchObject({ configured: false, currentVersion: '0.1.0' });
+    await expect(platform.appVersion!()).resolves.toBe('0.1.0');
+    await platform.installUpdate!();
+    expect(invoke).toHaveBeenCalledWith('update_install');
+  });
 });

@@ -1,0 +1,190 @@
+name: 릴리스 (설치 파일 서명·초안 릴리스)
+
+# 태그(v*) 푸시 또는 수동 실행으로 Windows 설치 파일(NSIS)을 만들고, 업데이트 서명(.sig)과 latest.json 을 붙여
+# GitHub Release "초안(draft)" 으로 올린다. 초안을 확인한 뒤 사람이 발행한다. 절차와 시크릿 정의: docs/guide/admin/release.md
+#
+# 필요한 시크릿/변수 (저장소 Settings > Secrets and variables > Actions)
+#   secrets.TAURI_SIGNING_PRIVATE_KEY            필수. 업데이트 서명 비밀키(`pnpm tauri signer generate` 로 만든 .key 내용)
+#   secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD   비밀키 암호(암호 없이 만들었으면 빈 값)
+#   vars.TAURI_UPDATER_PUBKEY                    필수. 업데이트 서명 공개키(.pub 내용; 공개 값이라 변수로 둔다)
+#   vars.BUSINESS_ASSISTANT_UPDATE_ENDPOINT      선택. 앱에 심을 업데이트 주소(https). 비우면 이 저장소의 releases/latest/download/latest.json
+#   secrets.WINDOWS_CERTIFICATE                  선택. 코드 서명 인증서(.pfx)를 base64 로 인코딩한 값
+#   secrets.WINDOWS_CERTIFICATE_PASSWORD         선택. .pfx 암호
+#   vars.WINDOWS_TIMESTAMP_URL                   선택. 코드 서명 타임스탬프 서버(기본 http://timestamp.digicert.com)
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "릴리스 태그 (예: v0.2.0). 앱 버전과 같아야 하며, 없으면 초안 릴리스와 함께 만들어진다."
+        required: true
+        type: string
+      notes:
+        description: "업데이트 안내에 보일 변경 노트(선택)"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Windows 설치 파일 빌드·서명
+    runs-on: windows-latest
+    timeout-minutes: 60
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+      RELEASE_NOTES: ${{ inputs.notes }}
+      TAURI_UPDATER_PUBKEY: ${{ vars.TAURI_UPDATER_PUBKEY }}
+      WINDOWS_TIMESTAMP_URL: ${{ vars.WINDOWS_TIMESTAMP_URL }}
+    steps:
+      - name: 태그 형식 확인
+        shell: pwsh
+        run: |
+          if ($env:RELEASE_TAG -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.]+)?$') {
+            Write-Host "::error::태그 형식이 올바르지 않습니다(예: v0.2.0)."
+            exit 1
+          }
+
+      - name: 소스 받기
+        uses: actions/checkout@v5
+
+      - name: Node 준비
+        uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+
+      - name: pnpm 준비와 의존성 설치
+        shell: pwsh
+        run: |
+          corepack enable
+          pnpm install --frozen-lockfile
+
+      - name: 서명 설정 확인
+        shell: pwsh
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          if (-not $env:TAURI_SIGNING_PRIVATE_KEY) {
+            Write-Host "::error::시크릿 TAURI_SIGNING_PRIVATE_KEY 가 없습니다. 서명 없이는 릴리스하지 않습니다(docs/guide/admin/release.md 참고)."
+            exit 1
+          }
+          if (-not $env:TAURI_UPDATER_PUBKEY) {
+            Write-Host "::error::변수 TAURI_UPDATER_PUBKEY(업데이트 공개키)가 없습니다."
+            exit 1
+          }
+
+      - name: 프런트 테스트
+        shell: pwsh
+        run: pnpm --filter @business-assistant/desktop-react exec vitest run
+
+      - name: Cargo 캐시
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            apps/desktop-react/src-tauri/target
+          key: cargo-release-${{ runner.os }}-${{ hashFiles('apps/desktop-react/src-tauri/Cargo.lock') }}
+          restore-keys: cargo-release-${{ runner.os }}-
+
+      - name: Rust 단위 테스트
+        shell: pwsh
+        working-directory: apps/desktop-react/src-tauri
+        run: cargo test --lib --locked
+
+      - name: 코드 서명 인증서 가져오기(선택)
+        id: cert
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          if (-not $env:WINDOWS_CERTIFICATE) {
+            Write-Host "::warning::WINDOWS_CERTIFICATE 가 없어 코드 서명 없이 빌드합니다(SmartScreen 경고가 표시됩니다)."
+            exit 0
+          }
+          $pfx = Join-Path $env:RUNNER_TEMP "codesign.pfx"
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
+          $password = ConvertTo-SecureString -String $env:WINDOWS_CERTIFICATE_PASSWORD -AsPlainText -Force
+          $cert = Import-PfxCertificate -FilePath $pfx -CertStoreLocation Cert:\CurrentUser\My -Password $password
+          Remove-Item $pfx -Force
+          "WINDOWS_CERTIFICATE_THUMBPRINT=$($cert.Thumbprint)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: 릴리스 설정 생성(버전·태그 일치 검사 포함)
+        shell: pwsh
+        env:
+          REPO: ${{ github.repository }}
+          CONFIGURED_ENDPOINT: ${{ vars.BUSINESS_ASSISTANT_UPDATE_ENDPOINT }}
+        run: |
+          if ($env:CONFIGURED_ENDPOINT) { $env:BUSINESS_ASSISTANT_UPDATE_ENDPOINT = $env:CONFIGURED_ENDPOINT }
+          else { $env:BUSINESS_ASSISTANT_UPDATE_ENDPOINT = "https://github.com/$env:REPO/releases/latest/download/latest.json" }
+          node scripts/release/make-release-config.mjs --tag $env:RELEASE_TAG
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: 설치 파일 빌드(업데이트 서명 포함)
+        shell: pwsh
+        working-directory: apps/desktop-react
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: pnpm tauri build --config src-tauri/target/release-config/tauri.release.conf.json
+
+      - name: latest.json 과 업로드 파일 준비
+        shell: pwsh
+        env:
+          REPO: ${{ github.repository }}
+        run: |
+          node scripts/release/make-latest-json.mjs `
+            --bundle-dir apps/desktop-react/src-tauri/target/release/bundle/nsis `
+            --out release-assets --repo $env:REPO --tag $env:RELEASE_TAG --notes $env:RELEASE_NOTES
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: 산출물 보관
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-assets
+          path: release-assets/*
+          if-no-files-found: error
+          retention-days: 7
+
+  publish-draft:
+    name: GitHub 초안 릴리스 올리기
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # 쓰기 권한은 이 잡에만 둔다
+    permissions:
+      contents: write
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: 산출물 받기
+        uses: actions/download-artifact@v4
+        with:
+          name: release-assets
+          path: release-assets
+
+      - name: 초안 릴리스 만들기 또는 파일 갱신
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            # 이미 발행된 릴리스의 파일을 덮어쓰지 않는다(롤백은 새 버전 릴리스로 한다)
+            if [ "$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft)" != "true" ]; then
+              echo "::error::$RELEASE_TAG 는 이미 발행된 릴리스입니다. 새 버전 태그로 다시 실행하세요."
+              exit 1
+            fi
+          else
+            gh release create "$RELEASE_TAG" --draft --target "$GITHUB_SHA" --title "$RELEASE_TAG" --notes "초안: 확인 후 발행하세요."
+          fi
+          gh release upload "$RELEASE_TAG" release-assets/* --clobber
+          echo "초안 릴리스 $RELEASE_TAG 에 파일을 올렸습니다. 확인 후 발행하세요."
