@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { CustomerPhoto } from '../../../api/schemas';
+import { describePhotoError } from './photoErrors';
 import type { ThumbnailLoader } from './thumbnailLoader';
 
 type Props = { photo: CustomerPhoto; loader: ThumbnailLoader; onOpen: (photo: CustomerPhoto) => void; showName: boolean };
@@ -10,6 +11,7 @@ export function PhotoThumb({ photo, loader, onOpen, showName }: Props) {
   const [visible, setVisible] = useState(typeof IntersectionObserver === 'undefined');
   const [url, setUrl] = useState<string | null>(() => loader.peek(photo.id));
   const [failed, setFailed] = useState(false);
+  const [reason, setReason] = useState('');
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
@@ -28,7 +30,7 @@ export function PhotoThumb({ photo, loader, onOpen, showName }: Props) {
     if (!visible || url) return;
     let alive = true;
     setFailed(false);
-    loader.load(photo).then((next) => { if (alive) setUrl(next); }).catch(() => { if (alive) setFailed(true); });
+    loader.load(photo).then((next) => { if (alive) setUrl(next); }).catch((error) => { if (alive) { setFailed(true); setReason(describePhotoError(error)); } });
     return () => { alive = false; };
   }, [visible, url, attempt, loader, photo]);
 
@@ -36,8 +38,9 @@ export function PhotoThumb({ photo, loader, onOpen, showName }: Props) {
   return (
     <div className="pg-tile" ref={tile} data-photo-id={photo.id}>
       <button type="button" className="pg-open" aria-label={`${photo.original_name} 크게 보기`} title={label} onClick={() => onOpen(photo)}>
-        {url ? <img src={url} alt={label} /> : <span className="pg-placeholder">{failed ? '불러오기 실패' : visible ? '불러오는 중…' : ''}</span>}
+        {url ? <img src={url} alt={label} /> : <span className="pg-placeholder" title={failed ? reason : undefined}>{failed ? '불러오기 실패' : visible ? '불러오는 중…' : ''}</span>}
       </button>
+      {failed && <p className="pg-reason" role="alert">{reason}</p>}
       {failed && <button type="button" className="pg-chip" onClick={() => setAttempt((count) => count + 1)}>다시 시도</button>}
       {showName && <span className="pg-name" title={photo.original_name}>{photo.original_name}</span>}
     </div>

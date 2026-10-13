@@ -28,6 +28,10 @@ if (Test-Path -LiteralPath $envFile) {
         Set-Item -LiteralPath "Env:$($name.Trim())" -Value $value
     }
 }
+# 사진 서명 URL을 허용할 Storage 호스트: 지정하지 않았으면 Supabase 프로젝트 주소에서 자동으로 정한다.
+if (-not $env:BUSINESS_ASSISTANT_STORAGE_HOST -and $env:APP_SUPABASE_URL) {
+    try { $env:BUSINESS_ASSISTANT_STORAGE_HOST = ([Uri]$env:APP_SUPABASE_URL).Host.ToLowerInvariant() } catch { }
+}
 $port = if ($env:APP_API_PORT) { $env:APP_API_PORT } else { '8000' }
 $health = "http://127.0.0.1:$port/api/v1/health"
 function Test-Api { try { (Invoke-RestMethod -Uri $health -TimeoutSec 2).status -eq 'ok' } catch { $false } }

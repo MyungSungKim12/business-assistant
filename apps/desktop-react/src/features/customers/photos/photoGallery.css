@@ -243,3 +243,11 @@
 .pg-download:hover {
   background: var(--row-hover);
 }
+
+.pg-reason {
+  margin: 2px 0 0;
+  color: var(--error);
+  font-size: var(--font-size-small);
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}

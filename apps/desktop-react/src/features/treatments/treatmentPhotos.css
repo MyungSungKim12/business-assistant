@@ -4,7 +4,8 @@
   flex: none;
   flex-direction: column;
   gap: 4px;
-  height: 322px;
+  /* 화면 높이에 맞춰 커지고 줄어든다. 사진이 많으면 안에서 스크롤한다. */
+  height: clamp(170px, 30vh, 300px);
   min-width: 0;
   padding: 6px;
   overflow: hidden;

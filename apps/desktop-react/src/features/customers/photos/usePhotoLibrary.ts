@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ApiClient } from '../../../api/client';
 import type { CustomerPhoto } from '../../../api/schemas';
+import { describePhotoError } from './photoErrors';
 import { validatePhoto } from './photoValidation';
 
 /** 고객 한 명의 사진 목록·등록·보관 상태. 갤러리가 이 훅을 쓴다. */
@@ -53,17 +54,19 @@ export function usePhotoLibrary(api: ApiClient, organizationId: string, customer
         try {
           await platform.uploadBinary(prepared.signed_url, file);
           if (stillHere()) setItems((old) => [prepared.photo, ...old]);
-        } catch {
+        } catch (uploadError) {
+          const reason = describePhotoError(uploadError);
+          platform.log?.('ERROR', `사진 업로드 실패: ${uploadError instanceof Error ? uploadError.message : String(uploadError)}`);
           try {
             await apiRef.current.archiveCustomerPhoto(organizationId, customerId, prepared.photo.id);
-            if (stillHere()) setNotice(`${file.name} 업로드에 실패했습니다. 다시 시도해 주세요.`);
+            if (stillHere()) setNotice(`${file.name} 업로드에 실패했습니다. ${reason}`);
           } catch {
             if (stillHere()) setNotice(`${file.name} 업로드 복구가 필요합니다. 사진 ID: ${prepared.photo.id}`);
           }
         }
       }
     } catch (error) {
-      if (stillHere()) setNotice(error instanceof Error ? error.message : '사진 준비에 실패했습니다.');
+      if (stillHere()) setNotice(`사진을 준비하지 못했습니다. ${describePhotoError(error)}`);
     } finally {
       setUploading(false);
     }

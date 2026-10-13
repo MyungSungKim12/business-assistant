@@ -2,6 +2,7 @@
 @import './styles/alias.css';
 @import './styles/shell.css';
 @import './styles/common.css';
+@import './styles/layout.css';
 @import './styles/auth.css';
 @import './styles/customers.css';
 @import './styles/appointments.css';

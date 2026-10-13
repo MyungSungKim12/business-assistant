@@ -1,0 +1,53 @@
+/* layout.css: 화면 맞춤 규칙.
+   작업 영역(.workspace)은 스크롤하지 않고, 각 화면이 영역을 꽉 채운다. 표·패널만 내부에서 스크롤한다.
+   :where()로 특이도를 0으로 낮춰, 자체 레이아웃(grid 등)을 가진 화면은 그대로 우선한다. */
+.workspace {
+  overflow: hidden;
+}
+
+:where(.workspace > section, .workspace > div) {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* 머리글(제목 줄)은 높이를 유지하고 본문이 남은 높이를 쓴다. */
+:where(.workspace > section > .page-toolbar) {
+  flex: none;
+}
+
+/* 화면 바로 아래의 표·본문 영역은 남은 높이를 채운다. */
+:where(.workspace > section > .ba-grid-wrap, .workspace > section > .catalog-layout, .workspace > section > .finance-layout, .workspace > section > .doc-split, .workspace > section > .settlement-panel) {
+  flex: 1;
+  min-height: 0;
+}
+
+.ba-grid-wrap {
+  min-height: 120px;
+}
+
+/* 좌우 2열 본문: 두 열 모두 높이를 채우고 각자 내부 스크롤 */
+.catalog-layout,
+.finance-layout {
+  align-items: stretch;
+}
+
+.catalog-layout > *,
+.finance-layout > * {
+  min-height: 0;
+  overflow: auto;
+}
+
+.catalog-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.catalog-list > .ba-grid-wrap {
+  flex: 1;
+  min-height: 0;
+}

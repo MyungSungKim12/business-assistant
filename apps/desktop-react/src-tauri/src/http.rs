@@ -21,11 +21,13 @@ fn api_url(base: &str, path: &str) -> Result<Url, String> {
     Ok(url)
 }
 
+/// 서명 URL은 HTTPS이며 허용된 호스트여야 한다. BUSINESS_ASSISTANT_STORAGE_HOST가 있으면 그 호스트만, 없으면 Supabase Storage(*.supabase.co)만 허용한다.
 pub fn signed_url(raw: &str, allowed_host: &str) -> Result<Url, String> {
     let url = Url::parse(raw).map_err(|_| "서명 URL 형식이 올바르지 않습니다.".to_string())?;
-    if allowed_host.is_empty() || url.scheme() != "https" || url.host_str().map(str::to_lowercase).as_deref() != Some(allowed_host) {
-        return Err("허용되지 않은 Storage 주소입니다.".into());
-    }
+    if url.scheme() != "https" { return Err("허용되지 않은 Storage 주소입니다. HTTPS 주소만 사용할 수 있습니다.".into()); }
+    let host = url.host_str().map(str::to_lowercase).unwrap_or_default();
+    let allowed = if allowed_host.is_empty() { host.ends_with(".supabase.co") } else { host == allowed_host };
+    if !allowed { return Err(format!("허용되지 않은 Storage 주소입니다. ({host}) BUSINESS_ASSISTANT_STORAGE_HOST 설정을 확인하세요.")); }
     Ok(url)
 }
 
@@ -55,6 +57,12 @@ mod tests {
         assert_eq!(url.query(), Some("from_date=2026-10-12&to_date=2026-10-14"));
         assert_eq!(api_url("http://127.0.0.1:8000/api/v1", "/me").unwrap().query(), None);
         assert!(api_url("http://127.0.0.1:8000/api/v1", "/me#frag").is_err());
+    }
+    #[test] fn defaults_to_supabase_storage_when_no_host_is_configured() {
+        assert!(signed_url("https://abc.supabase.co/storage/v1/object/upload/sign/x", "").is_ok());
+        assert!(signed_url("https://evil.test/a", "").is_err());
+        assert!(signed_url("https://supabase.co.evil.test/a", "").is_err());
+        assert!(signed_url("http://abc.supabase.co/a", "").is_err());
     }
     #[test] fn allows_only_configured_https_storage_host() { assert!(signed_url("https://store.example.com/object/a", "store.example.com").is_ok()); assert!(signed_url("http://store.example.com/a", "store.example.com").is_err()); assert!(signed_url("https://evil.test/a", "store.example.com").is_err()); }
 }

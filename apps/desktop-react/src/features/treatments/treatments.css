@@ -5,8 +5,7 @@
   gap: 6px;
   height: 100%;
   min-height: 0;
-  /* 위쪽 3열이 편집 양식을 가리지 않도록 최소 높이를 주고, 사진 패널은 그 아래로 스크롤해서 본다. */
-  overflow: auto;
+  overflow: hidden;
 }
 
 .treatment-lifecycle {
@@ -26,8 +25,8 @@
 }
 
 .treatment-layout {
-  flex: 1 0 auto;
-  min-height: 440px;
+  flex: 1;
+  min-height: 0;
   display: grid;
   grid-template-columns: 190px minmax(300px, 1fr) minmax(320px, 0.9fr);
   gap: 6px;
