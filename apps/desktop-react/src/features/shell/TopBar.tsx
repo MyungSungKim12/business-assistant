@@ -1,14 +1,11 @@
-import { useRef } from 'react';
 import { confirm } from '@business-assistant/react-ui';
 import type { AuthUser, Organization } from '../../api/schemas';
 import type { ConnectionState } from '../../platform/types';
 import { ConnectionBadge } from './ConnectionBadge';
+import { MoreMenu } from './MoreMenu';
+import { coreMenus } from './menuCatalog';
 
 export type MenuId = 'dashboard' | 'tasks' | 'customers' | 'appointments' | 'treatments' | 'sales' | 'memberships' | 'inventory' | 'services' | 'staff' | 'finance' | 'documents' | 'files' | 'management' | 'admin';
-
-const core: Array<[MenuId, string]> = [['dashboard', '홈'], ['tasks', '할 일'], ['customers', '고객관리'], ['appointments', '예약'], ['treatments', '시술'], ['sales', '매출']];
-const more: Array<[MenuId, string]> = [['memberships', '회원권'], ['inventory', '재고'], ['services', '서비스'], ['staff', '직원'], ['finance', '정산'], ['documents', '문서'], ['files', '파일']];
-const managerOnly: Array<[MenuId, string]> = [['management', '경영'], ['admin', '구독']];
 
 interface TopBarProps {
   organization: Organization;
@@ -27,14 +24,9 @@ interface TopBarProps {
 }
 
 export function TopBar({ organization, user, connection, active, customerEnabled, readOnly, canManage, onNavigate, onSettings, onLogout, onExit }: TopBarProps) {
-  const moreRef = useRef<HTMLDetailsElement>(null);
-  const go = (id: MenuId) => {
-    if (moreRef.current) moreRef.current.open = false;
-    onNavigate(id);
-  };
   const item = ([id, label]: [MenuId, string]) =>
     id !== 'customers' || customerEnabled
-      ? <button key={id} className={active === id ? 'active' : ''} aria-current={active === id ? 'page' : undefined} onClick={() => go(id)}>{label}</button>
+      ? <button key={id} className={active === id ? 'active' : ''} aria-current={active === id ? 'page' : undefined} onClick={() => onNavigate(id)}>{label}</button>
       : null;
   const logout = async () => {
     if (await confirm({ title: '로그아웃', message: '로그아웃하시겠습니까?', confirmLabel: '로그아웃' })) onLogout();
@@ -42,7 +34,6 @@ export function TopBar({ organization, user, connection, active, customerEnabled
   const exit = async () => {
     if (await confirm({ title: '종료', message: 'Business Assistant를 종료하시겠습니까?', confirmLabel: '종료', tone: 'danger' })) await onExit?.();
   };
-  const moreActive = [...more, ...managerOnly].some(([id]) => id === active);
 
   return (
     <header className="topbar">
@@ -52,11 +43,8 @@ export function TopBar({ organization, user, connection, active, customerEnabled
         {readOnly && <em>읽기 전용</em>}
       </div>
       <nav aria-label="주 메뉴">
-        {core.map(item)}
-        <details ref={moreRef} className={moreActive ? 'is-active' : undefined}>
-          <summary>더보기</summary>
-          <div className="more-menu">{[...more, ...(canManage ? managerOnly : [])].map(item)}</div>
-        </details>
+        {coreMenus.map(item)}
+        <MoreMenu active={active} canManage={canManage} onNavigate={onNavigate} />
       </nav>
       <div className="topbar__actions">
         <ConnectionBadge state={connection} />

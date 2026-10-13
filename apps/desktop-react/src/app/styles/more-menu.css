@@ -1,0 +1,122 @@
+/* more-menu.css: 더보기 전체 메뉴 패널 */
+.more {
+  position: relative;
+}
+
+.more__toggle {
+  height: 26px;
+  min-height: 26px;
+  padding: 2px 9px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--topbar-text);
+  font-size: 12px;
+}
+
+.more__toggle:hover:not(:disabled),
+.more__toggle.is-open {
+  border-color: var(--topbar-border);
+  background: var(--topbar-hover);
+  color: #fff;
+}
+
+.more__toggle.active {
+  border-color: var(--topbar-active-line);
+  background: var(--topbar-active);
+  color: #fff;
+  font-weight: 600;
+}
+
+.more__toggle::after {
+  content: ' ▾';
+  font-size: 10px;
+}
+
+.more__panel {
+  position: absolute;
+  z-index: 60;
+  top: 31px;
+  left: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(220px, 1fr));
+  gap: 10px;
+  width: min(760px, calc(100vw - 32px));
+  padding: 10px;
+  border: 1px solid #a99d92;
+  border-radius: 4px;
+  background: var(--surface-panel);
+  color: var(--text);
+  box-shadow: 0 10px 28px rgb(38 31 26 / 28%);
+}
+
+.more__group h2 {
+  margin: 0 0 6px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+  color: var(--accent);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+
+.more__group ul {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.more__item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  height: auto;
+  padding: 6px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+}
+
+.more__item:hover:not(:disabled) {
+  border-color: var(--border);
+  background: var(--row-hover);
+}
+
+.more__item.active {
+  border-color: var(--border);
+  background: var(--selection);
+}
+
+.more__mark {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 4px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.more__text {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.more__text strong {
+  font-size: 12px;
+}
+
+.more__text small {
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.35;
+  white-space: normal;
+}

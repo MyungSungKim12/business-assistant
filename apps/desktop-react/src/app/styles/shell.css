@@ -105,44 +105,6 @@ body {
   font-weight: 600;
 }
 
-.topbar details {
-  position: relative;
-}
-
-.topbar details[open] summary {
-  background: var(--topbar-hover);
-}
-
-.more-menu {
-  position: absolute;
-  z-index: 50;
-  top: 29px;
-  left: 0;
-  display: grid;
-  width: 150px;
-  padding: 4px;
-  border: 1px solid #a99d92;
-  border-radius: 3px;
-  background: #fff;
-  color: var(--text);
-  box-shadow: 0 8px 22px #0003;
-}
-
-.more-menu button {
-  height: 27px;
-  padding: 0 8px;
-  border: 0;
-  border-radius: 2px;
-  background: #fff;
-  text-align: left;
-}
-
-.more-menu button:hover,
-.more-menu button.active {
-  background: var(--selection);
-  color: var(--text);
-}
-
 .topbar__actions {
   display: flex;
   align-items: center;
