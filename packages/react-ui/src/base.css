@@ -52,7 +52,8 @@ button,
 input,
 select,
 textarea {
-  font-family: 'SUIT', 'Malgun Gothic', sans-serif;
+  /* 본문은 Windows 시스템 글꼴(맑은 고딕)로 그려 ClearType 힌팅의 선명도를 얻고, 제목·브랜드만 SUIT를 쓴다. */
+  font-family: 'Malgun Gothic', '맑은 고딕', 'SUIT', sans-serif;
   font-size: var(--font-size-body);
   line-height: 1.4;
 }
@@ -60,8 +61,6 @@ textarea {
 body {
   color: var(--text);
   background: var(--surface-app);
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
 }
 
 button,
@@ -177,7 +176,7 @@ select {
 .ba-state { margin: 0; padding: 16px; color: var(--text-muted); text-align: center; }
 .ba-state--error { color: var(--error); }
 .ba-state--error button { margin-left: 8px; }
-.ba-grid-wrap { min-width: 0; overflow: auto; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-panel); }
+.ba-grid-wrap { min-width: 0; min-height: 200px; height: 100%; overflow: auto; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-panel) repeating-linear-gradient(to bottom, transparent 0, transparent 27px, var(--divider) 27px, var(--divider) 28px); background-position: 0 28px; }
 .ba-grid { width: 100%; border-spacing: 0; border-collapse: separate; table-layout: fixed; }
 .ba-grid th { position: sticky; z-index: 1; top: 0; height: 28px; padding: 0; border-bottom: 1px solid var(--border); background: var(--surface-muted); text-align: left; }
 .ba-grid td { height: var(--data-row-height); padding: 5px 9px; overflow: hidden; border-bottom: 1px solid color-mix(in srgb, var(--border) 70%, transparent); text-overflow: ellipsis; white-space: nowrap; }
@@ -203,3 +202,9 @@ select {
 .ba-grid__no { width: 40px; color: var(--text-muted); text-align: center; }
 .ba-grid td.is-active { outline: 1px solid var(--accent); outline-offset: -1px; }
 .ba-grid tbody tr:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+
+h1, h2, h3, .brand-mark, .eyebrow { font-family: 'SUIT', 'Malgun Gothic', sans-serif; }
+.ba-grid tbody tr, .ba-grid thead th { background-color: var(--surface-panel); }
+.ba-grid tbody tr:nth-child(even) { background-color: var(--row-alt); }
+.ba-grid__state-row td { height: 96px; color: var(--text-muted); text-align: center; white-space: normal; }
+.ba-grid__state-row:hover { background: var(--surface-panel) !important; }

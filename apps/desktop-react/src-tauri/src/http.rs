@@ -13,7 +13,11 @@ pub struct NativeHttpResponse { status: u16, body: String, headers: HashMap<Stri
 fn api_url(base: &str, path: &str) -> Result<Url, String> {
     if path.contains("..") || path.starts_with("//") || Url::parse(path).is_ok() { return Err("API 경로가 허용 범위를 벗어났습니다.".into()); }
     let mut url = Url::parse(&format!("{}/", base.trim_end_matches('/'))).map_err(|_| "API 기준 주소가 잘못되었습니다.".to_string())?;
-    url.set_path(&format!("{}/{}", url.path().trim_end_matches('/'), path.trim_start_matches('/')));
+    // 쿼리(?a=b)는 경로에 넣으면 %3F로 인코딩되어 서버가 경로를 찾지 못한다. 경로와 쿼리를 나눠 넣는다.
+    let (route, query) = match path.split_once('?') { Some((route, query)) => (route, Some(query)), None => (path, None) };
+    if route.contains('#') || query.is_some_and(|q| q.contains('#')) { return Err("API 경로가 허용 범위를 벗어났습니다.".into()); }
+    url.set_path(&format!("{}/{}", url.path().trim_end_matches('/'), route.trim_start_matches('/')));
+    url.set_query(query.filter(|q| !q.is_empty()));
     Ok(url)
 }
 
@@ -45,5 +49,12 @@ pub async fn http_request(request: NativeHttpRequest) -> Result<NativeHttpRespon
 mod tests {
     use super::{api_url, signed_url};
     #[test] fn rejects_external_and_parent_api_paths() { assert!(api_url("https://api.example.com/api/v1", "https://evil.test").is_err()); assert!(api_url("https://api.example.com/api/v1", "../admin").is_err()); }
+    #[test] fn keeps_query_strings_out_of_the_path() {
+        let url = api_url("http://127.0.0.1:8000/api/v1", "/organizations/o1/appointments?from_date=2026-10-12&to_date=2026-10-14").unwrap();
+        assert_eq!(url.path(), "/api/v1/organizations/o1/appointments");
+        assert_eq!(url.query(), Some("from_date=2026-10-12&to_date=2026-10-14"));
+        assert_eq!(api_url("http://127.0.0.1:8000/api/v1", "/me").unwrap().query(), None);
+        assert!(api_url("http://127.0.0.1:8000/api/v1", "/me#frag").is_err());
+    }
     #[test] fn allows_only_configured_https_storage_host() { assert!(signed_url("https://store.example.com/object/a", "store.example.com").is_ok()); assert!(signed_url("http://store.example.com/a", "store.example.com").is_err()); assert!(signed_url("https://evil.test/a", "store.example.com").is_err()); }
 }

@@ -89,8 +89,9 @@ export function DataGrid<T>({ rows, columns, rowKey, selectedKey, onSelect, onAc
     if (next) { onSelect?.(next); focusRow(target); }
   };
 
-  if (loading) return <div className="ba-grid-state" role="status">불러오는 중…</div>;
-  if (rows.length === 0) return <div className="ba-grid-state">{emptyText}</div>;
+  // 데이터가 없거나 불러오는 중이어도 표 모양(머리글·크기)을 그대로 유지한다. 안내 문구는 표 안에 보여 준다.
+  const stateText = loading ? '불러오는 중…' : rows.length === 0 ? emptyText : null;
+  const columnCount = columns.length + (numbered ? 1 : 0);
   return (
     <div className={`ba-grid-wrap ${className ?? ''}`}>
       <table className="ba-grid" role="grid" aria-label={ariaLabel}>
@@ -109,7 +110,8 @@ export function DataGrid<T>({ rows, columns, rowKey, selectedKey, onSelect, onAc
           </tr>
         </thead>
         <tbody ref={bodyRef}>
-          {sorted.map((row, index) => {
+          {stateText !== null && <tr className="ba-grid__state-row"><td colSpan={columnCount} role={loading ? 'status' : undefined}>{stateText}</td></tr>}
+          {stateText === null && sorted.map((row, index) => {
             const key = rowKey(row);
             return (
               <tr key={key} role="row" tabIndex={selectedKey === key || (!selectedKey && index === 0) ? 0 : -1} aria-selected={selectedKey === key} onClick={() => onSelect?.(row)} onDoubleClick={() => onActivate?.(row)} onKeyDown={(event) => rowKeydown(event, row, index)}>

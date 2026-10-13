@@ -4,7 +4,7 @@ export interface ModalProps {
   title: string;
   children: ReactNode;
   onClose: () => void;
-  size?: 'sm' | 'md' | 'lg';
+  size?: 'sm' | 'md' | 'lg' | 'xl';
   closeOnBackdrop?: boolean;
   initialFocusRef?: RefObject<HTMLElement | null>;
 }
