@@ -3,6 +3,13 @@ import type { Organization, Session } from '../api/schemas';
 import { useSessionStore } from '../store/session';
 import type { AppServices } from './services';
 
+/** 시도 제한(429)이면 서버가 알려 준 안내 문장을, 아니면 null을 돌려준다. */
+export function rateLimitMessage(reason: unknown): string | null {
+  const failure = reason as { status?: number; message?: string } | null;
+  if (failure?.status !== 429) return null;
+  return failure.message?.trim() || '시도가 너무 많습니다. 잠시 후 다시 시도해 주세요.';
+}
+
 export type SessionPhase = 'restoring' | 'login' | 'organizations' | 'ready' | 'empty';
 
 /** 세션 복원, 로그인, 매장 선택, 로그아웃의 흐름을 한곳에서 관리한다. */
@@ -44,8 +51,8 @@ export function useSessionFlow({ api }: AppServices) {
     setError('');
     try {
       await continueSession(await api.login(email, password));
-    } catch {
-      setError('이메일과 비밀번호를 확인해 주세요.');
+    } catch (reason) {
+      setError(rateLimitMessage(reason) ?? '이메일과 비밀번호를 확인해 주세요.');
     }
   }, [api, continueSession]);
 
@@ -56,8 +63,8 @@ export function useSessionFlow({ api }: AppServices) {
       const result = await api.signUp(email, password, displayName);
       if (result.confirmationRequired) { setNotice('가입 확인 메일을 보냈습니다. 메일의 링크로 확인한 뒤 로그인해 주세요.'); return; }
       await continueSession(result.session);
-    } catch {
-      setError('가입하지 못했습니다. 입력값을 확인해 주세요. 이미 가입한 이메일일 수 있습니다.');
+    } catch (reason) {
+      setError(rateLimitMessage(reason) ?? '가입하지 못했습니다. 입력값을 확인해 주세요. 이미 가입한 이메일일 수 있습니다.');
     }
   }, [api, continueSession]);
 

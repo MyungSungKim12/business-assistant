@@ -1,5 +1,5 @@
 export type HttpMethod = 'GET' | 'POST' | 'PATCH' | 'DELETE' | 'PUT';
-export interface HttpRequest { method: HttpMethod; path: string; headers: Record<string, string>; body?: string }
+export interface HttpRequest { method: HttpMethod; path: string; headers: Record<string, string>; body?: string; /** 'admin'이면 일반 API가 아닌 관리자 API 서버로 보낸다. */ scope?: 'admin' }
 export interface HttpResponse { status: number; body: string; headers: Record<string, string> }
 export type HttpTransport = (request: HttpRequest) => Promise<HttpResponse>;
 

@@ -9,6 +9,8 @@
     "api:dev": "pnpm --filter @business-assistant/api dev",
     "api:test": "pnpm --filter @business-assistant/api test",
     "api:build": "pnpm --filter @business-assistant/api build",
+    "api:start": "pnpm --filter @business-assistant/api start",
+    "api:admin": "pnpm --filter @business-assistant/api admin:dev",
     "react:dev": "pnpm --filter @business-assistant/desktop-react dev",
     "react:test": "pnpm --recursive --if-present test",
     "react:build": "pnpm --filter @business-assistant/desktop-react build"

@@ -5,7 +5,7 @@ use url::Url;
 use crate::config;
 
 #[derive(Deserialize)]
-pub struct NativeHttpRequest { method: String, path: String, headers: HashMap<String, String>, body: Option<String> }
+pub struct NativeHttpRequest { method: String, path: String, headers: HashMap<String, String>, body: Option<String>, #[serde(default)] scope: Option<String> }
 
 #[derive(Serialize)]
 pub struct NativeHttpResponse { status: u16, body: String, headers: HashMap<String, String> }
@@ -34,7 +34,11 @@ pub fn signed_url(raw: &str, allowed_host: &str) -> Result<Url, String> {
 #[tauri::command]
 pub async fn http_request(request: NativeHttpRequest) -> Result<NativeHttpResponse, String> {
     let cfg = config::load()?;
-    let url = api_url(&cfg.api_base, &request.path)?;
+    let base = if request.scope.as_deref() == Some("admin") {
+        if cfg.admin_api_base.is_empty() { return Err("관리자 API 주소가 설정되지 않았습니다. BUSINESS_ASSISTANT_ADMIN_API_BASE를 확인하세요.".into()); }
+        &cfg.admin_api_base
+    } else { &cfg.api_base };
+    let url = api_url(base, &request.path)?;
     let method = Method::from_bytes(request.method.as_bytes()).map_err(|_| "지원하지 않는 HTTP 방식입니다.".to_string())?;
     let client = Client::builder().build().map_err(|e| e.to_string())?;
     let mut builder = client.request(method, url);

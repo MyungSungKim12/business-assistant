@@ -38,9 +38,11 @@ export class ApiClient {
     try {
       const session = await this.refresh(token);
       return { authenticated: true, session };
-    } catch {
+    } catch (error) {
       this.accessToken = null;
-      await this.platform.tokenStore.clear();
+      // 토큰이 거절된 경우(401/403)에만 지운다. 429·5xx·네트워크 오류는 일시적이므로 다음 실행에서 다시 시도한다.
+      const status = error instanceof ApiError ? error.status : 0;
+      if (status === 401 || status === 403) await this.platform.tokenStore.clear();
       return { authenticated: false };
     }
   }
@@ -85,7 +87,7 @@ export class ApiClient {
 
   /** 모듈별 API가 쓰는 공개 호출 도우미. 경로는 /api/v1 이후부터 쓴다. */
   call<T>(method: 'GET'|'POST'|'PUT'|'PATCH'|'DELETE', path: string, schema: z.ZodType<T>, body?: unknown): Promise<T> {
-    return this.authed({ method, path, headers: body === undefined ? {} : { 'Content-Type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) }, schema);
+    return this.authed({ method, path, ...(path.startsWith('/admin/') ? { scope: 'admin' as const } : {}), headers: body === undefined ? {} : { 'Content-Type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) }, schema);
   }
   callVoid(method: 'POST'|'PUT'|'PATCH'|'DELETE', path: string, body?: unknown): Promise<void> {
     return this.authedVoid({ method, path, headers: body === undefined ? {} : { 'Content-Type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
@@ -120,7 +122,9 @@ export class ApiClient {
       return session;
     } catch (error) {
       this.accessToken = null;
-      await this.platform.tokenStore.clear();
+      // 서버가 토큰을 거절한 경우(401/403)에만 저장된 토큰을 지운다. 429·5xx·네트워크 오류는 일시적이다.
+      const status = error instanceof ApiError ? error.status : 0;
+      if (status === 401 || status === 403) await this.platform.tokenStore.clear();
       throw error;
     }
   }
