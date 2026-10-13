@@ -7,7 +7,7 @@ from business_assistant_desktop.session import Session
 
 
 def test_appointment_client_routes_and_scopes_requests():
-    organization, appointment, customer = uuid4(), uuid4(), uuid4()
+    organization, appointment, customer, resource = uuid4(), uuid4(), uuid4(), uuid4()
     calls = []
 
     def serve(request):
@@ -29,6 +29,23 @@ def test_appointment_client_routes_and_scopes_requests():
     assert api.list_appointments(organization, session, customer) == []
     assert api.list_appointment_staff(organization, session) == []
     assert api.list_appointment_services(organization, session) == []
+    assert api.list_appointment_resources(organization, session) == []
+    assert (
+        api.list_appointment_service_resource_requirements(
+            organization, session, appointment
+        )
+        == []
+    )
+    create_operation = uuid4()
+    api.create_appointment_resource(
+        organization, session, "관리실 1", "room", create_operation
+    )
+    api.update_appointment_resource(
+        organization, session, resource, {"is_active": False, "expected_version": 1}
+    )
+    api.replace_appointment_service_resource_requirements(
+        organization, session, appointment, {"requirements": []}
+    )
     api.save_appointment(organization, session, None, {"operation_id": str(uuid4())})
     api.save_appointment(organization, session, appointment, {"expected_version": 1})
     api.transition_appointment(organization, session, appointment, {"target_status": "confirmed"})
@@ -48,6 +65,11 @@ def test_appointment_client_routes_and_scopes_requests():
         ("GET", f"{base}/appointments"),
         ("GET", f"{base}/appointment-staff"),
         ("GET", f"{base}/appointment-services"),
+        ("GET", f"{base}/appointment-resources"),
+        ("GET", f"{base}/appointment-services/{appointment}/resource-requirements"),
+        ("POST", f"{base}/appointment-resources"),
+        ("PUT", f"{base}/appointment-resources/{resource}"),
+        ("PUT", f"{base}/appointment-services/{appointment}/resource-requirements"),
         ("POST", f"{base}/appointments"),
         ("PUT", f"{base}/appointments/{appointment}"),
         ("POST", f"{base}/appointments/{appointment}/transitions"),
@@ -57,5 +79,5 @@ def test_appointment_client_routes_and_scopes_requests():
         ("POST", f"{base}/appointment-staff/{appointment}/time-off/{customer}/cancel"),
     ]
     assert calls[0].url.params["customer_id"] == str(customer)
-    assert json.loads(calls[4].content) == {"expected_version": 1}
+    assert json.loads(calls[9].content) == {"expected_version": 1}
     assert all(call.headers["Authorization"] == "Bearer token" for call in calls)

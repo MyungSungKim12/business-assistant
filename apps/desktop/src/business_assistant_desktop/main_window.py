@@ -678,6 +678,16 @@ class _BoundAppointmentClient:
     def list_appointment_services(self, organization_id: Any) -> Any:
         return self._client.list_appointment_services(organization_id, self._session)
 
+    def list_appointment_resources(self, organization_id: Any) -> Any:
+        return self._client.list_appointment_resources(organization_id, self._session)
+
+    def list_appointment_service_resource_requirements(
+        self, organization_id: Any, service_id: Any
+    ) -> Any:
+        return self._client.list_appointment_service_resource_requirements(
+            organization_id, self._session, service_id
+        )
+
     def create_appointment_staff(self, organization_id: Any, name: str) -> Any:
         return self._client.create_appointment_staff(organization_id, self._session, name)
 
@@ -686,6 +696,27 @@ class _BoundAppointmentClient:
     ) -> Any:
         return self._client.create_appointment_service(
             organization_id, self._session, name, duration, buffer
+        )
+
+    def create_appointment_resource(
+        self, organization_id: Any, name: str, kind: str, operation_id: Any
+    ) -> Any:
+        return self._client.create_appointment_resource(
+            organization_id, self._session, name, kind, operation_id
+        )
+
+    def update_appointment_resource(
+        self, organization_id: Any, resource_id: Any, payload: Any
+    ) -> Any:
+        return self._client.update_appointment_resource(
+            organization_id, self._session, resource_id, payload
+        )
+
+    def replace_appointment_service_resource_requirements(
+        self, organization_id: Any, service_id: Any, payload: Any
+    ) -> Any:
+        return self._client.replace_appointment_service_resource_requirements(
+            organization_id, self._session, service_id, payload
         )
 
     def save_appointment(self, organization_id: Any, appointment_id: Any, payload: Any) -> Any:

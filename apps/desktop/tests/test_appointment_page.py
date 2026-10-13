@@ -10,6 +10,7 @@ CUSTOMER = UUID("22222222-2222-2222-2222-222222222222")
 STAFF = UUID("33333333-3333-3333-3333-333333333333")
 SERVICE = UUID("44444444-4444-4444-4444-444444444444")
 APPOINTMENT = UUID("55555555-5555-5555-5555-555555555555")
+RESOURCE = UUID("66666666-6666-6666-6666-666666666666")
 
 
 class Client:
@@ -37,6 +38,21 @@ class Client:
             }
         ]
 
+    def list_appointment_resources(self, organization_id):
+        return [
+            {
+                "id": str(RESOURCE),
+                "name": "관리실 1",
+                "kind": "room",
+                "is_active": True,
+                "version": 1,
+            }
+        ]
+
+    def list_appointment_service_resource_requirements(self, organization_id, service_id):
+        assert service_id == SERVICE
+        return [{"kind": "room", "quantity": 1}]
+
     def list_appointments(self, organization_id):
         return self.rows
 
@@ -55,6 +71,7 @@ class Client:
                 "status": "reserved",
                 "source": "manual",
                 "version": 1,
+                "resource_ids": payload["resource_ids"],
             }
         ]
 
@@ -70,6 +87,7 @@ def test_appointment_create_and_failed_edit_preserves_input(qtbot):  # type: ign
     qtbot.mouseClick(page.save_button, Qt.MouseButton.LeftButton)
     assert client.saved[0][0] is None
     assert client.saved[0][1]["customer_id"] == str(CUSTOMER)
+    assert client.saved[0][1]["resource_ids"] == [str(RESOURCE)]
     assert page.table.rowCount() == 1
     page.table.selectRow(0)
     page.start.setText("2026-10-08T15:00:00+09:00")
@@ -78,6 +96,12 @@ def test_appointment_create_and_failed_edit_preserves_input(qtbot):  # type: ign
     assert client.saved[-1][0] == APPOINTMENT
     assert client.saved[-1][1]["expected_version"] == 1
     assert page.start.text() == "2026-10-08T15:00:00+09:00"
+    failed_operation = client.saved[-1][1]["operation_id"]
+    qtbot.mouseClick(page.save_button, Qt.MouseButton.LeftButton)
+    assert client.saved[-1][1]["operation_id"] == failed_operation
+    page.start.setText("2026-10-08T15:30:00+09:00")
+    qtbot.mouseClick(page.save_button, Qt.MouseButton.LeftButton)
+    assert client.saved[-1][1]["operation_id"] != failed_operation
 
 
 def test_appointment_requires_offset_and_selection_for_transition(qtbot):  # type: ignore[no-untyped-def]
@@ -151,3 +175,16 @@ def test_manager_opens_selected_staff_availability(qtbot, monkeypatch):  # type:
     member_page = AppointmentPage(client, ORG, False)
     qtbot.addWidget(member_page)
     assert not member_page.availability_button.isEnabled()
+
+
+def test_resource_requirement_is_visible_and_part_of_dirty_draft(qtbot):  # type: ignore[no-untyped-def]
+    client = Client()
+    page = AppointmentPage(client, ORG, True)
+    qtbot.addWidget(page)
+    assert "공간 1개" in page.resource_requirement.text()
+    assert page.resources.count() == 1
+    item = page.resources.item(0)
+    assert item.checkState() == Qt.CheckState.Checked
+    assert page.confirm_leave()
+    item.setCheckState(Qt.CheckState.Unchecked)
+    assert page._draft() != page._baseline

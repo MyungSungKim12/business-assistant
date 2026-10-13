@@ -1,5 +1,17 @@
 # 데스크톱 디자인 기준
 
+## React/Tauri 전환 — 2026-10-12
+
+UI-002 · planned · 담당 Codex. 기존 PySide6 앱을 백업으로 유지하면서 React 19·TypeScript·Vite·Tauri 2 기반의 새 데스크톱 앱으로 단계 전환한다. LCID의 상단 메뉴, 데이터 표, 팝업, 선택 상자, 파일 작업과 제품에 적합한 운영 기능을 참고하되 밝은 베이지 제품 색상과 기존 FastAPI·Supabase 계약을 유지한다.
+
+- 설계: [React/Tauri 데스크톱 전환 설계](../superpowers/specs/2026-10-12-react-tauri-desktop-migration-design.md)
+- 첫 수직 기능: 인증·조직 선택·앱 셸·대시보드·고객 목록/등록/수정/활동/사진·입력 보호·오류 복구.
+- LCID 기능 이식: 고급 DataGrid, 공통 팝업·알림, 엑셀 입출력, 후속 업무·배지, 대시보드 드릴다운, 근태, 설정, 자동 실행·업데이트, 실시간 연결 상태를 제품 기능 ID와 API가 준비된 단계에 도입한다. 통화·통관·광고 기능은 제품 목표에서 제외하거나 외부 연동 계약 전까지 보류한다.
+- 현재 상태: 구조와 인수 기준 및 설계가 승인되었고 [1차 고객관리 수직 기능 구현 계획](../superpowers/plans/2026-10-12-react-tauri-customer-vertical-slice.md)을 작성했다. React/Tauri 소스, 화면, 실행 파일과 실환경 검증은 아직 없으므로 `planned`를 유지한다.
+- 도구 제한: Node 24와 pnpm 11은 확인했으며 현재 PC에는 Rust/Cargo가 없다. Tauri 실행 파일 검증은 Rust가 있는 환경에서 수행한다.
+
+UI-001은 기존 PySide6 디자인의 기록으로 유지한다. UI-002가 기능 동등성과 Windows 인수를 통과하기 전에는 UI-001 코드와 실행 경로를 제거하지 않는다.
+
 UI-001 · in-progress · 2026-09-30 · 담당 Codex
 
 ## 서체·공통 메뉴 후속 — 2026-10-08

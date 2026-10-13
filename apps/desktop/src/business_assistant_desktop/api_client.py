@@ -770,6 +770,20 @@ class ApiClient:
     ) -> list[dict[str, object]]:
         return self._appointment_list(organization_id, session, "appointment-services")
 
+    def list_appointment_resources(
+        self, organization_id: UUID, session: Session
+    ) -> list[dict[str, object]]:
+        return self._appointment_list(organization_id, session, "appointment-resources")
+
+    def list_appointment_service_resource_requirements(
+        self, organization_id: UUID, session: Session, service_id: UUID
+    ) -> list[dict[str, object]]:
+        return self._appointment_list(
+            organization_id,
+            session,
+            f"appointment-services/{service_id}/resource-requirements",
+        )
+
     def create_appointment_staff(
         self, organization_id: UUID, session: Session, name: str
     ) -> dict[str, object]:
@@ -791,6 +805,47 @@ class ApiClient:
             session,
             "appointment-services",
             {"name": name, "duration_minutes": duration_minutes, "buffer_minutes": buffer_minutes},
+        )
+
+    def create_appointment_resource(
+        self, organization_id: UUID, session: Session, name: str, kind: str, operation_id: UUID
+    ) -> dict[str, object]:
+        return self._sale_cart_request(
+            "POST",
+            organization_id,
+            session,
+            "appointment-resources",
+            {"name": name, "kind": kind, "operation_id": str(operation_id)},
+        )
+
+    def update_appointment_resource(
+        self,
+        organization_id: UUID,
+        session: Session,
+        resource_id: UUID,
+        payload: dict[str, object],
+    ) -> dict[str, object]:
+        return self._sale_cart_request(
+            "PUT",
+            organization_id,
+            session,
+            f"appointment-resources/{resource_id}",
+            payload,
+        )
+
+    def replace_appointment_service_resource_requirements(
+        self,
+        organization_id: UUID,
+        session: Session,
+        service_id: UUID,
+        payload: dict[str, object],
+    ) -> dict[str, object]:
+        return self._sale_cart_request(
+            "PUT",
+            organization_id,
+            session,
+            f"appointment-services/{service_id}/resource-requirements",
+            payload,
         )
 
     def save_appointment(

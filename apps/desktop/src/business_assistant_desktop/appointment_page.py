@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID, uuid4
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QComboBox,
     QFormLayout,
@@ -12,6 +12,8 @@ from PySide6.QtWidgets import (
     QInputDialog,
     QLabel,
     QLineEdit,
+    QListWidget,
+    QListWidgetItem,
     QMessageBox,
     QPushButton,
     QTableWidget,
@@ -22,6 +24,7 @@ from PySide6.QtWidgets import (
 )
 
 from business_assistant_desktop.appointment_availability_dialog import StaffAvailabilityDialog
+from business_assistant_desktop.appointment_resource_dialog import AppointmentResourceDialog
 from business_assistant_desktop.task_page import TaskPage
 from business_assistant_desktop.ui_components import polish_table, surface_panel
 
@@ -52,8 +55,10 @@ class AppointmentPage(QWidget):
         self._can_open_treatment = can_open_treatment
         self._rows: list[dict[str, object]] = []
         self._staff_rows: list[dict[str, object]] = []
+        self._resource_rows: list[dict[str, object]] = []
         self._selected: dict[str, object] | None = None
         self._baseline: tuple = ()
+        self._pending_save: tuple[tuple, str] | None = None
 
         self.table = QTableWidget(0, 5)
         self.table.setHorizontalHeaderLabels(["시작", "고객", "서비스", "담당자", "상태"])
@@ -75,6 +80,11 @@ class AppointmentPage(QWidget):
             ("온라인", "online"),
         ]:
             self.source.addItem(label, value)
+        self.resources = QListWidget()
+        self.resources.setMaximumHeight(92)
+        self.resource_requirement = QLabel("필수 자원 없음")
+        self.resource_requirement.setWordWrap(True)
+        self.service.currentIndexChanged.connect(self._service_changed)
 
         form = QFormLayout()
         form.addRow("고객", self.customer)
@@ -82,6 +92,8 @@ class AppointmentPage(QWidget):
         form.addRow("담당자", self.staff)
         form.addRow("시작 시각", self.start)
         form.addRow("접수 경로", self.source)
+        form.addRow("공간·장비", self.resources)
+        form.addRow("필수 기준", self.resource_requirement)
         self.new_button = QPushButton("새 예약")
         self.save_button = QPushButton("예약 저장")
         self.save_button.setProperty("role", "primary")
@@ -95,12 +107,15 @@ class AppointmentPage(QWidget):
         self.staff_button = QPushButton("담당자 추가")
         self.availability_button = QPushButton("근무시간·휴무")
         self.service_button = QPushButton("서비스 추가")
+        self.resource_button = QPushButton("공간·장비 관리")
         self.staff_button.setEnabled(can_manage)
         self.availability_button.setEnabled(False)
         self.service_button.setEnabled(can_manage)
+        self.resource_button.setEnabled(can_manage)
         self.staff_button.clicked.connect(self._add_staff)
         self.availability_button.clicked.connect(self._open_availability)
         self.service_button.clicked.connect(self._add_service)
+        self.resource_button.clicked.connect(self._open_resources)
         toolbar = QHBoxLayout()
         for button in (
             self.new_button,
@@ -109,6 +124,7 @@ class AppointmentPage(QWidget):
             self.staff_button,
             self.availability_button,
             self.service_button,
+            self.resource_button,
         ):
             toolbar.addWidget(button)
         toolbar.addStretch()
@@ -150,7 +166,15 @@ class AppointmentPage(QWidget):
             self.service.currentData(),
             self.start.text(),
             self.source.currentData(),
+            tuple(self._selected_resource_ids()),
         )
+
+    def _selected_resource_ids(self) -> list[str]:
+        return [
+            str(self.resources.item(index).data(Qt.ItemDataRole.UserRole))
+            for index in range(self.resources.count())
+            if self.resources.item(index).checkState() == Qt.CheckState.Checked
+        ]
 
     def confirm_leave(self) -> bool:
         if self._draft() == self._baseline:
@@ -164,8 +188,20 @@ class AppointmentPage(QWidget):
         )
         if answer != QMessageBox.StandardButton.Discard:
             return False
+        self._pending_save = None
         self._baseline = self._draft()
         return True
+
+    def _save_operation_id(self) -> str:
+        selected = self._selected
+        fingerprint = (
+            str(selected.get("id")) if selected else None,
+            selected.get("version") if selected else None,
+            self._draft(),
+        )
+        if self._pending_save is None or self._pending_save[0] != fingerprint:
+            self._pending_save = (fingerprint, str(uuid4()))
+        return self._pending_save[1]
 
     @staticmethod
     def _choose(box: QComboBox, value: object) -> None:
@@ -180,9 +216,12 @@ class AppointmentPage(QWidget):
             customers = self._client.list_customers(self._organization_id)
             staff = self._client.list_appointment_staff(self._organization_id)
             services = self._client.list_appointment_services(self._organization_id)
+            resources = self._client.list_appointment_resources(self._organization_id)
             rows = self._client.list_appointments(self._organization_id)
         except Exception:
-            self.error.setText("예약을 불러오지 못했습니다. 서버와 034 SQL 적용 상태를 확인하세요.")
+            self.error.setText(
+                "예약을 불러오지 못했습니다. 서버와 034·037·038 SQL 적용 상태를 확인하세요."
+            )
             return
         self.customer.clear()
         for item in customers:
@@ -194,6 +233,7 @@ class AppointmentPage(QWidget):
             if item.get("is_active"):
                 self.staff.addItem(str(item["name"]), str(item["id"]))
         self.availability_button.setEnabled(self._can_manage and self.staff.count() > 0)
+        self.service.blockSignals(True)
         self.service.clear()
         for item in services:
             if item.get("is_active"):
@@ -202,6 +242,10 @@ class AppointmentPage(QWidget):
                     f" + 여유 {item['buffer_minutes']}분",
                     str(item["id"]),
                 )
+        self.service.blockSignals(False)
+        self._resource_rows = list(resources)
+        self._populate_resources()
+        self._load_resource_requirements()
         self._rows = sorted(rows, key=lambda item: str(item.get("start_at", "")))
         customer_names = {str(item.id): item.name for item in customers}
         staff_names = {str(item["id"]): str(item["name"]) for item in staff}
@@ -248,6 +292,19 @@ class AppointmentPage(QWidget):
         self._choose(self.service, appointment["service_id"])
         self.start.setText(str(appointment["start_at"]))
         self._choose(self.source, appointment["source"])
+        resource_values = appointment.get("resource_ids", [])
+        selected_resources = (
+            {str(value) for value in resource_values}
+            if isinstance(resource_values, list)
+            else set()
+        )
+        for resource_index in range(self.resources.count()):
+            item = self.resources.item(resource_index)
+            item.setCheckState(
+                Qt.CheckState.Checked
+                if str(item.data(Qt.ItemDataRole.UserRole)) in selected_resources
+                else Qt.CheckState.Unchecked
+            )
         self._baseline = self._draft()
 
     def _new(self) -> None:
@@ -255,6 +312,7 @@ class AppointmentPage(QWidget):
             return
         self.table.clearSelection()
         self._selected = None
+        self._pending_save = None
         self.treatment_button.setEnabled(False)
         self.start.clear()
         self._baseline = self._draft()
@@ -291,7 +349,8 @@ class AppointmentPage(QWidget):
             "service_id": self.service.currentData(),
             "start_at": time.isoformat(),
             "source": self.source.currentData(),
-            "operation_id": str(uuid4()),
+            "operation_id": self._save_operation_id(),
+            "resource_ids": self._selected_resource_ids(),
         }
         if selected is not None:
             payload["expected_version"] = selected["version"]
@@ -304,6 +363,7 @@ class AppointmentPage(QWidget):
                 "예약 저장에 실패했습니다. 충돌 또는 오래된 예약일 수 있습니다. 입력은 유지됩니다."
             )
             return
+        self._pending_save = None
         self._baseline = self._draft()
         self.refresh()
 
@@ -359,6 +419,60 @@ class AppointmentPage(QWidget):
         StaffAvailabilityDialog(
             self._client, self._organization_id, selected, self
         ).exec()
+
+    def _populate_resources(self) -> None:
+        self.resources.blockSignals(True)
+        self.resources.clear()
+        for resource in self._resource_rows:
+            if not resource.get("is_active"):
+                continue
+            kind = "공간" if resource.get("kind") == "room" else "장비"
+            item = QListWidgetItem(f"{kind} · {resource.get('name', '')}")
+            item.setData(Qt.ItemDataRole.UserRole, str(resource["id"]))
+            item.setData(Qt.ItemDataRole.UserRole + 1, str(resource["kind"]))
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            item.setCheckState(Qt.CheckState.Unchecked)
+            self.resources.addItem(item)
+        self.resources.blockSignals(False)
+
+    def _service_changed(self) -> None:
+        self._load_resource_requirements()
+
+    def _load_resource_requirements(self) -> None:
+        service_id = self.service.currentData()
+        if service_id is None:
+            self.resource_requirement.setText("필수 자원 없음")
+            return
+        try:
+            requirements = self._client.list_appointment_service_resource_requirements(
+                self._organization_id, UUID(str(service_id))
+            )
+        except Exception:
+            self.resource_requirement.setText("필수 자원 기준을 불러오지 못했습니다")
+            return
+        quantities = {str(item["kind"]): int(item["quantity"]) for item in requirements}
+        labels = []
+        if quantities.get("room"):
+            labels.append(f"공간 {quantities['room']}개")
+        if quantities.get("equipment"):
+            labels.append(f"장비 {quantities['equipment']}개")
+        self.resource_requirement.setText(" · ".join(labels) if labels else "필수 자원 없음")
+        self.resources.blockSignals(True)
+        remaining = dict(quantities)
+        for index in range(self.resources.count()):
+            item = self.resources.item(index)
+            kind = str(item.data(Qt.ItemDataRole.UserRole + 1))
+            should_check = remaining.get(kind, 0) > 0
+            item.setCheckState(Qt.CheckState.Checked if should_check else Qt.CheckState.Unchecked)
+            if should_check:
+                remaining[kind] -= 1
+        self.resources.blockSignals(False)
+
+    def _open_resources(self) -> None:
+        if not self._can_manage or not self.confirm_leave():
+            return
+        AppointmentResourceDialog(self._client, self._organization_id, self).exec()
+        self.refresh()
 
     def _add_service(self) -> None:
         if not self.confirm_leave():

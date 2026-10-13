@@ -13,9 +13,12 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from business_assistant_server.adapters.supabase_appointments import (
     Appointment,
+    AppointmentResource,
     AppointmentService,
+    AppointmentServiceResourceRequirement,
     AppointmentStaff,
     AppointmentTimeOff,
+    ServiceResourceRequirementsResult,
     StaffAvailability,
     SupabaseAppointmentRepository,
     WorkingHoursResult,
@@ -127,6 +130,55 @@ class ServiceRequest(BaseModel):
         return value.strip()
 
 
+class ResourceRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: Annotated[str, Field(min_length=1, max_length=120)]
+    kind: Literal["room", "equipment"]
+    operation_id: UUID
+
+    @field_validator("name")
+    @classmethod
+    def strip_name(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Resource name is required")
+        return value.strip()
+
+
+class ResourceUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: Annotated[str, Field(min_length=1, max_length=120)]
+    is_active: bool
+    expected_version: Annotated[int, Field(ge=1, strict=True)]
+    operation_id: UUID
+
+    @field_validator("name")
+    @classmethod
+    def strip_name(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Resource name is required")
+        return value.strip()
+
+
+class ResourceRequirement(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["room", "equipment"]
+    quantity: Annotated[int, Field(ge=1, le=10, strict=True)]
+
+
+class ResourceRequirementsRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    requirements: Annotated[list[ResourceRequirement], Field(max_length=2)]
+    expected_version: Annotated[int, Field(ge=1, strict=True)]
+    operation_id: UUID
+
+    @field_validator("requirements")
+    @classmethod
+    def unique_kinds(cls, value: list[ResourceRequirement]) -> list[ResourceRequirement]:
+        if len({item.kind for item in value}) != len(value):
+            raise ValueError("Resource requirement kinds must be unique")
+        return value
+
+
 class WorkingHourRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     weekday: Annotated[int, Field(ge=1, le=7, strict=True)]
@@ -193,12 +245,20 @@ class SaveRequest(BaseModel):
     source: Literal["manual", "phone", "walk_in", "online"] = "manual"
     expected_version: Annotated[int, Field(ge=1, strict=True)] | None = None
     operation_id: UUID
+    resource_ids: Annotated[list[UUID], Field(max_length=20)] = Field(default_factory=list)
 
     @field_validator("start_at")
     @classmethod
     def aware_start(cls, value: datetime) -> datetime:
         if value.tzinfo is None or value.utcoffset() is None:
             raise ValueError("Appointment time requires an offset")
+        return value
+
+    @field_validator("resource_ids")
+    @classmethod
+    def unique_resources(cls, value: list[UUID]) -> list[UUID]:
+        if len(set(value)) != len(value):
+            raise ValueError("Appointment resources must be unique")
         return value
 
 
@@ -325,6 +385,79 @@ async def create_service(
     with safe_errors():
         return await repository.create_service(
             organization_id, request.name, request.duration_minutes, request.buffer_minutes
+        )
+
+
+@router.get(
+    "/appointment-resources",
+    response_model=list[AppointmentResource],
+    dependencies=[Depends(require_member)],
+)
+async def list_resources(
+    organization_id: UUID, repository: Repository
+) -> list[AppointmentResource]:
+    with safe_errors():
+        return await repository.list_resources(organization_id)
+
+
+@router.post(
+    "/appointment-resources",
+    response_model=AppointmentResource,
+    status_code=201,
+    dependencies=[Depends(require_manager)],
+)
+async def create_resource(
+    organization_id: UUID, request: ResourceRequest, repository: Repository
+) -> AppointmentResource:
+    with safe_errors():
+        return await repository.create_resource(
+            organization_id, request.name, request.kind, request.operation_id
+        )
+
+
+@router.put(
+    "/appointment-resources/{resource_id}",
+    response_model=AppointmentResource,
+    dependencies=[Depends(require_manager)],
+)
+async def update_resource(
+    organization_id: UUID,
+    resource_id: UUID,
+    request: ResourceUpdateRequest,
+    repository: Repository,
+) -> AppointmentResource:
+    with safe_errors():
+        return await repository.update_resource(
+            organization_id, resource_id, request.model_dump(mode="json")
+        )
+
+
+@router.get(
+    "/appointment-services/{service_id}/resource-requirements",
+    response_model=list[ResourceRequirement],
+    dependencies=[Depends(require_member)],
+)
+async def list_service_resource_requirements(
+    organization_id: UUID, service_id: UUID, repository: Repository
+) -> list[AppointmentServiceResourceRequirement]:
+    with safe_errors():
+        return await repository.list_service_resource_requirements(organization_id, service_id)
+
+
+@router.put(
+    "/appointment-services/{service_id}/resource-requirements",
+    response_model=ServiceResourceRequirementsResult,
+    dependencies=[Depends(require_manager)],
+)
+async def replace_service_resource_requirements(
+    organization_id: UUID,
+    service_id: UUID,
+    request: ResourceRequirementsRequest,
+    repository: Repository,
+) -> ServiceResourceRequirementsResult:
+    with safe_errors():
+        return await repository.replace_service_resource_requirements(
+            organization_id, service_id, request.model_dump(mode="json")
         )
 
 
