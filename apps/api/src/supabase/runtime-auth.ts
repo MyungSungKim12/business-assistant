@@ -32,6 +32,15 @@ export function createRuntimeAuth(config:ServerConfig):AuthGateway {
       const result = await client().auth.signInWithPassword({email,password});
       check(result.error); return session(result.data.session);
     },
+    async signUp(email,password,displayName) {
+      const result = await client().auth.signUp({email,password,options:{data:{display_name:displayName}}});
+      check(result.error);
+      if (!result.data.session) {
+        if (!result.data.user) throw new ApiFailure(503,'Authentication unavailable');
+        return null;
+      }
+      return session(result.data.session);
+    },
     async refresh(refresh_token) {
       const result = await client().auth.refreshSession({refresh_token});
       check(result.error); return session(result.data.session);

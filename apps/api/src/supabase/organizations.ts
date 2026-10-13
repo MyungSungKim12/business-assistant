@@ -55,6 +55,11 @@ export function createOrganizationGateway(config: ServerConfig, fetcher: typeof 
     return {organization_id:id,plan_code:row.plans.code,status:row.status,ends_at:row.ends_at,features:row.plans.plan_features.map(item=>item.feature_code).sort()};
   }
   return {
+    async create(token:string,name:string,slug:string) {
+      const rows = parse(z.array(organization),await request(token,'/rest/v1/rpc/create_organization',{},{target_name:name,target_slug:slug}));
+      if (!rows[0]) throw new ApiFailure(503,'Organization service unavailable');
+      return {...rows[0],role:'owner' as const};
+    },
     async list(token:string) {
       const user = await identify(token);
       const rows = parse(z.array(membership),await request(token,'/rest/v1/memberships',{select:'role,organizations(id,name,slug)',user_id:'eq.'+user}));
@@ -80,7 +85,7 @@ export function createOrganizationGateway(config: ServerConfig, fetcher: typeof 
       const role = await requireMembership(token,id);
       if (write && role !== 'owner' && role !== 'admin') throw new ApiFailure(403,'Organization management permission required');
       const sub = await activeSubscription(token,id);
-      if (!sub?.features.includes(feature)) throw new ApiFailure(403,'Feature not available');
+      if (!sub?.features.includes(feature)) throw new ApiFailure(403,'Feature not available',{feature_code:feature});
       return role;
     },
   };

@@ -1,0 +1,73 @@
+/* 예약 공간·장비, 근무시간·휴무, 자원 선택 */
+.resource-manager,
+.staff-availability {
+  display: grid;
+  gap: 8px;
+}
+
+.resource-manager h3,
+.staff-availability h3 {
+  margin: 4px 0;
+  font-size: 12px;
+}
+
+.resource-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.resource-requirements {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  align-items: end;
+  gap: 6px;
+}
+
+.resource-requirements h3 {
+  grid-column: 1/-1;
+}
+
+.hours-grid {
+  display: grid;
+  gap: 3px;
+  margin-bottom: 6px;
+}
+
+.hours-row {
+  display: grid;
+  grid-template-columns: 60px 110px 110px;
+  align-items: center;
+  gap: 6px;
+}
+
+.leave-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 400;
+}
+
+.resource-picker {
+  margin: 0;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+}
+
+.resource-picker ul {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}

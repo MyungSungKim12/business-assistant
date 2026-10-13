@@ -33,6 +33,7 @@ function fixture() {
     list: async () => [customer],
     create: async (_token: string, _organizationId: string, input: { name: string }) => ({ ...customer, ...input }),
     update: async (_token: string, _organizationId: string, id: string, patch: { name?: string }) => id === customerId ? { ...customer, ...patch } : null,
+    remove: async (_token: string, _organizationId: string, id: string) => id === customerId,
   };
   return { app: createApp({ organizations: access as never, customers }), accessCalls };
 }
@@ -66,6 +67,18 @@ describe('customer HTTP flow', () => {
     expect(result.statusCode).toBe(200);
     expect(result.json()).toMatchObject({ id: customerId, organization_id: organizationId, name: '김수정' });
     expect(accessCalls).toEqual([true]);
+    await app.close();
+  });
+
+  it('deletes a customer only for managers and reports a missing customer', async () => {
+    const { app, accessCalls } = fixture();
+    const base = `/api/v1/organizations/${organizationId}/customers`;
+    const deleted = await app.inject({ method: 'DELETE', url: `${base}/${customerId}`, headers: { authorization: 'Bearer access' } });
+    expect(deleted.statusCode).toBe(204);
+    expect(accessCalls.at(-1)).toBe(true);
+    const missing = await app.inject({ method: 'DELETE', url: `${base}/b9cc39fd-8e8c-4df8-a623-1f23a3a936bd`, headers: { authorization: 'Bearer access' } });
+    expect(missing.statusCode).toBe(404);
+    expect((await app.inject({ method: 'DELETE', url: `${base}/not-a-uuid`, headers: { authorization: 'Bearer access' } })).statusCode).toBe(422);
     await app.close();
   });
 });

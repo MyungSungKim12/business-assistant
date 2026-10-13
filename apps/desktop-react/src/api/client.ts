@@ -2,7 +2,7 @@ import type { z } from 'zod';
 
 import type { Platform } from '../platform/types';
 import { ApiError, apiError } from './errors';
-import { appointmentSchema, appointmentsSchema, appointmentStaffListSchema, appointmentServiceListSchema, operationRecordSchema, operationRecordsSchema, customerActivitySchema, customerActivitiesSchema, customerPhotoSchema, customerPhotosSchema, customerSchema, customersSchema, entitlementSchema, organizationsSchema, sessionSchema, signedPhotoSchema, taskSchema, tasksSchema, type Customer, type CustomerActivity, type CustomerPhoto, type Entitlement, type Organization, type Session, type SignedPhoto, type Task, type Appointment, type AppointmentStaff, type AppointmentService, type OperationRecord } from './schemas';
+import { organizationSchema, signUpResultSchema, appointmentSchema, appointmentsSchema, appointmentStaffListSchema, appointmentServiceListSchema, operationRecordSchema, operationRecordsSchema, customerActivitySchema, customerActivitiesSchema, customerPhotoSchema, customerPhotosSchema, customerSchema, customersSchema, entitlementSchema, organizationsSchema, sessionSchema, signedPhotoSchema, taskSchema, tasksSchema, type Customer, type CustomerActivity, type CustomerPhoto, type Entitlement, type Organization, type Session, type SignedPhoto, type Task, type Appointment, type AppointmentStaff, type AppointmentService, type OperationRecord } from './schemas';
 import type { HttpRequest, HttpResponse } from './transport';
 
 export class ApiClient {
@@ -16,6 +16,20 @@ export class ApiClient {
     const session = this.parse(sessionSchema, response);
     await this.applySession(session);
     return session;
+  }
+
+  /** 회원가입. 이메일 확인이 필요하면 세션 없이 { confirmationRequired: true }를 돌려준다. */
+  async signUp(email: string, password: string, displayName: string): Promise<{ confirmationRequired: true } | { confirmationRequired: false; session: Session }> {
+    const response = await this.send({ method: 'POST', path: '/auth/signup', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password, display_name: displayName }) });
+    const parsed = this.parse(signUpResultSchema, response);
+    if (parsed.email_confirmation_required) return { confirmationRequired: true };
+    const session = sessionSchema.parse(parsed);
+    await this.applySession(session);
+    return { confirmationRequired: false, session };
+  }
+
+  createOrganization(name: string, slug: string): Promise<Organization> {
+    return this.call('POST', '/organizations', organizationSchema, { name, slug });
   }
 
   async restoreSession(): Promise<{ authenticated: false } | { authenticated: true; session: Session }> {
@@ -63,7 +77,7 @@ export class ApiClient {
   listAppointments(organizationId:string):Promise<Appointment[]>{return this.authed({method:'GET',path:`/organizations/${organizationId}/appointments`,headers:{}},appointmentsSchema)}
   listAppointmentStaff(o:string):Promise<AppointmentStaff[]>{return this.authed({method:'GET',path:`/organizations/${o}/appointment-staff`,headers:{}},appointmentStaffListSchema)}
   listAppointmentServices(o:string):Promise<AppointmentService[]>{return this.authed({method:'GET',path:`/organizations/${o}/appointment-services`,headers:{}},appointmentServiceListSchema)}
-  createAppointment(o:string,input:{customer_id:string;staff_id:string;service_id:string;start_at:string;source:string;expected_version:null;operation_id:string}):Promise<Appointment>{return this.authed({method:'POST',path:`/organizations/${o}/appointments`,headers:{'Content-Type':'application/json'},body:JSON.stringify(input)},appointmentSchema)}
+  createAppointment(o:string,input:{customer_id:string;staff_id:string;service_id:string;start_at:string;source:string;expected_version:null;operation_id:string;resource_ids?:string[]}):Promise<Appointment>{return this.authed({method:'POST',path:`/organizations/${o}/appointments`,headers:{'Content-Type':'application/json'},body:JSON.stringify(input)},appointmentSchema)}
   transitionAppointment(o:string,id:string,input:{target_status:string;reason:string|null;expected_version:number;operation_id:string}):Promise<Appointment>{return this.authed({method:'POST',path:`/organizations/${o}/appointments/${id}/transitions`,headers:{'Content-Type':'application/json'},body:JSON.stringify(input)},appointmentSchema)}
   listOperationRecords(o:string,module:'treatments'|'sales'|'memberships'|'inventory'|'staff'|'finance'|'documents'|'files'):Promise<OperationRecord[]>{return this.authed({method:'GET',path:`/organizations/${o}/operations/${module}`,headers:{}},operationRecordsSchema)}
   createOperationRecord(o:string,module:'treatments'|'finance'|'documents',input:Record<string,unknown>):Promise<OperationRecord>{return this.authed({method:'POST',path:`/organizations/${o}/operations/${module}`,headers:{'Content-Type':'application/json'},body:JSON.stringify(input)},operationRecordSchema)}

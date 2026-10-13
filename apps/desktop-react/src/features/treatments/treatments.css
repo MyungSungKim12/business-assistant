@@ -1,0 +1,210 @@
+/* 시술관리 화면: 기존 토큰과 .data-surface / .editor-panel 패널 스타일을 재사용한다. */
+.treatment-page {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  height: 100%;
+  min-height: 0;
+}
+
+.treatment-lifecycle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--surface-panel);
+}
+
+.treatment-lifecycle__state {
+  font-weight: 600;
+}
+
+.treatment-layout {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 190px minmax(300px, 1fr) minmax(320px, 0.9fr);
+  gap: 6px;
+}
+
+.treatment-customers,
+.treatment-history,
+.treatment-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  padding: 6px;
+  overflow: auto;
+}
+
+.treatment-customers h2,
+.treatment-history h2,
+.treatment-editor h2 {
+  margin: 0;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+
+.treatment-customers ul,
+.treatment-inbox ul {
+  flex: 1;
+  min-height: 80px;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.treatment-customers li button,
+.treatment-inbox li button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 100%;
+  padding: 4px 6px;
+  border: 0;
+  border-bottom: 1px solid var(--divider);
+  border-radius: 0;
+  background: transparent;
+  text-align: left;
+}
+
+.treatment-customers li button small {
+  color: var(--text-muted);
+}
+
+.treatment-customers li button:hover,
+.treatment-inbox li button:hover {
+  background: var(--row-hover);
+}
+
+.treatment-customers li button[aria-pressed='true'],
+.treatment-inbox li button[aria-pressed='true'] {
+  background: var(--selection);
+}
+
+.treatment-cautions {
+  padding: 5px 6px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--surface-muted);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.treatment-filters {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+}
+
+.treatment-filters input[type='text'],
+.treatment-filters > input:not([type]) {
+  grid-column: 1 / -1;
+}
+
+.treatment-editor form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px 7px;
+}
+
+.treatment-editor form .full {
+  grid-column: 1 / -1;
+}
+
+.treatment-editor form textarea {
+  min-height: 120px;
+}
+
+.treatment-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.treatment-dialog textarea {
+  min-height: 80px;
+}
+
+.treatment-dialog__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px 7px;
+}
+
+.treatment-dialog__grid .full {
+  grid-column: 1 / -1;
+}
+
+.treatment-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.treatment-draft {
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--surface-muted);
+}
+
+.treatment-draft dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 2px 10px;
+  margin: 4px 0;
+}
+
+.treatment-draft dl > div {
+  display: contents;
+}
+
+.treatment-draft dt {
+  color: var(--text-muted);
+}
+
+.treatment-draft dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.treatment-events {
+  max-height: 360px;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.treatment-events li {
+  padding: 5px 2px;
+  border-bottom: 1px solid var(--divider);
+  overflow-wrap: anywhere;
+}
+
+.treatment-inbox {
+  display: grid;
+  grid-template-columns: minmax(200px, 1fr) minmax(260px, 2fr);
+  gap: 8px;
+}
+
+@media (max-width: 1100px) {
+  .treatment-layout {
+    grid-template-columns: 170px minmax(240px, 1fr);
+    overflow: auto;
+  }
+
+  .treatment-editor {
+    grid-column: 1 / -1;
+  }
+}

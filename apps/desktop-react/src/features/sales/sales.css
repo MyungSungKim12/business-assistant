@@ -1,0 +1,48 @@
+/* sales.css — 방문 장바구니·수납·정산·재무 화면 (12px 밀도) */
+.sales-page,
+.finance-page,
+.membership-page { font-size: 12px; }
+
+.sales-layout {
+  display: grid;
+  grid-template-columns: minmax(200px, .8fr) minmax(360px, 1.8fr) minmax(240px, .9fr);
+  gap: 6px;
+  align-items: start;
+}
+.sales-col { padding: 6px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.sales-col h3 { margin: 6px 0 2px; font-size: 12px; }
+.sales-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; max-height: 220px; overflow: auto; }
+.sales-list li { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.sales-list li > span { display: flex; flex-direction: column; }
+.sales-list button { width: 100%; text-align: left; display: flex; flex-direction: column; }
+.sales-list li > button[aria-label] { width: auto; flex-direction: row; }
+.sales-list small { color: var(--text-muted); }
+.sales-list .is-active { border-color: var(--accent); background: #eef4ff; }
+.sales-link { border: 0; background: none; padding: 0; color: var(--accent); text-align: left; cursor: pointer; }
+.data-surface tr.is-selected { background: #eef4ff; }
+.sales-total { font-weight: 700; font-size: 13px; }
+
+.sales-form { display: flex; flex-direction: column; gap: 4px; }
+.sales-form label { display: flex; flex-direction: column; gap: 2px; }
+.sales-form__row { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 4px; }
+.sales-check { flex-direction: row !important; align-items: center; gap: 4px !important; }
+.sales-actions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.sales-actions--stack { flex-direction: column; align-items: stretch; }
+.sales-pending { margin: 4px 0; padding: 5px 8px; border: 1px solid #e0c98a; background: #fff8e6; }
+.sales-balance { font-weight: 600; margin: 4px 0; }
+.sales-tabs { display: flex; gap: 2px; margin: 4px 0; border-bottom: 1px solid var(--border); }
+.sales-tabs button { border-bottom-color: transparent; border-radius: 3px 3px 0 0; }
+.sales-tabs button.is-active { border-color: var(--accent); border-bottom-color: var(--surface-panel, #fff); font-weight: 600; }
+.sales-history { margin-top: 6px; max-height: 180px; overflow: auto; }
+
+.finance-layout { display: grid; grid-template-columns: minmax(420px, 1.6fr) minmax(260px, .8fr); gap: 6px; align-items: start; }
+.finance-layout .editor-panel, .settlement-panel .editor-panel { padding: 6px; display: flex; flex-direction: column; gap: 4px; }
+.finance-layout .editor-panel label, .settlement-panel .editor-panel label { display: flex; flex-direction: column; gap: 2px; }
+.sales-filters { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 6px; margin: 4px 0; }
+.sales-filters label { display: flex; flex-direction: column; gap: 2px; }
+.sales-cards { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0; }
+.sales-card { padding: 5px 10px; border: 1px solid var(--border); border-radius: 3px; background: var(--surface-panel, #fff); font-weight: 600; }
+
+@media (max-width: 1100px) {
+  .sales-layout, .finance-layout { grid-template-columns: 1fr; }
+}

@@ -15,6 +15,12 @@ export function registerOrganizationRoutes(app: FastifyInstance, gateway?: Organ
     if (!gateway) throw new ApiFailure(503,'Organization service unavailable');
     return {token,gateway};
   }
+  app.post('/api/v1/organizations', async (request, reply) => {
+    const {token,gateway} = service(request);
+    const body = z.object({name:z.string().trim().min(1).max(200),slug:z.string().trim().toLowerCase().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).max(100)}).strict().safeParse(request.body);
+    if (!body.success) throw new ApiFailure(422,'Invalid organization input');
+    return reply.code(201).send(await gateway.create(token,body.data.name,body.data.slug));
+  });
   app.get('/api/v1/organizations', async request => {
     const {token,gateway} = service(request);
     return gateway.list(token);

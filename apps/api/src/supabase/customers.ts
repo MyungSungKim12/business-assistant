@@ -11,7 +11,7 @@ const customer = z.object({
 export type CustomerInput = z.infer<typeof customer>;
 
 export function createCustomerGateway(config: ServerConfig, fetcher: typeof fetch = fetch) {
-  async function request(token: string, method: 'GET' | 'POST' | 'PATCH', params: Record<string, string> = {}, body?: unknown): Promise<unknown> {
+  async function request(token: string, method: 'GET' | 'POST' | 'PATCH' | 'DELETE', params: Record<string, string> = {}, body?: unknown): Promise<unknown> {
     const url = new URL('/rest/v1/customers', config.APP_SUPABASE_URL);
     url.search = new URLSearchParams(params).toString();
     try {
@@ -44,6 +44,11 @@ export function createCustomerGateway(config: ServerConfig, fetcher: typeof fetc
       if (!result[0]) throw new ApiFailure(503, 'Customer service unavailable');
       return result[0];
     },
+    /** 고객 행을 영구 삭제한다. 삭제된 행이 없으면 false. 화면은 삭제 대신 보관(status=archived)을 쓴다. */
+    async remove(token: string, organizationId: string, customerId: string) {
+      const result = rows(await request(token, 'DELETE', { id: `eq.${customerId}`, organization_id: `eq.${organizationId}`, select }));
+      return result.length > 0;
+    },
     async update(token: string, organizationId: string, customerId: string, patch: Partial<Omit<CustomerInput, 'id' | 'organization_id'>>) {
       const result = rows(await request(token, 'PATCH', { id: `eq.${customerId}`, organization_id: `eq.${organizationId}` }, patch));
       return result[0] ?? null;
@@ -55,4 +60,5 @@ export type CustomerGateway = {
   list(token: string, organizationId: string): Promise<CustomerInput[]>;
   create(token: string, organizationId: string, input: Omit<CustomerInput, 'id' | 'organization_id'>): Promise<CustomerInput>;
   update(token: string, organizationId: string, customerId: string, patch: Partial<Omit<CustomerInput, 'id' | 'organization_id'>>): Promise<CustomerInput | null>;
+  remove(token: string, organizationId: string, customerId: string): Promise<boolean>;
 };

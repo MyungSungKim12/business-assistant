@@ -20,6 +20,8 @@ export interface Platform {
   downloadBinary(url: string): Promise<Uint8Array>;
   subscribeConnection(listener: (state: ConnectionState) => void): () => void;
   pickImages?: () => Promise<BinarySource[]>;
+  /** 사진이 아닌 일반 파일 자료를 고른다(파일 자료 화면). */
+  pickFiles?: () => Promise<BinarySource[]>;
   autostart?: { isEnabled(): Promise<boolean>; setEnabled(enabled: boolean): Promise<void> };
   checkUpdate?: () => Promise<{ version: string; notes?: string } | null>;
   notifyReady?: () => Promise<void>;

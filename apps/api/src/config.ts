@@ -5,6 +5,7 @@ const ServerConfigSchema = z.object({
   APP_SUPABASE_PUBLISHABLE_KEY: z.string().min(1),
   APP_SUPABASE_SERVICE_KEY: z.string().min(1).optional(),
   APP_FILE_BUCKET: z.string().min(1).default('business-files'),
+  APP_PLATFORM_ADMIN_USER_IDS: z.string().optional(),
   APP_API_PORT: z.coerce.number().int().positive().default(8000),
 });
 

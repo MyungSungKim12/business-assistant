@@ -13,7 +13,7 @@ use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 /// 자동 시작 때 넘기는 인자. 이 인자로 시작하면 창을 최소화한 채 연다.
 const START_MINIMIZED_ARG: &str = "--minimized";
 /// 프런트엔드가 준비 신호를 못 보낼 때를 대비한 최대 대기 시간
-const SHOW_FALLBACK: Duration = Duration::from_secs(5);
+const SHOW_FALLBACK: Duration = Duration::from_secs(12);
 
 fn show_window(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
@@ -81,7 +81,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             config::get_config, http::http_request, credentials::token_load, credentials::token_save,
-            credentials::token_clear, files::pick_images, files::upload_binary, files::download_binary,
+            credentials::token_clear, files::pick_images, files::pick_files, files::upload_binary, files::download_binary,
             autostart_is_enabled, autostart_set, show_main, app_exit, logfile::log_write
         ])
         .run(tauri::generate_context!())

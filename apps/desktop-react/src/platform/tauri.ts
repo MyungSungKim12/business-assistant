@@ -54,6 +54,10 @@ export async function createTauriPlatform(invoke: TauriInvoke = tauriInvoke as T
       const selected = await call<Array<{ name: string; contentType: string; size: number; path: string }> | null>('pick_images');
       return (selected ?? []).map((file) => ({ kind: 'path' as const, ...file }));
     },
+    async pickFiles() {
+      const selected = await call<Array<{ name: string; contentType: string; size: number; path: string }> | null>('pick_files');
+      return (selected ?? []).map((file) => ({ kind: 'path' as const, ...file }));
+    },
     autostart: {
       isEnabled: () => call<boolean>('autostart_is_enabled'),
       setEnabled: (enabled) => call<void>('autostart_set', { enabled }),

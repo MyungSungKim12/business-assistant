@@ -7,6 +7,8 @@ export interface AppApi {
   logout(): Promise<void>;
   listOrganizations(): Promise<Organization[]>;
   getEntitlements(organizationId: string): Promise<Entitlement>;
+  signUp?(email: string, password: string, displayName: string): Promise<{ confirmationRequired: true } | { confirmationRequired: false; session: Session }>;
+  createOrganization?(name: string, slug: string): Promise<Organization>;
 }
 
 export interface AppServices { api: AppApi; platform: Platform }

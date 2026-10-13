@@ -1,0 +1,29 @@
+/* documents.css: 문서·동의·서식·파일 화면 */
+.doc-page { display: grid; gap: 6px; align-content: start; }
+.doc-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); margin-bottom: 4px; }
+.doc-tabs button { border-bottom-color: transparent; border-radius: 0; background: transparent; }
+.doc-tabs button[aria-selected='true'] { border-bottom: 2px solid var(--accent); color: var(--accent); font-weight: 700; }
+.doc-split { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 6px; min-height: 0; }
+.doc-side, .doc-editor { align-content: start; }
+.doc-editor { display: grid; gap: 6px; }
+.doc-form, .doc-history, .doc-consent, .doc-issue { display: grid; gap: 6px; }
+.doc-row { display: flex; gap: 6px; align-items: flex-end; }
+.doc-grow { flex: 1; }
+.doc-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.doc-spacer { flex: 1; }
+.doc-check { display: flex; align-items: center; gap: 6px; font-weight: 500; }
+.doc-check input { width: auto; }
+.doc-state { margin: 0; font-weight: 600; }
+.doc-badge { margin-left: 6px; padding: 0 5px; border: 1px solid var(--border); font-size: 10px; color: var(--text-muted); }
+.doc-link { border: 0; background: transparent; padding: 0; color: var(--accent); text-align: left; }
+.doc-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 2px; }
+.doc-list button { width: 100%; text-align: left; }
+.doc-list button[aria-pressed='true'] { border-color: var(--accent); background: var(--selection); }
+.doc-body { margin: 0; padding: 8px; max-height: 240px; overflow: auto; white-space: pre-wrap; word-break: break-word; border: 1px solid var(--border); background: var(--surface-muted); font: inherit; }
+.doc-preview-info { margin: 0; white-space: pre-line; }
+.doc-pad { display: grid; gap: 4px; }
+.doc-pad__canvas { width: 100%; height: 160px; border: 1px solid var(--border); background: #fff; touch-action: none; cursor: crosshair; }
+.doc-pad__canvas[data-disabled] { cursor: not-allowed; opacity: .75; }
+.doc-pad__actions { display: flex; gap: 6px; }
+.doc-issue-picker { max-width: 480px; }
+@media (max-width: 900px) { .doc-split { grid-template-columns: minmax(0, 1fr); } }

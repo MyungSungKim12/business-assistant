@@ -1,0 +1,21 @@
+/* 운영 수지 미리보기 */
+.management-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.management-warning {
+  margin: 4px 0;
+  padding: 5px 8px;
+  border: 1px solid #e6cf9a;
+  background: #fff8e6;
+  color: #6b5200;
+}
+
+.management-summary {
+  margin: 4px 0;
+  font-weight: 600;
+}

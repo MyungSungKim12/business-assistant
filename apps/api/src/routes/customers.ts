@@ -46,4 +46,12 @@ export function registerCustomerRoutes(app: FastifyInstance, organizations: Pick
     if (!saved) throw new ApiFailure(404, 'Customer not found');
     return saved;
   });
+  app.delete('/api/v1/organizations/:organizationId/customers/:customerId', async (request, reply) => {
+    const current = service(request);
+    const params = z.object({ customerId: z.uuid() }).safeParse(request.params);
+    if (!params.success) throw new ApiFailure(422, 'Invalid customer ID');
+    await current.organizations.requireAccess(current.token, current.organizationId, 'crm.basic', true);
+    if (!(await current.customers.remove(current.token, current.organizationId, params.data.customerId))) throw new ApiFailure(404, 'Customer not found');
+    return reply.code(204).send();
+  });
 }
