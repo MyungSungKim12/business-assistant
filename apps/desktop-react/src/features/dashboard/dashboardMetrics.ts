@@ -8,7 +8,7 @@ const KST_OFFSET_MS = 9 * 3_600_000;
 const DAY_MS = 86_400_000;
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
 
-/** 재고 부족 기준(서버가 상품별 기준을 주지 않으므로 화면 공통 기준을 쓴다). */
+/** 재고 부족 기본 기준. 상품에 안전재고(low_stock_threshold)가 없으면(null·구버전 서버) 이 값을 쓴다. */
 export const LOW_STOCK_THRESHOLD = 5;
 export const VISIT_WINDOW_DAYS = 7;
 export const WALLET_WINDOW_DAYS = 30;
@@ -203,6 +203,11 @@ export function compactWon(value: number): string {
 
 /* ---------- 미수금·재고·회원권 ---------- */
 
+/** 조직 전체 미수 요약(서버 합계)을 카드용 값으로 바꾼다. 해석할 수 없는 금액은 0으로 본다. */
+export function receivableSummary(summary: { total_due: string; receivable_count: number }): { total: bigint; count: number } {
+  return { total: cents(summary.total_due) ?? 0n, count: summary.receivable_count };
+}
+
 export function receivableTotal(rows: Array<{ due_amount: string }>): { total: bigint; count: number } {
   let total = 0n;
   let count = 0;
@@ -216,11 +221,21 @@ export function receivableTotal(rows: Array<{ due_amount: string }>): { total: b
   return { total, count };
 }
 
-export interface StockItem { id: string; name: string; kind: string; is_active: boolean; stock_quantity: number; unit_name?: string }
+export interface StockItem {
+  id: string; name: string; kind: string; is_active: boolean; stock_quantity: number; unit_name?: string;
+  /** 상품별 안전재고. 없으면(null·미지정) 기본 기준을 쓴다. */
+  low_stock_threshold?: number | null;
+}
 
-export function lowStock(products: StockItem[], threshold = LOW_STOCK_THRESHOLD): StockItem[] {
+/** 상품의 재고 부족 기준: 상품별 값이 있으면 그 값, 없으면 fallback(기본 5). */
+export function stockThreshold(product: Pick<StockItem, 'low_stock_threshold'>, fallback = LOW_STOCK_THRESHOLD): number {
+  return product.low_stock_threshold ?? fallback;
+}
+
+/** 활성 상품 중 재고가 상품별 기준(없으면 fallback) 이하인 것을 적은 순으로. */
+export function lowStock(products: StockItem[], fallback = LOW_STOCK_THRESHOLD): StockItem[] {
   return products
-    .filter((product) => product.is_active && product.kind === 'product' && product.stock_quantity <= threshold)
+    .filter((product) => product.is_active && product.kind === 'product' && product.stock_quantity <= stockThreshold(product, fallback))
     .sort((a, b) => a.stock_quantity - b.stock_quantity || a.name.localeCompare(b.name, 'ko'));
 }
 

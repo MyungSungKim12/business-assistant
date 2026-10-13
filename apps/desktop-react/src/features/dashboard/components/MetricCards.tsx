@@ -1,6 +1,6 @@
 import type { MenuId } from '../../shell/TopBar';
 import {
-  LOW_STOCK_THRESHOLD, VISIT_WINDOW_DAYS, activeCustomers, bucketTasks, groupDigits, lowStock, monthTotals, receivableTotal,
+  LOW_STOCK_THRESHOLD, VISIT_WINDOW_DAYS, activeCustomers, bucketTasks, groupDigits, lowStock, monthTotals, receivableSummary,
   summarizeAppointments, appointmentsOnDay, upcomingVisits, wonOf,
 } from '../dashboardMetrics';
 import type { DashboardSources } from '../useDashboardData';
@@ -39,13 +39,13 @@ export function MetricCards({ sources, today, onNavigate }: { sources: Dashboard
       const totals = monthTotals(transactions, today);
       return { value: wonOf(totals.net), sub: `수입 ${wonOf(totals.income)} · 지출 ${wonOf(totals.expense)}`, tone: totals.net < 0n ? 'bad' : 'normal' };
     }),
-    build(sources.settlement, '오늘 미수금', 'sales', 'receivable', (settlement) => {
-      const due = receivableTotal(settlement.receivables);
+    build(sources.receivables, '전체 미수금', 'sales', 'receivable', (receivables) => {
+      const due = receivableSummary(receivables);
       return { value: wonOf(due.total), sub: `미수 ${due.count}건`, tone: due.count > 0 ? 'warn' : 'normal' };
     }),
     build(sources.products, '재고 부족 상품', 'inventory', 'stock', (products) => {
       const low = lowStock(products);
-      return { value: `${groupDigits(low.length)}개`, sub: `재고 ${LOW_STOCK_THRESHOLD}개 이하`, tone: low.length > 0 ? 'warn' : 'normal' };
+      return { value: `${groupDigits(low.length)}개`, sub: `상품별 안전재고 이하 (기본 ${LOW_STOCK_THRESHOLD}개)`, tone: low.length > 0 ? 'warn' : 'normal' };
     }),
   ];
   return (

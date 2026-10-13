@@ -1,3 +1,4 @@
+import { usePrivacy } from '../../../lib/privacy';
 import type { Customer } from '../../../api/schemas';
 import type { MenuId } from '../../shell/TopBar';
 import { VISIT_WINDOW_DAYS, recentVisitors, shortDate, upcomingVisits } from '../dashboardMetrics';
@@ -12,10 +13,11 @@ interface Props {
 }
 
 function CustomerRow({ customer, date, onOpen }: { customer: Customer; date: string; onOpen: () => void }) {
+  const privacy = usePrivacy();
   return (
     <li>
       <button type="button" className="dash-row dash-row--customer" onClick={onOpen}>
-        <span className="dash-row__main"><strong>{customer.name}</strong><small>{customer.phone || '연락처 없음'}</small></span>
+        <span className="dash-row__main"><strong>{customer.name}</strong><small>{privacy.phone(customer.phone) || '연락처 없음'}</small></span>
         <small className="dash-row__date">{shortDate(date.slice(0, 10))}</small>
       </button>
     </li>

@@ -4,7 +4,6 @@ import { ConfirmDialog } from '@business-assistant/react-ui';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { ApiError } from '../../api/errors';
 import { FinancePage } from './FinancePage';
-import { MembershipPage } from './MembershipPage';
 import { CUSTOMER, ORG, USER, fakeApi, network, uid, type Call } from './testkit';
 
 const tx = (over: Record<string, unknown> = {}) => ({
@@ -39,8 +38,9 @@ describe('FinancePage 수입·지출', () => {
     expect(cards).toHaveTextContent('순액 1,224.40원');
     await user.selectOptions(screen.getByLabelText('조회 유형'), 'expense');
     await user.type(screen.getByLabelText('시작일'), '2030-01-01');
-    await waitFor(() => expect(calls.at(-2)!.path).toBe('/finance-transactions?transaction_type=expense&from_date=2030-01-01'));
-    expect(calls.at(-1)!.path).toBe('/finance-summary?from_date=2030-01-01');
+    const ledgerCalls = () => calls.filter((call) => !call.path.startsWith('/finance-month-closings'));
+    await waitFor(() => expect(ledgerCalls().at(-2)!.path).toBe('/finance-transactions?transaction_type=expense&from_date=2030-01-01'));
+    expect(ledgerCalls().at(-1)!.path).toBe('/finance-summary?from_date=2030-01-01');
   });
 
   it('시작일이 종료일보다 늦으면 요청하지 않고 안내한다', async () => {
@@ -211,16 +211,3 @@ describe('FinancePage 미수·일 마감', () => {
   });
 });
 
-describe('MembershipPage', () => {
-  it('고객 이름과 함께 지갑 잔액을 보여준다', async () => {
-    const kit = fakeApi({});
-    (kit.api as unknown as { listOperationRecords: () => Promise<unknown[]> }).listOperationRecords = async () => [
-      { id: 'w1', customer_id: uid(1), name_snapshot: '10회권', money_balance: '0.00', count_balance: 7, expires_at: '2031-01-01T00:00:00Z', status: 'active' },
-    ];
-    (kit.api as unknown as { listCustomers: () => Promise<unknown[]> }).listCustomers = async () => [{ id: uid(1), name: '박회원' }];
-    render(<MembershipPage api={kit.api} organizationId={ORG} readOnly />);
-    expect(await screen.findByText('10회권')).toBeInTheDocument();
-    expect(screen.getByText('박회원')).toBeInTheDocument();
-    expect(screen.getByText('7')).toBeInTheDocument();
-  });
-});

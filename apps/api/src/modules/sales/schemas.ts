@@ -174,3 +174,73 @@ export const financeSummaryFilter = z.object({ from_date: z.iso.date().optional(
   .refine((value) => !value.from_date || !value.to_date || value.from_date <= value.to_date);
 export const visitsFilter = z.object({ customer_id: uuid.optional(), status: z.enum(['open', 'checkout_ready', 'closed', 'canceled']).optional() });
 export const settlementDate = z.object({ business_date: z.iso.date() });
+
+/* ---------- SALE-10: 수납·환불·반품 내역 검색 ---------- */
+
+export const salePaymentRow = z.object({
+  id: z.uuid(), kind: z.enum(['payment', 'refund', 'return']), method: z.enum(['cash', 'card', 'transfer', 'wallet']),
+  amount: won('gt0'), occurred_at: z.string(), reference: z.string(), reason: z.string(),
+  cart_id: z.uuid(), visit_id: z.uuid(), customer_id: z.uuid(), customer_name: z.string(),
+});
+export type SalePaymentRow = z.infer<typeof salePaymentRow>;
+
+const salePaymentCursor = z.object({ occurred_at: z.string(), id: z.uuid() });
+export const salePaymentsResult = z.object({
+  rows: z.array(salePaymentRow),
+  next_cursor: salePaymentCursor.nullable(),
+  totals: z.object({
+    payment_total: won(), refund_total: won(), net_total: won('any'),
+    payment_count: z.number().int().min(0), refund_count: z.number().int().min(0), row_count: z.number().int().min(0),
+  }),
+});
+export type SalePaymentsResult = z.infer<typeof salePaymentsResult>;
+
+/** 커서는 직전 페이지의 마지막 행(시각·id)을 base64url JSON으로 감싼 불투명 문자열이다. */
+export function encodeSaleCursor(cursor: { occurred_at: string; id: string }): string {
+  return Buffer.from(JSON.stringify({ at: cursor.occurred_at, id: cursor.id }), 'utf-8').toString('base64url');
+}
+export function decodeSaleCursor(value: string): { occurred_at: string; id: string } | null {
+  try {
+    const parsed = z.object({ at: z.string().refine((text) => !Number.isNaN(Date.parse(text))), id: z.uuid() }).safeParse(JSON.parse(Buffer.from(value, 'base64url').toString('utf-8')));
+    return parsed.success ? { occurred_at: parsed.data.at, id: parsed.data.id } : null;
+  } catch { return null; }
+}
+
+const optionalWhole = wholeMoney.optional();
+export const salePaymentsFilter = z.object({
+  from_date: z.iso.date().optional(), to_date: z.iso.date().optional(), customer_id: uuid.optional(),
+  method: z.enum(['cash', 'card', 'transfer', 'wallet']).optional(), kind: z.enum(['payment', 'refund', 'return']).optional(),
+  min_amount: optionalWhole, max_amount: optionalWhole, sort: z.enum(['newest', 'oldest']).default('newest'),
+  limit: z.coerce.number().int().min(1).max(200).default(50), cursor: z.string().min(1).max(500).optional(),
+}).refine((value) => !value.from_date || !value.to_date || value.from_date <= value.to_date)
+  .refine((value) => value.min_amount === undefined || value.max_amount === undefined || BigInt(value.min_amount) <= BigInt(value.max_amount))
+  .refine((value) => value.cursor === undefined || decodeSaleCursor(value.cursor) !== null);
+
+/* ---------- HOME-02: 전체 미수금 ---------- */
+
+export const receivablesSummary = z.object({
+  receivable_count: z.number().int().min(0), total_due: wholeWon,
+  items: z.array(z.object({
+    cart_id: z.uuid(), visit_id: z.uuid(), customer_id: z.uuid(), customer_name: z.string(), opened_at: z.string(),
+    total_amount: wholeWon, received_amount: wholeWon, refunded_amount: wholeWon, due_amount: wholeWon,
+  })),
+});
+export type ReceivablesSummary = z.infer<typeof receivablesSummary>;
+export const receivablesFilter = z.object({ limit: z.coerce.number().int().min(1).max(50).default(5) });
+
+/* ---------- FIN-10: 재무 월 마감 ---------- */
+
+/** "2030-01" 또는 "2030-01-01"을 달의 첫날로 맞춘다. 첫날이 아닌 날짜는 거부한다. */
+export const monthKey = z.string().transform((value, ctx) => {
+  const match = /^(\d{4})-(\d{2})(?:-01)?$/.exec(value.trim());
+  const month = match ? Number(match[2]) : 0;
+  if (!match || month < 1 || month > 12) { ctx.addIssue({ code: 'custom', message: 'Invalid month' }); return z.NEVER; }
+  return `${match[1]}-${match[2]}-01`;
+});
+export const financeMonthClosing = z.object({
+  id: z.uuid(), organization_id: z.uuid(), month: z.iso.date(), note: z.string(), closed_by: z.uuid(), closed_at: z.string(),
+  reopened_by: z.uuid().nullable(), reopened_at: z.string().nullable(), reopen_reason: z.string().nullable(),
+});
+export type FinanceMonthClosing = z.infer<typeof financeMonthClosing>;
+export const closeMonthRequest = z.object({ month: monthKey, note: reasonText }).strict();
+export const reopenMonthRequest = z.object({ reason: reasonText }).strict();

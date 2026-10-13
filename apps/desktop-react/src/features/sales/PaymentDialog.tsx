@@ -3,7 +3,7 @@ import { Modal, Select, confirm, notify } from '@business-assistant/react-ui';
 import type { ApiClient } from '../../api/client';
 import { salesApi, type PaymentPart } from './api';
 import { cents, formatWon, kst, methodLabel, newOperationId, wonInteger } from './format';
-import { useRecoverableOperation, recoveryKey } from './recovery';
+import { useRecoverableOperation, useRecoveryKey } from './recovery';
 import type { CartBundle, CartLine, VisitPayments } from './types';
 
 type Tab = 'record' | 'refund' | 'return';
@@ -52,8 +52,9 @@ function RecoveryNotice({ op, onRetry, canManage, label }: { op: { pending: unkn
 }
 
 function RecordForm({ api, organizationId, visitId, snapshot, canManage, onChanged, onDirty }: FormProps) {
+  const recovery = useRecoveryKey('payment', organizationId, visitId);
   const op = useRecoverableOperation<RecordPayload, VisitPayments>({
-    key: recoveryKey('payment', organizationId, visitId), validate: validateRecord,
+    ...recovery, validate: validateRecord,
     execute: (payload) => salesApi.recordPayment(api, organizationId, visitId, payload),
     onSuccess: (result) => { setValues(blank()); setConfirmed(false); setError(''); onChanged(result); notify.success('수납을 기록했습니다.'); },
     rejected: '수납이 거절되었습니다. 입력은 유지했습니다. 권한·금액·확인 번호를 확인하고 내역을 새로고침하세요.',
@@ -108,8 +109,9 @@ function RecordForm({ api, organizationId, visitId, snapshot, canManage, onChang
 }
 
 function RefundForm({ api, organizationId, visitId, snapshot, canManage, onChanged, onDirty }: FormProps) {
+  const recovery = useRecoveryKey('refund', organizationId, visitId);
   const op = useRecoverableOperation<RefundPayload, VisitPayments>({
-    key: recoveryKey('refund', organizationId, visitId), validate: validateRefund,
+    ...recovery, validate: validateRefund,
     execute: (payload) => salesApi.refund(api, organizationId, visitId, payload),
     onSuccess: (result) => { setAmount(''); setReason(''); setConfirmed(false); setError(''); onChanged(result); notify.success('환불 반대 원장을 기록했습니다.'); },
     rejected: '환불 기록이 거절되었습니다. 최신 내역을 다시 확인하세요.',
@@ -168,8 +170,9 @@ export function returnLimit(line: CartLine, quantity: number): bigint {
 }
 
 function ReturnForm({ api, organizationId, visitId, snapshot, canManage, onChanged, onDirty, cart }: FormProps & { cart: CartBundle | null }) {
+  const recovery = useRecoveryKey('return', organizationId, visitId);
   const op = useRecoverableOperation<ReturnPayload, VisitPayments>({
-    key: recoveryKey('return', organizationId, visitId), validate: validateReturn,
+    ...recovery, validate: validateReturn,
     execute: (payload) => salesApi.productReturn(api, organizationId, visitId, payload),
     onSuccess: (result) => { setAmount(''); setReason(''); setConfirmed(false); setError(''); onChanged(result); notify.success('반품과 환불을 기록했습니다.'); },
     rejected: '반품 기록이 거절되었습니다. 최신 내역을 다시 확인하세요.',

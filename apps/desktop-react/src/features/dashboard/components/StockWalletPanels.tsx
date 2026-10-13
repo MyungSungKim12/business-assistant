@@ -1,6 +1,6 @@
 import type { Customer } from '../../../api/schemas';
 import type { MenuId } from '../../shell/TopBar';
-import { LOW_STOCK_THRESHOLD, WALLET_WINDOW_DAYS, expiringWallets, groupDigits, lowStock, shortDate, type StockItem, type WalletRow } from '../dashboardMetrics';
+import { LOW_STOCK_THRESHOLD, WALLET_WINDOW_DAYS, expiringWallets, groupDigits, lowStock, shortDate, stockThreshold, type StockItem, type WalletRow } from '../dashboardMetrics';
 import type { Source } from '../sourceState';
 import { Panel } from './Panel';
 
@@ -13,7 +13,7 @@ export function LowStockPanel({ state, onRetry, onNavigate }: { state: Source<St
       state={state}
       onRetry={onRetry}
       isEmpty={(products) => lowStock(products).length === 0}
-      emptyText={`재고 ${LOW_STOCK_THRESHOLD}개 이하인 상품이 없습니다.`}
+      emptyText={`재고가 안전재고(기본 ${LOW_STOCK_THRESHOLD}개) 이하인 상품이 없습니다.`}
       headerExtra={(products) => products && <span className="dash-count">{lowStock(products).length}개</span>}
     >
       {(products) => (
@@ -21,7 +21,7 @@ export function LowStockPanel({ state, onRetry, onNavigate }: { state: Source<St
           {lowStock(products).map((product) => (
             <li key={product.id}>
               <button type="button" className="dash-row dash-row--stock" onClick={open}>
-                <span className="dash-row__main"><strong>{product.name}</strong></span>
+                <span className="dash-row__main"><strong>{product.name}</strong><small>안전재고 {groupDigits(stockThreshold(product))}{product.unit_name || '개'}{product.low_stock_threshold == null ? ' (기본)' : ''}</small></span>
                 <span className={`dash-badge ${product.stock_quantity <= 0 ? 'dash-badge--canceled' : 'dash-badge--confirmed'}`}>
                   {groupDigits(product.stock_quantity)}{product.unit_name || '개'}
                 </span>

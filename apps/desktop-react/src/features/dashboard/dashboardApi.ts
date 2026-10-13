@@ -1,15 +1,21 @@
 import { z } from 'zod';
 import type { ApiClient } from '../../api/client';
 import { appointmentsSchema, type Appointment, type AppointmentService, type AppointmentStaff } from '../../api/schemas';
-import { productsSchema } from '../catalog/schemas';
 import { salesApi } from '../sales/api';
-import type { Settlement, Transaction } from '../sales/types';
+import type { Receivables, Transaction } from '../sales/types';
 import { addDaysKey, monthStartKey, type StockItem, type WalletRow } from './dashboardMetrics';
 
 /** 대시보드가 쓰는 ApiClient의 부분. 테스트에서는 이 메서드만 가진 가짜를 넣는다. */
 export type DashboardApi = Pick<ApiClient, 'call' | 'listCustomers' | 'listTasks' | 'listAppointmentStaff' | 'listAppointmentServices' | 'listOperationRecords'>;
 
 const org = (organizationId: string) => `/organizations/${organizationId}`;
+
+/** 재고 부족 계산에 필요한 필드만 읽는다. low_stock_threshold는 서버가 아직 주지 않으면(구버전) 비어 있어도 된다. */
+const stockItemSchema = z.object({
+  id: z.string(), name: z.string(), kind: z.string(), is_active: z.boolean(), stock_quantity: z.number(), unit_name: z.string().optional(),
+  low_stock_threshold: z.number().int().min(0).nullable().optional(),
+});
+const stockItemsSchema = z.array(stockItemSchema);
 
 const walletRowSchema = z.object({
   id: z.string(),
@@ -46,13 +52,13 @@ export const dashboardApi = {
     return salesApi.transactions(api as ApiClient, organizationId, { from: chartStart < monthStart ? chartStart : monthStart, to: today });
   },
 
-  settlement(api: DashboardApi, organizationId: string, today: string): Promise<Settlement> {
-    return salesApi.settlement(api as ApiClient, organizationId, today);
+  /** 조직 전체 미수금(오늘 미수가 아니다). 건수·합계와 오래된 미수 상위 몇 건을 받는다. */
+  receivables(api: DashboardApi, organizationId: string): Promise<Receivables> {
+    return salesApi.receivables(api as ApiClient, organizationId, 5);
   },
 
   async products(api: DashboardApi, organizationId: string): Promise<StockItem[]> {
-    const rows = await api.call('GET', `${org(organizationId)}/catalog-products`, productsSchema);
-    return rows;
+    return api.call('GET', `${org(organizationId)}/catalog-products`, stockItemsSchema);
   },
 
   async wallets(api: DashboardApi, organizationId: string): Promise<WalletRow[]> {

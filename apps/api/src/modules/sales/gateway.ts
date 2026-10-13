@@ -3,26 +3,34 @@ import type { ServerConfig } from '../../config.js';
 import { ApiFailure } from '../../errors.js';
 import { assertOrganization, createRest } from '../../supabase/rest.js';
 import { createSalesHttp } from './http.js';
+import { withMonthClosedErrors } from './monthClosed.js';
 import { formatFixed, toCents } from './money.js';
 import {
-  customerVisit, financeRow, saleCartBundle, saleDailySettlement, treatmentSaleDraft, visitPayments,
-  type CustomerVisit, type FinanceTransaction, type SaleCartBundle, type SaleDailySettlement, type TreatmentSaleDraft, type VisitPayments,
+  customerVisit, decodeSaleCursor, encodeSaleCursor, financeMonthClosing, financeRow, receivablesSummary, saleCartBundle, saleDailySettlement, salePaymentsResult, treatmentSaleDraft, visitPayments,
+  type CustomerVisit, type FinanceMonthClosing, type FinanceTransaction, type ReceivablesSummary, type SaleCartBundle, type SaleDailySettlement, type SalePaymentsResult, type TreatmentSaleDraft, type VisitPayments,
 } from './schemas.js';
 
 const FINANCE_UNAVAILABLE = 'Finance service unavailable';
 const financeColumns = 'id,organization_id,created_by,transaction_type,amount,transaction_date,category,counterparty,memo,is_archived,created_at,updated_at';
 const draftColumns = 'id,organization_id,customer_id,treatment_id,status,description,amount,source_snapshot,created_by,created_at';
+const closingColumns = 'id,organization_id,month,note,closed_by,closed_at,reopened_by,reopened_at,reopen_reason';
 const PAGE = 200;
 
 export type FinanceInput = {
   transaction_type: 'income' | 'expense'; amount: string; transaction_date: string; category: string;
   counterparty: string; memo: string; is_archived: boolean;
 };
+export type SalePaymentsQuery = {
+  from_date?: string; to_date?: string; customer_id?: string; method?: string; kind?: string; min_amount?: string; max_amount?: string;
+  sort: 'newest' | 'oldest'; limit: number; cursor?: string;
+};
 export type FinanceSummary = { income_total: string; expense_total: string; net_total: string; transaction_count: number };
 
 export function createSalesGateway(config: ServerConfig, fetcher: typeof fetch = fetch) {
-  const http = createSalesHttp(config, fetcher);
-  const finance = createRest(config, fetcher, FINANCE_UNAVAILABLE);
+  // 월 마감 오류(042)는 두 호출기 모두에서 한국어 안내가 있는 409로 바뀐다.
+  const guarded = withMonthClosedErrors(fetcher);
+  const http = createSalesHttp(config, guarded);
+  const finance = createRest(config, guarded, FINANCE_UNAVAILABLE);
   const unavailable = () => new ApiFailure(503, http.unavailable);
 
   function parse<T>(schema: z.ZodType<T>, payload: unknown): T {
@@ -172,6 +180,41 @@ export function createSalesGateway(config: ServerConfig, fetcher: typeof fetch =
         count += page.length;
       }
       return { income_total: formatFixed(income), expense_total: formatFixed(expense), net_total: formatFixed(income - expense), transaction_count: count };
+    },
+
+    /* ---------- 수납·환불 내역 검색(SALE-10) ---------- */
+    async listSalePayments(token: string, organizationId: string, filter: SalePaymentsQuery): Promise<{ rows: SalePaymentsResult['rows']; next_cursor: string | null; totals: SalePaymentsResult['totals'] }> {
+      const cursor = filter.cursor ? decodeSaleCursor(filter.cursor) : null;
+      const result = parse(salePaymentsResult, await http.rpc(token, 'list_sale_payments', {
+        p_organization_id: organizationId, p_from_date: filter.from_date ?? null, p_to_date: filter.to_date ?? null, p_customer_id: filter.customer_id ?? null,
+        p_method: filter.method ?? null, p_kind: filter.kind ?? null, p_min_amount: filter.min_amount ?? null, p_max_amount: filter.max_amount ?? null,
+        p_sort: filter.sort, p_limit: filter.limit, p_cursor_at: cursor?.occurred_at ?? null, p_cursor_id: cursor?.id ?? null,
+      }));
+      return { rows: result.rows, next_cursor: result.next_cursor ? encodeSaleCursor(result.next_cursor) : null, totals: result.totals };
+    },
+
+    /* ---------- 전체 미수금(HOME-02) ---------- */
+    async getReceivables(token: string, organizationId: string, limit: number): Promise<ReceivablesSummary> {
+      const result = parse(receivablesSummary, await http.rpc(token, 'get_receivables_summary', { p_organization_id: organizationId, p_limit: limit }));
+      if (result.items.length > limit) throw unavailable();
+      return result;
+    },
+
+    /* ---------- 재무 월 마감(FIN-10) ---------- */
+    async listMonthClosings(token: string, organizationId: string): Promise<FinanceMonthClosing[]> {
+      const rows = await pages(token, 'finance_month_closings', { select: closingColumns, organization_id: `eq.${organizationId}`, order: 'month.desc,closed_at.desc,id.desc' }, financeMonthClosing);
+      if (rows.some((row) => row.organization_id !== organizationId)) throw unavailable();
+      return rows;
+    },
+    async closeMonth(token: string, organizationId: string, month: string, note: string): Promise<FinanceMonthClosing> {
+      const row = parse(financeMonthClosing, await http.rpc(token, 'close_finance_month', { p_organization_id: organizationId, p_month: month, p_note: note }));
+      if (row.organization_id !== organizationId || row.month !== month) throw unavailable();
+      return row;
+    },
+    async reopenMonth(token: string, organizationId: string, month: string, reason: string): Promise<FinanceMonthClosing> {
+      const row = parse(financeMonthClosing, await http.rpc(token, 'reopen_finance_month', { p_organization_id: organizationId, p_month: month, p_reason: reason }));
+      if (row.organization_id !== organizationId || row.month !== month) throw unavailable();
+      return row;
     },
   };
 }

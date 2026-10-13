@@ -1,3 +1,4 @@
+import { usePrivacy } from '../../lib/privacy';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Select, confirm } from '@business-assistant/react-ui';
 import type { ApiClient } from '../../api/client';
@@ -7,7 +8,8 @@ import { errorMessage, formatWon, isDefinitive, kst, moneyText, newOperationId, 
 import { ExportButton } from '../../lib/io/ExportButton';
 import { visitExportColumns } from '../../lib/io/domainColumns';
 import { PaymentDialog } from './PaymentDialog';
-import type { CartBundle, CartLine, CatalogItem, SaleDraft, Visit } from './types';
+import { PaymentHistoryPanel } from './PaymentHistoryPanel';
+import type { CartBundle, CartLine, CatalogItem, SaleDraft, SalePayment, Visit } from './types';
 import './sales.css';
 
 type DiscountForm = { kind: 'none' | 'amount' | 'percent'; value: string; reason: string; confirmed: boolean };
@@ -27,7 +29,35 @@ const discountLabel = (cart: CartBundle['cart']) => {
   return `할인 ${formatWon(cart.discount_total)} · ${detail}${cart.discount_reason ? ` · ${cart.discount_reason}` : ''}`;
 };
 
+type OpenRequest = { customerId: string; visitId: string; nonce: number };
+type SalesView = 'cart' | 'history';
+
+/** 매출 화면: 장바구니와 매출 내역(수납·환불 검색) 두 탭. 장바구니는 탭을 옮겨도 입력 상태를 유지하려고 숨기기만 한다. */
 export function SalesPage({ api, organizationId, readOnly }: { api: ApiClient; organizationId: string; readOnly: boolean }) {
+  const [view, setView] = useState<SalesView>('cart');
+  const [historyOpened, setHistoryOpened] = useState(false);
+  const [openRequest, setOpenRequest] = useState<OpenRequest | null>(null);
+  const choose = (next: SalesView) => { if (next === 'history') setHistoryOpened(true); setView(next); };
+  const openVisit = (row: SalePayment) => { setOpenRequest({ customerId: row.customer_id, visitId: row.visit_id, nonce: (openRequest?.nonce ?? 0) + 1 }); setView('cart'); };
+  return <div className="sales-shell">
+    <div className="sales-tabs" role="tablist" aria-label="매출 화면">
+      <button type="button" role="tab" aria-selected={view === 'cart'} className={view === 'cart' ? 'is-active' : ''} onClick={() => choose('cart')}>장바구니</button>
+      <button type="button" role="tab" aria-selected={view === 'history'} className={view === 'history' ? 'is-active' : ''} onClick={() => choose('history')}>매출 내역</button>
+    </div>
+    <div className={`sales-shell__pane${view === 'cart' ? '' : ' is-hidden'}`} role="tabpanel" aria-label="장바구니">
+      <CartView api={api} organizationId={organizationId} readOnly={readOnly} openRequest={openRequest} />
+    </div>
+    {historyOpened && <div className={`sales-shell__pane${view === 'history' ? '' : ' is-hidden'}`} role="tabpanel" aria-label="매출 내역">
+      <section className="sales-page">
+        <div className="page-toolbar"><div><p className="eyebrow">SALES</p><h1>매출 내역</h1><p className="muted">수납·환불·반품 내역을 일자·고객·수단·유형·금액으로 검색합니다. 읽기 전용입니다.</p></div></div>
+        <PaymentHistoryPanel api={api} organizationId={organizationId} onOpenVisit={openVisit} />
+      </section>
+    </div>}
+  </div>;
+}
+
+function CartView({ api, organizationId, readOnly, openRequest }: { api: ApiClient; organizationId: string; readOnly: boolean; openRequest: OpenRequest | null }) {
+  const privacy = usePrivacy();
   const canManage = !readOnly;
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [visits, setVisits] = useState<Visit[]>([]);
@@ -215,6 +245,23 @@ export function SalesPage({ api, organizationId, readOnly }: { api: ApiClient; o
     setPayOpen(true);
   };
 
+  const handledRequest = useRef(0);
+  useEffect(() => {
+    if (!openRequest || loading || handledRequest.current === openRequest.nonce) return;
+    handledRequest.current = openRequest.nonce;
+    void openFromHistory(openRequest);
+    // 요청 번호가 바뀔 때 한 번만 처리한다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openRequest, loading]);
+  async function openFromHistory(target: OpenRequest) {
+    if (target.visitId === visitId && bundle) return;
+    if (!await allowChange()) return;
+    setCustomerId(target.customerId);
+    setVisitId(target.visitId);
+    showBundle(null);
+    void loadCart(target.visitId);
+  }
+
   if (loading) return <section className="sales-page"><p role="status" className="muted">고객과 열린 방문, 시술 초안을 불러오는 중…</p></section>;
   if (loadError) return <section className="sales-page"><div role="alert" className="form-error">{loadError} <button type="button" onClick={() => void load()}>다시 시도</button></div></section>;
 
@@ -233,7 +280,7 @@ export function SalesPage({ api, organizationId, readOnly }: { api: ApiClient; o
         <h2>고객 · 방문</h2>
         <input aria-label="고객 검색" placeholder="이름, 연락처 검색" value={query} onChange={(event) => setQuery(event.target.value)} />
         <ul className="sales-list" aria-label="고객">
-          {filteredCustomers.map((customer) => <li key={customer.id}><button type="button" aria-pressed={customer.id === customerId} className={customer.id === customerId ? 'is-active' : ''} disabled={busy || pending !== null} onClick={() => void selectCustomer(customer.id)}>{customer.name}<small>{customer.phone || '연락처 없음'}</small></button></li>)}
+          {filteredCustomers.map((customer) => <li key={customer.id}><button type="button" aria-pressed={customer.id === customerId} className={customer.id === customerId ? 'is-active' : ''} disabled={busy || pending !== null} onClick={() => void selectCustomer(customer.id)}>{customer.name}<small>{privacy.phone(customer.phone) || '연락처 없음'}</small></button></li>)}
         </ul>
         {filteredCustomers.length === 0 && <p className="empty-state">{customers.length ? '검색 결과가 없습니다.' : '등록된 고객이 없습니다.'}</p>}
         <h3>방문 내역 · 수납 확인</h3>

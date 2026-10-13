@@ -4,7 +4,7 @@ import type { Transaction } from '../sales/types';
 import { buildChartModel } from './components/FinanceChart';
 import {
   addDaysKey, appointmentsOnDay, bucketTasks, compactWon, dailySeries, expiringWallets, formatKstHeading, kstDateKey, kstTime, lowStock,
-  monthTotals, niceMax, receivableTotal, recentVisitors, summarizeAppointments, upcomingVisits, wonOf,
+  monthTotals, niceMax, receivableSummary, receivableTotal, recentVisitors, stockThreshold, summarizeAppointments, upcomingVisits, wonOf,
 } from './dashboardMetrics';
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -175,6 +175,34 @@ describe('미수금·재고·회원권', () => {
       { id: 'e', name: 'E', kind: 'product', is_active: true, stock_quantity: 1 },
     ]);
     expect(low.map((item) => item.id)).toEqual(['e', 'a']);
+  });
+
+  it('전체 미수 요약은 서버 합계를 전 단위로 바꾸고 해석할 수 없으면 0으로 본다', () => {
+    expect(receivableSummary({ total_due: '1250000', receivable_count: 3 })).toEqual({ total: 125_000_000n, count: 3 });
+    expect(receivableSummary({ total_due: '0', receivable_count: 0 })).toEqual({ total: 0n, count: 0 });
+    expect(receivableSummary({ total_due: 'x', receivable_count: 2 })).toEqual({ total: 0n, count: 2 });
+  });
+
+  it('안전재고는 상품별 값을 쓰고 null·미지정이면 기본 5를 쓴다', () => {
+    expect(stockThreshold({})).toBe(5);
+    expect(stockThreshold({ low_stock_threshold: null })).toBe(5);
+    expect(stockThreshold({ low_stock_threshold: 0 })).toBe(0);
+    expect(stockThreshold({ low_stock_threshold: 12 })).toBe(12);
+    expect(stockThreshold({ low_stock_threshold: null }, 8)).toBe(8);
+  });
+
+  it('재고 부족은 상품별 안전재고 이하를 고르고 0 기준은 품절일 때만 포함한다', () => {
+    const low = lowStock([
+      { id: 'a', name: 'A', kind: 'product', is_active: true, stock_quantity: 5 },
+      { id: 'b', name: 'B', kind: 'product', is_active: true, stock_quantity: 9, low_stock_threshold: 10 },
+      { id: 'c', name: 'C', kind: 'product', is_active: true, stock_quantity: 3, low_stock_threshold: 2 },
+      { id: 'd', name: 'D', kind: 'product', is_active: true, stock_quantity: 1, low_stock_threshold: 0 },
+      { id: 'e', name: 'E', kind: 'product', is_active: true, stock_quantity: 0, low_stock_threshold: 0 },
+      { id: 'f', name: 'F', kind: 'product', is_active: true, stock_quantity: 7, low_stock_threshold: null },
+      { id: 'g', name: 'G', kind: 'product', is_active: false, stock_quantity: 0, low_stock_threshold: 10 },
+    ]);
+    expect(low.map((item) => item.id)).toEqual(['e', 'a', 'b']);
+    expect(lowStock([{ id: 'x', name: 'X', kind: 'product', is_active: true, stock_quantity: 7 }], 8)).toHaveLength(1);
   });
 
   it('회원권 만료 임박은 30일 이내·잔액 있는 것만 임박 순으로 고른다', () => {

@@ -1,5 +1,5 @@
 import type { Customer, Task } from '../../api/schemas';
-import type { Settlement, Transaction } from '../sales/types';
+import type { Receivables, Transaction } from '../sales/types';
 import { dashboardApi, type DashboardApi, type TodayAppointments } from './dashboardApi';
 import type { StockItem, WalletRow } from './dashboardMetrics';
 import { useSource, type Source } from './sourceState';
@@ -9,7 +9,7 @@ export interface DashboardSources {
   tasks: Source<Task[]>;
   appointments: Source<TodayAppointments>;
   transactions: Source<Transaction[]>;
-  settlement: Source<Settlement>;
+  receivables: Source<Receivables>;
   products: Source<StockItem[]>;
   wallets: Source<WalletRow[]>;
 }
@@ -19,7 +19,7 @@ export interface DashboardReloaders {
   tasks: () => void;
   appointments: () => void;
   transactions: () => void;
-  settlement: () => void;
+  receivables: () => void;
   products: () => void;
   wallets: () => void;
 }
@@ -33,14 +33,14 @@ export function useDashboardData(api: DashboardApi, organizationId: string, toda
   const [tasks, reloadTasks] = useSource(() => api.listTasks(organizationId), [api, organizationId, refreshKey]);
   const [appointments, reloadAppointments] = useSource(() => dashboardApi.appointments(api, organizationId, today), [api, organizationId, today, refreshKey]);
   const [transactions, reloadTransactions] = useSource(() => dashboardApi.transactions(api, organizationId, today), [api, organizationId, today, refreshKey]);
-  const [settlement, reloadSettlement] = useSource(() => dashboardApi.settlement(api, organizationId, today), [api, organizationId, today, refreshKey]);
+  const [receivables, reloadReceivables] = useSource(() => dashboardApi.receivables(api, organizationId), [api, organizationId, refreshKey]);
   const [products, reloadProducts] = useSource(() => dashboardApi.products(api, organizationId), [api, organizationId, refreshKey]);
   const [wallets, reloadWallets] = useSource(() => dashboardApi.wallets(api, organizationId), [api, organizationId, refreshKey]);
   return {
-    sources: { customers, tasks, appointments, transactions, settlement, products, wallets },
+    sources: { customers, tasks, appointments, transactions, receivables, products, wallets },
     reload: {
       customers: reloadCustomers, tasks: reloadTasks, appointments: reloadAppointments, transactions: reloadTransactions,
-      settlement: reloadSettlement, products: reloadProducts, wallets: reloadWallets,
+      receivables: reloadReceivables, products: reloadProducts, wallets: reloadWallets,
     },
   };
 }

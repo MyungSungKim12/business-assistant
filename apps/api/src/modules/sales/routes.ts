@@ -4,8 +4,8 @@ import { ApiFailure } from '../../errors.js';
 import { bearerToken } from '../../routes/organizations.js';
 import type { SalesGateway } from './gateway.js';
 import {
-  addDraftRequest, adjustRequest, closeRequest, discountRequest, financeCreateRequest, financeFilter, financeSummaryFilter, financeUpdateRequest,
-  operationRequest, productReturnRequest, recordPaymentRequest, refundRequest, removeLineRequest, reviewRequest, settlementDate,
+  addDraftRequest, adjustRequest, closeMonthRequest, closeRequest, discountRequest, financeCreateRequest, financeFilter, financeSummaryFilter, financeUpdateRequest,
+  monthKey, operationRequest, productReturnRequest, receivablesFilter, recordPaymentRequest, refundRequest, removeLineRequest, reopenMonthRequest, reviewRequest, salePaymentsFilter, settlementDate,
   updateLineRequest, versionedRequest, visitsFilter,
 } from './schemas.js';
 
@@ -198,5 +198,45 @@ export function registerSalesRoutes(app: FastifyInstance, organizations: OrgAcce
     await authorize(token, organizationId, FINANCE_FEATURES);
     const summary = await gateway.summarize(token, organizationId, filter.from_date, filter.to_date);
     return { from_date: filter.from_date ?? null, to_date: filter.to_date ?? null, ...summary };
+  });
+
+  /* ---------- 수납·환불 내역 검색(읽기 전용) ---------- */
+  app.get(`${base}/sale-payments`, async (request) => {
+    const token = start(request);
+    const { organizationId } = parse(orgParams, request.params, 'Invalid organization ID');
+    const filter = parse(salePaymentsFilter, request.query, 'Invalid sale payment filter');
+    await authorize(token, organizationId, FINANCE_FEATURES);
+    return gateway.listSalePayments(token, organizationId, filter);
+  });
+
+  /* ---------- 전체 미수금(읽기 전용) ---------- */
+  app.get(`${base}/receivables`, async (request) => {
+    const token = start(request);
+    const { organizationId } = parse(orgParams, request.params, 'Invalid organization ID');
+    const filter = parse(receivablesFilter, request.query, 'Invalid receivables filter');
+    await authorize(token, organizationId, FINANCE_FEATURES);
+    return gateway.getReceivables(token, organizationId, filter.limit);
+  });
+
+  /* ---------- 재무 월 마감(일 마감과 별개) ---------- */
+  app.get(`${base}/finance-month-closings`, async (request) => {
+    const token = start(request);
+    const { organizationId } = parse(orgParams, request.params, 'Invalid organization ID');
+    await authorize(token, organizationId, FINANCE_FEATURES);
+    return gateway.listMonthClosings(token, organizationId);
+  });
+  app.post(`${base}/finance-month-closings`, async (request, reply) => {
+    const token = start(request);
+    const { organizationId } = parse(orgParams, request.params, 'Invalid organization ID');
+    const body = parse(closeMonthRequest, request.body, 'Invalid month close request');
+    await authorize(token, organizationId, FINANCE_FEATURES, true);
+    return reply.code(201).send(await gateway.closeMonth(token, organizationId, body.month, body.note));
+  });
+  app.post(`${base}/finance-month-closings/:month/reopen`, async (request) => {
+    const token = start(request);
+    const params = parse(orgParams.extend({ month: monthKey }), request.params, 'Invalid month');
+    const body = parse(reopenMonthRequest, request.body, 'Invalid month reopen request');
+    await authorize(token, params.organizationId, FINANCE_FEATURES, true);
+    return gateway.reopenMonth(token, params.organizationId, params.month, body.reason);
   });
 }

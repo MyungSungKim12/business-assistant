@@ -55,7 +55,16 @@ export const definitive = new Set([400, 401, 403, 404, 409, 422]);
 
 export function isDefinitive(error: unknown): boolean { return error instanceof ApiError && definitive.has(error.status); }
 
+export const MONTH_CLOSED_CODE = 'FINANCE_MONTH_CLOSED';
+
+/** 월 마감된 달의 장부에 걸린 거절이면 서버가 준 한국어 안내를, 아니면 null. */
+export function monthClosedMessage(error: unknown): string | null {
+  return error instanceof ApiError && error.status === 409 && error.code === MONTH_CLOSED_CODE ? error.message : null;
+}
+
 export function errorMessage(error: unknown, subject = '요청'): string {
+  const closed = monthClosedMessage(error);
+  if (closed) return closed;
   if (error instanceof ApiError) {
     switch (error.status) {
       case 409: return '다른 변경과 충돌했습니다. 입력은 유지했습니다. 자료를 새로고침한 뒤 다시 확인하세요.';

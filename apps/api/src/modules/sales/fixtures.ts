@@ -62,7 +62,7 @@ export function sandbox(responder: Responder = () => undefined, options: { role?
   const app: FastifyInstance = Fastify();
   app.setErrorHandler((error, request, reply) => {
     const status = error instanceof ApiFailure ? error.status : 500;
-    return reply.code(status).send({ detail: error instanceof ApiFailure ? error.detail : 'Internal server error', requestId: request.id });
+    return reply.code(status).send({ detail: error instanceof ApiFailure ? error.detail : 'Internal server error', ...(error instanceof ApiFailure ? error.extra : {}), requestId: request.id });
   });
   registerSalesModule(app, organizations, config, fetcher);
   const send = (method: 'GET' | 'POST' | 'PATCH', path: string, body?: unknown, token: string | null = 'access') =>

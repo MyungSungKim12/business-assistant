@@ -27,7 +27,7 @@ const transactions = [
   { id: id(51), transaction_type: 'income', amount: '300000', transaction_date: '2026-10-12', is_archived: false },
   { id: id(52), transaction_type: 'expense', amount: '120000', transaction_date: '2026-10-13', is_archived: false },
 ];
-const settlement = { receivables: [{ due_amount: '45000' }, { due_amount: '0' }] };
+const receivables = { receivable_count: 1, total_due: '45000', items: [] };
 const products = [
   { id: id(61), name: '앰플', kind: 'product', is_active: true, stock_quantity: 2, unit_name: '개' },
   { id: id(62), name: '충분한 상품', kind: 'product', is_active: true, stock_quantity: 50 },
@@ -39,7 +39,7 @@ interface Overrides {
   tasks?: () => unknown;
   appointments?: () => unknown;
   transactions?: () => unknown;
-  settlement?: () => unknown;
+  receivables?: () => unknown;
   products?: () => unknown;
   wallets?: () => unknown;
 }
@@ -51,7 +51,7 @@ function makeApi(overrides: Overrides = {}) {
     tasks: vi.fn(pick('tasks', tasks)),
     appointments: vi.fn(pick('appointments', appointments)),
     transactions: vi.fn(pick('transactions', transactions)),
-    settlement: vi.fn(pick('settlement', settlement)),
+    receivables: vi.fn(pick('receivables', receivables)),
     products: vi.fn(pick('products', products)),
     wallets: vi.fn(pick('wallets', wallets)),
   };
@@ -64,7 +64,7 @@ function makeApi(overrides: Overrides = {}) {
     call: async (_method: string, path: string) => {
       if (path.includes('/appointments?')) return handlers.appointments();
       if (path.includes('/finance-transactions')) return handlers.transactions();
-      if (path.includes('/sale-daily-settlement')) return handlers.settlement();
+      if (path.includes('/receivables')) return handlers.receivables();
       if (path.includes('/catalog-products')) return handlers.products();
       throw new Error(`unexpected ${path}`);
     },
@@ -94,7 +94,7 @@ describe('DashboardPage', () => {
     expect(screen.getByRole('button', { name: /^오늘 예약 2건 미완료 1 · 완료 1/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^미완료 할 일 3건 기한 지남 1 · 오늘 1/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^이번 달 순수입 180,000원 수입 300,000원 · 지출 120,000원/ })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /^오늘 미수금 45,000원 미수 1건/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^전체 미수금 45,000원 미수 1건/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^재고 부족 상품 1개/ })).toBeInTheDocument();
   });
 
@@ -135,7 +135,7 @@ describe('DashboardPage', () => {
     expect(onNavigate).toHaveBeenLastCalledWith('tasks');
     fireEvent.click(screen.getByRole('button', { name: /^이번 달 순수입/ }));
     expect(onNavigate).toHaveBeenLastCalledWith('finance');
-    fireEvent.click(screen.getByRole('button', { name: /^오늘 미수금/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^전체 미수금/ }));
     expect(onNavigate).toHaveBeenLastCalledWith('sales');
     fireEvent.click(screen.getByRole('button', { name: /^재고 부족 상품/ }));
     expect(onNavigate).toHaveBeenLastCalledWith('inventory');
@@ -187,16 +187,16 @@ describe('DashboardPage', () => {
 
   it('로딩 중에도 모든 패널 틀이 보인다', () => {
     const pending = () => new Promise<never>(() => undefined);
-    const { api } = makeApi({ customers: pending, tasks: pending, appointments: pending, transactions: pending, settlement: pending, products: pending, wallets: pending });
+    const { api } = makeApi({ customers: pending, tasks: pending, appointments: pending, transactions: pending, receivables: pending, products: pending, wallets: pending });
     renderPage(api);
     for (const name of panelNames) expect(panel(name)).toBeInTheDocument();
     expect(screen.getAllByText('불러오는 중…').length).toBeGreaterThanOrEqual(panelNames.length);
-    expect(screen.getAllByRole('button', { name: /^(전체 고객|오늘 예약|미완료 할 일|이번 달 순수입|오늘 미수금|재고 부족 상품)/ })).toHaveLength(6);
+    expect(screen.getAllByRole('button', { name: /^(전체 고객|오늘 예약|미완료 할 일|이번 달 순수입|전체 미수금|재고 부족 상품)/ })).toHaveLength(6);
   });
 
   it('데이터가 0건이어도 모든 패널 틀과 빈 안내를 보여 준다', async () => {
     const { api } = makeApi({
-      customers: () => [], tasks: () => [], appointments: () => [], transactions: () => [], settlement: () => ({ receivables: [] }), products: () => [], wallets: () => [],
+      customers: () => [], tasks: () => [], appointments: () => [], transactions: () => [], receivables: () => ({ receivable_count: 0, total_due: '0', items: [] }), products: () => [], wallets: () => [],
     });
     const onNavigate = renderPage(api);
     for (const name of panelNames) expect(panel(name)).toBeInTheDocument();
@@ -234,5 +234,36 @@ describe('DashboardPage', () => {
     for (const label of ['새 고객', '새 방문(매출)', '시술 기록', '경영 보기']) {
       expect(within(actions).queryByRole('button', { name: label })).toBeNull();
     }
+  });
+
+  it('미수금 카드는 오늘이 아닌 조직 전체 미수 건수·합계를 서버 요약으로 보여 준다', async () => {
+    const paths: string[] = [];
+    const { api } = makeApi({ receivables: () => ({ receivable_count: 3, total_due: '1250000', items: [] }) });
+    const base = api.call.bind(api);
+    (api as { call: typeof api.call }).call = ((method: string, path: string, schema: never, body?: unknown) => { paths.push(path); return base(method as never, path, schema, body as never); }) as typeof api.call;
+    renderPage(api);
+    expect(await screen.findByRole('button', { name: /^전체 미수금 1,250,000원 미수 3건/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^오늘 미수금/ })).toBeNull();
+    expect(paths.some((path) => path.endsWith('/receivables?limit=5'))).toBe(true);
+    expect(paths.some((path) => path.includes('/sale-daily-settlement'))).toBe(false);
+  });
+
+  it('재고 부족은 상품별 안전재고를 쓰고 값이 없으면 기본 5개를 쓴다', async () => {
+    const stock = [
+      { id: id(81), name: '기본 기준 상품', kind: 'product', is_active: true, stock_quantity: 5 },
+      { id: id(82), name: '높은 기준 상품', kind: 'product', is_active: true, stock_quantity: 9, low_stock_threshold: 10 },
+      { id: id(83), name: '널 기준 상품', kind: 'product', is_active: true, stock_quantity: 6, low_stock_threshold: null },
+      { id: id(84), name: '낮은 기준 상품', kind: 'product', is_active: true, stock_quantity: 3, low_stock_threshold: 2 },
+    ];
+    const { api } = makeApi({ products: () => stock });
+    renderPage(api);
+    expect(await screen.findByRole('button', { name: /^재고 부족 상품 2개/ })).toBeInTheDocument();
+    const stockPanel = panel(/^재고 부족$/);
+    expect(await within(stockPanel).findByText('기본 기준 상품')).toBeInTheDocument();
+    expect(within(stockPanel).getByText('높은 기준 상품')).toBeInTheDocument();
+    expect(within(stockPanel).queryByText('널 기준 상품')).toBeNull();
+    expect(within(stockPanel).queryByText('낮은 기준 상품')).toBeNull();
+    expect(within(stockPanel).getByText('안전재고 10개')).toBeInTheDocument();
+    expect(within(stockPanel).getByText('안전재고 5개 (기본)')).toBeInTheDocument();
   });
 });

@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import type { ApiClient } from '../../api/client';
 import {
-  bundleSchema, catalogItemSchema, draftsSchema, financeSummarySchema, paymentsSchema, settlementSchema, transactionSchema, transactionsSchema, visitsSchema,
+  bundleSchema, catalogItemSchema, draftsSchema, financeSummarySchema, monthClosingSchema, monthClosingsSchema, paymentsSchema, receivablesSchema, salePaymentsSchema,
+  settlementSchema, transactionSchema, transactionsSchema, visitsSchema,
   walletSchema, type CatalogItem, type Wallet,
 } from './types';
 
@@ -13,6 +14,9 @@ const query = (values: Record<string, string | undefined>) => {
 
 export type TransactionInput = {
   transaction_type: 'income' | 'expense'; amount: string; transaction_date: string; category: string; counterparty: string; memo: string; is_archived: boolean;
+};
+export type SalePaymentFilter = {
+  from?: string; to?: string; customerId?: string; method?: string; kind?: string; minAmount?: string; maxAmount?: string; sort?: 'newest' | 'oldest'; cursor?: string; limit?: number;
 };
 export type PaymentPart = { method: 'cash' | 'card' | 'transfer'; amount: string; reference: string };
 
@@ -65,6 +69,18 @@ export const salesApi = {
     api.call('GET', `${org(o)}/finance-summary${query({ from_date: filter.from, to_date: filter.to })}`, financeSummarySchema),
   createTransaction: (api: ApiClient, o: string, input: TransactionInput) => api.call('POST', `${org(o)}/finance-transactions`, transactionSchema, input),
   updateTransaction: (api: ApiClient, o: string, id: string, patch: Partial<TransactionInput>) => api.call('PATCH', `${org(o)}/finance-transactions/${id}`, transactionSchema, patch),
+
+  /** 수납·환불·반품 내역 검색. 합계는 조건에 맞는 전체 행 기준이고 rows는 한 페이지다. */
+  salePayments: (api: ApiClient, o: string, filter: SalePaymentFilter) =>
+    api.call('GET', `${org(o)}/sale-payments${query({
+      from_date: filter.from, to_date: filter.to, customer_id: filter.customerId, method: filter.method, kind: filter.kind,
+      min_amount: filter.minAmount, max_amount: filter.maxAmount, sort: filter.sort, cursor: filter.cursor, limit: filter.limit === undefined ? undefined : String(filter.limit),
+    })}`, salePaymentsSchema),
+  receivables: (api: ApiClient, o: string, limit = 5) => api.call('GET', `${org(o)}/receivables${query({ limit: String(limit) })}`, receivablesSchema),
+
+  monthClosings: (api: ApiClient, o: string) => api.call('GET', `${org(o)}/finance-month-closings`, monthClosingsSchema),
+  closeMonth: (api: ApiClient, o: string, month: string, note: string) => api.call('POST', `${org(o)}/finance-month-closings`, monthClosingSchema, { month, note }),
+  reopenMonth: (api: ApiClient, o: string, month: string, reason: string) => api.call('POST', `${org(o)}/finance-month-closings/${month}/reopen`, monthClosingSchema, { reason }),
 
   /** 고객 지갑 조회(기존 operations 읽기 경로). */
   async wallets(api: ApiClient, o: string): Promise<Wallet[]> {

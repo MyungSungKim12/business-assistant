@@ -61,3 +61,36 @@
   align-items: center;
   gap: 4px;
 }
+
+/* 매출 화면 탭(장바구니 | 매출 내역) */
+.sales-shell { display: flex; flex-direction: column; height: 100%; min-height: 0; font-size: 12px; }
+.sales-shell > .sales-tabs { flex: none; margin-top: 0; }
+.sales-shell__pane { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.sales-shell__pane.is-hidden { display: none; }
+.sales-shell__pane > .sales-page { flex: 1; height: auto; }
+
+/* 매출 내역 */
+.history-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 4px; }
+.history-table { flex: 1; min-height: 0; overflow: auto; }
+.history-table .history-amount { text-align: right; }
+.history-table tr.history-negative .history-amount { color: var(--error); }
+.history-sort { font-weight: 600; font-size: 11px; color: inherit; }
+.history-footer { flex: none; display: flex; align-items: center; gap: 8px; }
+
+/* 월 마감 */
+.month-close { flex: none; display: flex; flex-direction: column; gap: 4px; padding: 6px; }
+.month-close__row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 6px; }
+.month-close__row label { display: flex; flex-direction: column; gap: 2px; }
+.month-close__row label.month-close__reason { flex: 1; min-width: 180px; }
+.month-close__status { font-weight: 600; }
+.month-close__history { max-height: 90px; overflow: auto; margin: 0; padding-left: 14px; }
+
+/* 수입·지출 검색·합계 */
+.ledger-groups { flex: none; display: flex; flex-wrap: wrap; gap: 8px; margin: 2px 0; }
+.ledger-groups span { color: var(--text-muted); }
+.finance-main--ledger { display: flex; flex-direction: column; gap: 4px; min-height: 0; }
+.finance-table { flex: 1; min-height: 120px; overflow: auto; }
+.finance-page > .month-close-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 4px; }
+.month-close__table { flex: 1; min-height: 80px; overflow: auto; }
+.ledger-totals { flex: none; }
+.ledger-categories__table { max-height: 140px; overflow: auto; margin-top: 4px; }

@@ -88,3 +88,37 @@ export const walletSchema = z.object({
   count_balance: z.union([z.string(), z.number()]).optional(), expires_at: z.string().nullable().optional(), status: z.string().optional(),
 });
 export type Wallet = z.infer<typeof walletSchema>;
+
+/* ---------- 매출 내역 검색(SALE-10) ---------- */
+export const salePaymentSchema = z.object({
+  id: z.uuid(), kind: z.enum(['payment', 'refund', 'return']), method: z.enum(['cash', 'card', 'transfer', 'wallet']), amount: money,
+  occurred_at: iso, reference: z.string(), reason: z.string(), cart_id: z.uuid(), visit_id: z.uuid(), customer_id: z.uuid(), customer_name: z.string(),
+});
+export type SalePayment = z.infer<typeof salePaymentSchema>;
+export const salePaymentsSchema = z.object({
+  rows: z.array(salePaymentSchema),
+  next_cursor: z.string().nullable(),
+  totals: z.object({
+    payment_total: money, refund_total: money, net_total: money,
+    payment_count: z.number().int(), refund_count: z.number().int(), row_count: z.number().int(),
+  }),
+});
+export type SalePaymentsPage = z.infer<typeof salePaymentsSchema>;
+
+/* ---------- 전체 미수금(HOME-02) ---------- */
+export const receivablesSchema = z.object({
+  receivable_count: z.number().int(), total_due: money,
+  items: z.array(z.object({
+    cart_id: z.uuid(), visit_id: z.uuid(), customer_id: z.uuid(), customer_name: z.string(), opened_at: iso,
+    total_amount: money, received_amount: money, refunded_amount: money, due_amount: money,
+  })),
+});
+export type Receivables = z.infer<typeof receivablesSchema>;
+
+/* ---------- 재무 월 마감(FIN-10) ---------- */
+export const monthClosingSchema = z.object({
+  id: z.uuid(), organization_id: z.uuid(), month: z.string(), note: z.string(), closed_by: z.uuid(), closed_at: iso,
+  reopened_by: z.uuid().nullable(), reopened_at: iso.nullable(), reopen_reason: z.string().nullable(),
+});
+export type MonthClosing = z.infer<typeof monthClosingSchema>;
+export const monthClosingsSchema = z.array(monthClosingSchema);

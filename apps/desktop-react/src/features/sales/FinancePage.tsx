@@ -1,17 +1,19 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DateField, Select, confirm, notify } from '@business-assistant/react-ui';
 import type { ApiClient } from '../../api/client';
 import { ApiError } from '../../api/errors';
 import { salesApi, type TransactionInput } from './api';
 import { ExportButton } from '../../lib/io/ExportButton';
 import { transactionExportColumns } from '../../lib/io/domainColumns';
-import { errorMessage, formatWon, isDefinitive, kst, moneyText, newOperationId, today, wholeAmount } from './format';
-import type { FinanceSummary, Settlement, Transaction } from './types';
+import { errorMessage, formatWon, isDefinitive, kst, moneyText, monthClosedMessage, newOperationId, today, wholeAmount } from './format';
+import { LedgerTable, LedgerTotals } from './LedgerTable';
+import { activeClosings, closedMonthNotice, closingForDate, defaultLedgerSort, searchTransactions, sortTransactions, summarizeLedger, type LedgerSort } from './ledger';
+import { MonthClosePanel } from './MonthClosePanel';
+import type { FinanceSummary, MonthClosing, Settlement, Transaction } from './types';
 import './sales.css';
 
-type Tab = 'ledger' | 'settlement';
+type Tab = 'ledger' | 'month' | 'settlement';
 type TypeFilter = '' | 'income' | 'expense';
-const typeLabel = { income: '수입', expense: '지출' } as const;
 const blankForm = (): TransactionInput => ({ transaction_type: 'income', amount: '', transaction_date: today(), category: '', counterparty: '', memo: '', is_archived: false });
 const toForm = (item: Transaction): TransactionInput => ({ transaction_type: item.transaction_type, amount: item.amount, transaction_date: item.transaction_date, category: item.category, counterparty: item.counterparty, memo: item.memo, is_archived: item.is_archived });
 const sameForm = (a: object, b: object) => JSON.stringify(a) === JSON.stringify(b);
@@ -26,13 +28,16 @@ export function FinancePage({ api, organizationId, readOnly }: { api: ApiClient;
   const [dirty, setDirty] = useState(false);
   async function switchTab(next: Tab) { if (next !== tab && await leave(dirty)) { setDirty(false); setTab(next); } }
   return <section className="finance-page">
-    <div className="page-toolbar"><div><p className="eyebrow">FINANCE</p><h1>수입·지출·정산</h1><p className="muted">수입·지출 내역과 일 매출 대사, 시재 마감을 관리합니다.</p></div></div>
+    <div className="page-toolbar"><div><p className="eyebrow">FINANCE</p><h1>수입·지출·정산</h1><p className="muted">수입·지출 내역, 월 단위 장부 마감, 일 매출 대사와 시재(일 마감)를 관리합니다.</p></div></div>
     {readOnly && <p className="permission-banner">조회 전용입니다. 등록·수정·마감은 관리자만 할 수 있습니다.</p>}
     <div className="sales-tabs" role="tablist">
       <button type="button" role="tab" aria-selected={tab === 'ledger'} className={tab === 'ledger' ? 'is-active' : ''} onClick={() => void switchTab('ledger')}>수입·지출</button>
+      <button type="button" role="tab" aria-selected={tab === 'month'} className={tab === 'month' ? 'is-active' : ''} onClick={() => void switchTab('month')}>월 마감</button>
       <button type="button" role="tab" aria-selected={tab === 'settlement'} className={tab === 'settlement' ? 'is-active' : ''} onClick={() => void switchTab('settlement')}>미수·일 마감</button>
     </div>
-    {tab === 'ledger' ? <LedgerPanel api={api} organizationId={organizationId} readOnly={readOnly} onDirty={setDirty} /> : <SettlementPanel api={api} organizationId={organizationId} readOnly={readOnly} onDirty={setDirty} />}
+    {tab === 'ledger' && <LedgerPanel api={api} organizationId={organizationId} readOnly={readOnly} onDirty={setDirty} />}
+    {tab === 'month' && <MonthClosePanel api={api} organizationId={organizationId} readOnly={readOnly} onDirty={setDirty} />}
+    {tab === 'settlement' && <SettlementPanel api={api} organizationId={organizationId} readOnly={readOnly} onDirty={setDirty} />}
   </section>;
 }
 
@@ -41,6 +46,9 @@ function LedgerPanel({ api, organizationId, readOnly, onDirty }: { api: ApiClien
   const [from, setFrom] = useState<string | null>(null);
   const [to, setTo] = useState<string | null>(null);
   const [rows, setRows] = useState<Transaction[]>([]);
+  const [closings, setClosings] = useState<MonthClosing[]>([]);
+  const [text, setText] = useState('');
+  const [sort, setSort] = useState<LedgerSort>(defaultLedgerSort);
   const [summary, setSummary] = useState<FinanceSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -60,10 +68,15 @@ function LedgerPanel({ api, organizationId, readOnly, onDirty }: { api: ApiClien
     setError('');
     try {
       const filter = { type: type || undefined, from: from ?? undefined, to: to ?? undefined };
-      const [list, totals] = await Promise.all([salesApi.transactions(api, organizationId, filter), salesApi.summary(api, organizationId, { from: filter.from, to: filter.to })]);
+      // 월 마감 목록은 안내용이라 실패해도 거래 목록은 보여 준다(서버가 마감된 달의 저장을 막는다).
+      const [list, totals, closed] = await Promise.all([
+        salesApi.transactions(api, organizationId, filter), salesApi.summary(api, organizationId, { from: filter.from, to: filter.to }),
+        salesApi.monthClosings(api, organizationId).catch(() => null),
+      ]);
       if (mine !== ticket.current) return;
       setRows(list);
       setSummary(totals);
+      if (closed) setClosings(closed);
     } catch (e) {
       if (mine !== ticket.current) return;
       setRows([]);
@@ -101,7 +114,10 @@ function LedgerPanel({ api, organizationId, readOnly, onDirty }: { api: ApiClien
       reset(selected ? saved : null);
       notify.success(selected ? '거래를 수정했습니다.' : '거래를 등록했습니다.');
       await load();
-    } catch (e) { setFormError(isDefinitive(e) ? errorMessage(e) : '저장하지 못했습니다. 작성 내용은 유지됩니다.'); } finally { setSaving(false); }
+    } catch (e) {
+      setFormError(isDefinitive(e) ? errorMessage(e) : '저장하지 못했습니다. 작성 내용은 유지됩니다.');
+      if (monthClosedMessage(e)) void load();
+    } finally { setSaving(false); }
   }
   async function toggleArchive() {
     if (!selected) return;
@@ -112,17 +128,28 @@ function LedgerPanel({ api, organizationId, readOnly, onDirty }: { api: ApiClien
       const saved = await salesApi.updateTransaction(api, organizationId, selected.id, { is_archived: next });
       reset(saved);
       await load();
-    } catch (e) { setFormError(errorMessage(e, '보관 변경')); } finally { setSaving(false); }
+    } catch (e) {
+      setFormError(errorMessage(e, '보관 변경'));
+      if (monthClosedMessage(e)) void load();
+    } finally { setSaving(false); }
   }
 
+  const visible = useMemo(() => sortTransactions(searchTransactions(rows, text), sort), [rows, text, sort]);
+  const visibleSummary = useMemo(() => summarizeLedger(visible), [visible]);
+  const closedMonths = useMemo(() => new Set(activeClosings(closings).keys()), [closings]);
+  // 거래를 옮기는 수정은 원래 달과 새 달이 모두 열려 있어야 한다.
+  const blocked = closingForDate(closings, form.transaction_date) ?? (selected ? closingForDate(closings, selected.transaction_date) : null);
+  const blockedDate = closingForDate(closings, form.transaction_date) ? form.transaction_date : selected?.transaction_date ?? form.transaction_date;
+
   return <div className="finance-layout">
-    <div className="finance-main">
+    <div className="finance-main finance-main--ledger">
       <div className="sales-filters">
         <label>조회 유형<Select aria-label="조회 유형" value={type} onChange={setType} options={[{ value: '', label: '전체' }, { value: 'income', label: '수입' }, { value: 'expense', label: '지출' }]} /></label>
         <label>시작일<DateField aria-label="시작일" value={from} onChange={setFrom} /></label>
         <label>종료일<DateField aria-label="종료일" value={to} onChange={setTo} /></label>
         <button type="button" onClick={() => void load()}>조회</button>
-        <ExportButton title="수입지출 내역" columns={transactionExportColumns} rows={rows} disabled={loading} />
+        <label>검색<input aria-label="거래 검색" placeholder="분류·거래처·메모" value={text} onChange={(e) => setText(e.target.value)} /></label>
+        <ExportButton title="수입지출 내역" columns={transactionExportColumns} rows={visible} disabled={loading} />
       </div>
       {summary && <div className="sales-cards" data-testid="finance-summary">
         <div className="sales-card">수입 {formatWon(summary.income_total)}</div>
@@ -131,13 +158,11 @@ function LedgerPanel({ api, organizationId, readOnly, onDirty }: { api: ApiClien
         <div className="sales-card">거래 {summary.transaction_count}건</div>
       </div>}
       {error && <div role="alert" className="form-error">{error} <button type="button" onClick={() => void load()}>다시 시도</button></div>}
-      {loading ? <p role="status" className="muted">재무 내역을 불러오는 중…</p> : <div className="data-surface"><table><caption>거래 내역</caption>
-        <thead><tr><th>거래일</th><th>유형</th><th>금액</th><th>분류</th><th>거래처</th><th>상태</th></tr></thead>
-        <tbody>{rows.map((row) => <tr key={row.id} className={row.id === selected?.id ? 'is-selected' : ''}>
-          <td><button type="button" className="sales-link" onClick={() => void select(row)}>{row.transaction_date}</button></td>
-          <td>{typeLabel[row.transaction_type]}</td><td>{formatWon(row.amount)}</td><td>{row.category}</td><td>{row.counterparty}</td><td>{row.is_archived ? '보관' : ''}</td></tr>)}</tbody></table>
-        {!error && rows.length === 0 && <p className="empty-state">조회된 거래가 없습니다.</p>}
-      </div>}
+      {loading ? <p role="status" className="muted">재무 내역을 불러오는 중…</p> : <>
+        <LedgerTotals summary={visibleSummary} filtered={text.trim() !== ''} />
+        <LedgerTable rows={visible} sort={sort} onSort={setSort} selectedId={selected?.id ?? null} onSelect={(row) => void select(row)} closedMonths={closedMonths}
+          emptyText={error ? '' : rows.length > 0 ? '검색 조건에 맞는 거래가 없습니다.' : '조회된 거래가 없습니다.'} />
+      </>}
     </div>
     {!readOnly && <aside className="editor-panel">
       <h2>{selected ? '거래 수정' : '수입·지출 등록'}</h2>
@@ -147,10 +172,11 @@ function LedgerPanel({ api, organizationId, readOnly, onDirty }: { api: ApiClien
       <label>분류<input maxLength={200} value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} /></label>
       <label>거래처<input value={form.counterparty} onChange={(e) => setForm({ ...form, counterparty: e.target.value })} /></label>
       <label>메모<textarea value={form.memo} onChange={(e) => setForm({ ...form, memo: e.target.value })} /></label>
+      {blocked && <p role="alert" className="form-error" data-testid="closed-month-notice">{closedMonthNotice(blockedDate)}</p>}
       {formError && <p role="alert" className="form-error">{formError}</p>}
       <div className="sales-actions">
-        <button type="button" className="primary-button" disabled={saving} onClick={() => void save()}>{saving ? '저장 중…' : selected ? '수정 저장' : '등록'}</button>
-        {selected && <button type="button" disabled={saving} onClick={() => void toggleArchive()}>{selected.is_archived ? '보관 해제' : '보관'}</button>}
+        <button type="button" className="primary-button" disabled={saving || blocked !== null} onClick={() => void save()}>{saving ? '저장 중…' : selected ? '수정 저장' : '등록'}</button>
+        {selected && <button type="button" disabled={saving || blocked !== null} onClick={() => void toggleArchive()}>{selected.is_archived ? '보관 해제' : '보관'}</button>}
         {selected && <button type="button" disabled={saving} onClick={() => void select(null)}>새 거래</button>}
       </div>
     </aside>}
@@ -230,6 +256,7 @@ function SettlementPanel({ api, organizationId, readOnly, onDirty }: { api: ApiC
       <label>영업일<DateField aria-label="영업일" value={date} onChange={(value) => void changeDate(value)} /></label>
       <button type="button" disabled={loading || saving} onClick={() => void load(date)}>새로고침</button>
     </div>
+    <p className="muted">영업일 시재(현금)를 맞추는 일 마감입니다. 한 달 장부를 잠그는 월 마감은 '월 마감' 탭에서 합니다.</p>
     {error && <div role="alert" className="form-error">{error} <button type="button" onClick={() => void load(date)}>다시 시도</button></div>}
     {loading && <p role="status" className="muted">정산 내역을 불러오는 중…</p>}
     {data && !loading && <>
