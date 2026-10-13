@@ -12,6 +12,8 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 1420,
       strictPort: true,
+      // Rust 빌드 산출물(src-tauri/target)은 감시하지 않는다. 감시하면 빌드 중 잠긴 파일에서 EBUSY 오류가 난다.
+      watch: { ignored: ['**/src-tauri/**'] },
       proxy: {
         // 관리자 API는 별도 서버(기본 8001)다. 더 구체적인 경로를 먼저 둔다.
         '/api/v1/admin': {
