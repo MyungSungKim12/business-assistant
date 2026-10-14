@@ -8,6 +8,7 @@ import type { TaskFilters } from './taskFilters';
 
 const STATUS_OPTIONS = [{ value: 'all' as const, label: '상태 전체' }, ...Object.entries(STATUS_LABELS).map(([value, label]) => ({ value: value as keyof typeof STATUS_LABELS, label }))];
 const PRIORITY_OPTIONS = [{ value: 'all' as const, label: '우선순위 전체' }, ...Object.entries(PRIORITY_LABELS).map(([value, label]) => ({ value: value as keyof typeof PRIORITY_LABELS, label }))];
+const ASSIGNEE_OPTIONS = [{ value: 'all' as const, label: '담당자 전체' }, { value: 'mine' as const, label: '내 담당' }, { value: 'unassigned' as const, label: '담당자 없음' }];
 const PRESETS: { id: RangePreset; label: string }[] = [
   { id: 'today', label: '오늘' },
   { id: 'week', label: '이번 주' },
@@ -31,9 +32,14 @@ export interface TaskListProps {
   /** 목록에 보이는 미완료 할 일을 한꺼번에 완료 처리한다(TASK-02). 조회 전용이면 쓰지 않는다. */
   onCompleteVisible?: (tasks: Task[]) => void;
   completing?: boolean;
+  /** 이 할 일의 상태를 바꿀 수 있는지(관리자이거나 담당자). 없으면 readOnly가 아닐 때만 가능하다. */
+  canWork?: (task: Task) => boolean;
+  /** 담당자 이름 표시용 사용자 ID → 이름. */
+  personName?: (userId: string) => string;
 }
 
-const columns: Column<Task>[] = [
+function buildColumns(personName?: (userId: string) => string): Column<Task>[] {
+  return [
   {
     key: 'title', header: '제목', width: 220, minWidth: 100, value: (task) => task.title,
     render: (task) => {
@@ -44,14 +50,17 @@ const columns: Column<Task>[] = [
     title: (task) => task.title,
   },
   { key: 'due_at', header: '기한', width: 130, minWidth: 90, value: (task) => task.due_at ?? '', render: (task) => formatDue(task.due_at), title: (task) => formatDue(task.due_at) },
+  { key: 'assignee', header: '담당', width: 80, minWidth: 60, value: (task) => (task.assignee_id ? personName?.(task.assignee_id) ?? '' : ''), title: (task) => (task.assignee_id ? personName?.(task.assignee_id) ?? '' : '담당자 없음') },
   { key: 'priority', header: '우선순위', width: 80, minWidth: 60, value: (task) => PRIORITY_LABELS[priorityOf(task)], render: (task) => <span className={`tasks-priority tasks-priority--${priorityOf(task)}`}>{PRIORITY_LABELS[priorityOf(task)]}</span> },
   { key: 'status', header: '상태', width: 70, minWidth: 60, value: (task) => STATUS_LABELS[statusOf(task)], render: (task) => <span className={`tasks-status tasks-status--${statusOf(task)}`}>{STATUS_LABELS[statusOf(task)]}</span> },
-];
+  ];
+}
 
-export function TaskList({ rows, totalCount, loading, error, filters, todayKey, selectedId, readOnly, onFiltersChange, onSelect, onNew, onRetry, onCompleteVisible, completing = false }: TaskListProps) {
-  const completable = useMemo(() => rows.filter((task) => { const status = statusOf(task); return status === 'open' || status === 'in_progress'; }), [rows]);
+export function TaskList({ rows, totalCount, loading, error, filters, todayKey, selectedId, readOnly, onFiltersChange, onSelect, onNew, onRetry, onCompleteVisible, completing = false, canWork, personName }: TaskListProps) {
+  const columns = useMemo(() => buildColumns(personName), [personName]);
+  const completable = useMemo(() => rows.filter((task) => { const status = statusOf(task); return (status === 'open' || status === 'in_progress') && (canWork ? canWork(task) : !readOnly); }), [rows, canWork, readOnly]);
   const patch = (next: Partial<TaskFilters>) => onFiltersChange({ ...filters, ...next });
-  const filtered = useMemo(() => filters.query !== '' || filters.status !== 'all' || filters.priority !== 'all' || filters.range.from !== null || filters.range.to !== null, [filters]);
+  const filtered = useMemo(() => filters.query !== '' || filters.status !== 'all' || filters.priority !== 'all' || filters.assignee !== 'all' || filters.range.from !== null || filters.range.to !== null, [filters]);
   return (
     <section className="tasks-panel tasks-list" aria-label="할 일 목록">
       <header className="tasks-panel__head">
@@ -62,6 +71,7 @@ export function TaskList({ rows, totalCount, loading, error, filters, todayKey, 
         <input type="search" aria-label="할 일 검색" placeholder="제목·설명 검색" value={filters.query} onChange={(event) => patch({ query: event.currentTarget.value })} />
         <Select aria-label="상태 필터" options={STATUS_OPTIONS} value={filters.status} onChange={(status) => patch({ status })} />
         <Select aria-label="우선순위 필터" options={PRIORITY_OPTIONS} value={filters.priority} onChange={(priority) => patch({ priority })} />
+        <Select aria-label="담당자 필터" options={ASSIGNEE_OPTIONS} value={filters.assignee} onChange={(assignee) => patch({ assignee })} />
       </div>
       <div className="tasks-filters">
         <span className="tasks-filters__label">기한</span>
@@ -86,7 +96,7 @@ export function TaskList({ rows, totalCount, loading, error, filters, todayKey, 
         </div>
       </div>
       <footer className="tasks-panel__foot">
-        {!readOnly && onCompleteVisible && completable.length > 0 && <button type="button" disabled={completing} onClick={() => onCompleteVisible(completable)}>{completing ? '처리 중…' : `보이는 ${completable.length}건 완료`}</button>}
+        {onCompleteVisible && completable.length > 0 && <button type="button" disabled={completing} onClick={() => onCompleteVisible(completable)}>{completing ? '처리 중…' : `보이는 ${completable.length}건 완료`}</button>}
         {error ? <span role="alert" className="tasks-error">{error} <button type="button" onClick={onRetry}>다시 시도</button></span> : <span>{filtered ? `${rows.length} / ${totalCount}건` : `${totalCount}건`}</span>}
       </footer>
     </section>

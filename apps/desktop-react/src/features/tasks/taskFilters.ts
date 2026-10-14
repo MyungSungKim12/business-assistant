@@ -7,9 +7,11 @@ export interface TaskFilters {
   status: 'all' | TaskStatus;
   priority: 'all' | TaskPriority;
   range: DateRangeValue;
+  /** 담당자: 전체 / 내 담당 / 담당자 없음 */
+  assignee: 'all' | 'mine' | 'unassigned';
 }
 
-export const EMPTY_FILTERS: TaskFilters = { query: '', status: 'all', priority: 'all', range: { from: null, to: null } };
+export const EMPTY_FILTERS: TaskFilters = { query: '', status: 'all', priority: 'all', range: { from: null, to: null }, assignee: 'all' };
 
 export function inRange(key: DateKey | null, range: DateRangeValue): boolean {
   if (!range.from && !range.to) return true;
@@ -22,12 +24,14 @@ export function inRange(key: DateKey | null, range: DateRangeValue): boolean {
   return true;
 }
 
-export function filterTasks(tasks: Task[], filters: TaskFilters): Task[] {
+export function filterTasks(tasks: Task[], filters: TaskFilters, currentUserId = ''): Task[] {
   const query = filters.query.trim().toLowerCase();
   return tasks.filter((task) => {
     if (query && !`${task.title} ${task.description}`.toLowerCase().includes(query)) return false;
     if (filters.status !== 'all' && statusOf(task) !== filters.status) return false;
     if (filters.priority !== 'all' && priorityOf(task) !== filters.priority) return false;
+    if (filters.assignee === 'mine' && (!currentUserId || task.assignee_id !== currentUserId)) return false;
+    if (filters.assignee === 'unassigned' && task.assignee_id) return false;
     return inRange(dueDateKey(task.due_at), filters.range);
   });
 }

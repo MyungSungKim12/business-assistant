@@ -71,6 +71,24 @@ describe('ApiClient', () => {
     expect(requests[1].headers.Authorization).toBe('Bearer access-1');
   });
 
+  it('reads task people and sends task fields (assignee, recurrence, customer) with the real client', async () => {
+    const requests: HttpRequest[] = [];
+    const task = { id: '55555555-5555-4555-8555-555555555555', organization_id: ORG_ID, created_by: USER_ID, title: '청소', description: '', due_at: null, status: 'open', priority: 'normal' };
+    const api = new ApiClient(platform(async (request) => {
+      requests.push(request);
+      if (request.path === '/auth/login') return json(200, session());
+      if (request.path.endsWith('/task-people')) return json(200, [{ user_id: USER_ID, name: '김담당' }]);
+      return json(200, { ...task, assignee_id: USER_ID, completed_by: USER_ID, completed_by_name: '김담당', completed_at: '2026-10-14T06:00:00Z' });
+    }));
+    await api.login('owner@example.com', 'password');
+
+    expect(await api.listTaskPeople(ORG_ID)).toEqual([{ user_id: USER_ID, name: '김담당' }]);
+    expect(requests[1]).toMatchObject({ method: 'GET', path: `/organizations/${ORG_ID}/task-people` });
+    const saved = await api.updateTask(ORG_ID, task.id, { assignee_id: USER_ID, recurrence: 'weekly', customer_id: null });
+    expect(JSON.parse(requests[2].body ?? '{}')).toEqual({ assignee_id: USER_ID, recurrence: 'weekly', customer_id: null });
+    expect(saved).toMatchObject({ assignee_id: USER_ID, completed_by_name: '김담당' });
+  });
+
   it('refreshes concurrent unauthorized requests once and retries with the new bearer token', async () => {
     let refreshes = 0;
     let protectedCalls = 0;

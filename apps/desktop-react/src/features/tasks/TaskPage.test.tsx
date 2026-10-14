@@ -7,6 +7,8 @@ import { TaskPage } from './TaskPage';
 const ORG = '22222222-2222-4222-8222-222222222222';
 const TODAY = '2026-10-15';
 const CUSTOMER = '44444444-4444-4444-8444-444444444444';
+const ME = '55555555-5555-4555-8555-555555555555';
+const BOSS = '66666666-6666-4666-8666-666666666666';
 const local = (y: number, m: number, d: number, h = 10, mi = 0) => new Date(y, m - 1, d, h, mi).toISOString();
 
 function makeTask(n: number, patch: Partial<Task> = {}): Task {
@@ -22,6 +24,7 @@ function makeApi(initial: Task[] = seed()) {
   let rows = [...initial];
   return {
     listTasks: vi.fn(async () => rows),
+    listTaskPeople: vi.fn(async () => [{ user_id: ME, name: '김담당' }, { user_id: BOSS, name: '원장' }]),
     listCustomers: vi.fn(async () => [{ id: CUSTOMER, organization_id: ORG, name: '박고객', status: 'active' }]),
     createTask: vi.fn(async (_o: string, input: Pick<Task, 'title' | 'description' | 'due_at'> & { priority: string }) => {
       const created = makeTask(rows.length + 5, { ...input });
@@ -38,7 +41,7 @@ function makeApi(initial: Task[] = seed()) {
 }
 type TestApi = ReturnType<typeof makeApi>;
 
-function renderPage(api: TestApi, props: { readOnly?: boolean } = {}) {
+function renderPage(api: TestApi, props: { readOnly?: boolean; currentUserId?: string } = {}) {
   return render(<><TaskPage api={api as never} organizationId={ORG} todayKey={TODAY} {...props} /><ConfirmDialog /></>);
 }
 const grid = () => screen.getAllByRole('grid', { name: '할 일 목록' })[0];
@@ -479,5 +482,67 @@ describe('TaskPage 반복·고객 연결(TASK-01)', () => {
     await ready();
     fireEvent.click(within(grid()).getByText('재고 확인'));
     expect(within(detail()).getByLabelText('반복')).toBeDisabled();
+  });
+});
+
+describe('TaskPage 담당자와 완료자(TASK-01)', () => {
+  const assigned = () => [
+    makeTask(1, { title: '내 업무', assignee_id: ME, checklist: [{ id: 'a', text: '확인', done: false }] }),
+    makeTask(2, { title: '남의 업무', assignee_id: BOSS }),
+    makeTask(3, { title: '미지정 업무' }),
+  ];
+
+  it('관리자는 담당자를 지정해 저장하고 목록에 이름이 보인다', async () => {
+    const api = makeApi(assigned());
+    renderPage(api, { currentUserId: BOSS });
+    await screen.findByText('내 업무', { selector: 'td' });
+    fireEvent.click(within(grid()).getByText('미지정 업무'));
+    fireEvent.change(await within(detail()).findByLabelText('담당자'), { target: { value: ME } });
+    fireEvent.click(within(detail()).getByRole('button', { name: '저장' }));
+    await waitFor(() => expect(api.updateTask).toHaveBeenCalledWith(ORG, expect.any(String), expect.objectContaining({ assignee_id: ME })));
+    await waitFor(() => expect(within(grid()).getAllByText('김담당').length).toBeGreaterThan(1));
+  });
+
+  it('조회 전용 구성원도 자기에게 지정된 할 일은 완료할 수 있지만 내용은 고칠 수 없다', async () => {
+    const api = makeApi(assigned());
+    renderPage(api, { readOnly: true, currentUserId: ME });
+    await screen.findByText('내 업무', { selector: 'td' });
+    fireEvent.click(within(grid()).getByText('내 업무'));
+    expect(within(detail()).getByLabelText('제목')).toBeDisabled();
+    expect(within(detail()).queryByRole('button', { name: '삭제' })).not.toBeInTheDocument();
+    fireEvent.click(within(detail()).getByRole('checkbox', { name: '확인' }));
+    await waitFor(() => expect(api.updateTask).toHaveBeenCalledWith(ORG, expect.any(String), { checklist: [{ id: 'a', text: '확인', done: true }] }));
+    fireEvent.click(within(detail()).getByRole('button', { name: '완료' }));
+    await waitFor(() => expect(api.updateTask).toHaveBeenLastCalledWith(ORG, expect.any(String), { status: 'done' }));
+  });
+
+  it('조회 전용 구성원은 남의 할 일이나 미지정 할 일의 상태를 바꿀 수 없다', async () => {
+    renderPage(makeApi(assigned()), { readOnly: true, currentUserId: ME });
+    await screen.findByText('내 업무', { selector: 'td' });
+    for (const title of ['남의 업무', '미지정 업무']) {
+      fireEvent.click(within(grid()).getByText(title));
+      expect(within(detail()).queryByRole('group', { name: '상태 변경' })).not.toBeInTheDocument();
+    }
+  });
+
+  it('완료한 사람의 이름과 시각이 상세에 보인다', async () => {
+    const api = makeApi([makeTask(1, { title: '끝난 업무', status: 'done', assignee_id: ME, completed_by: ME, completed_by_name: '김담당', completed_at: local(2026, 10, 14, 15, 30) })]);
+    renderPage(api, { currentUserId: BOSS });
+    await screen.findByText('끝난 업무', { selector: 'td' });
+    fireEvent.click(within(grid()).getByText('끝난 업무'));
+    expect(within(detail()).getByTestId('completed-by')).toHaveTextContent('김담당');
+  });
+
+  it('내 담당 필터와 일괄 완료는 자기에게 지정된 것만 대상으로 한다', async () => {
+    const api = makeApi(assigned());
+    renderPage(api, { readOnly: true, currentUserId: ME });
+    await screen.findByText('내 업무', { selector: 'td' });
+    expect(screen.getByRole('button', { name: '보이는 1건 완료' })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('담당자 필터'), { target: { value: 'mine' } });
+    expect(within(grid()).queryByText('남의 업무')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '보이는 1건 완료' }));
+    fireEvent.click(await screen.findByRole('button', { name: '모두 완료' }));
+    await waitFor(() => expect(api.updateTask).toHaveBeenCalledTimes(1));
+    expect(api.updateTask).toHaveBeenCalledWith(ORG, '00000000-0000-4000-8000-000000000001', { status: 'done' });
   });
 });

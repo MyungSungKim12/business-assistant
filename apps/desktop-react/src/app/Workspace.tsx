@@ -53,7 +53,7 @@ function WorkspacePage({ api, organizationId, active, organizationName, canManag
   const props = { api, organizationId, readOnly };
   switch (active) {
     case 'dashboard': return <DashboardPage api={api} organizationId={organizationId} onNavigate={onNavigate} organizationName={organizationName} readOnly={readOnly} canManage={canManage} />;
-    case 'tasks': return <TaskPage api={api} organizationId={organizationId} readOnly={readOnly} />;
+    case 'tasks': return <TaskPage api={api} organizationId={organizationId} readOnly={readOnly} currentUserId={currentUserId} />;
     case 'customers': return <CustomerPage {...props} focusCustomerId={focus?.kind === 'customer' ? focus.id : undefined} focusNonce={focus?.nonce} />;
     // 예약은 구성원도 등록·변경할 수 있다. 공간·장비 관리는 소유자·관리자만 한다.
     case 'appointments': return <AppointmentPage api={api} organizationId={organizationId} readOnly={false} canManageResources={!readOnly} />;

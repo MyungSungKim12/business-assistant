@@ -14,6 +14,7 @@ function fixture() {
     create: async (_t: string, _o: string, input: Record<string, unknown>) => { calls.push({ kind: 'create', input }); return { id: taskId, organization_id: organizationId, created_by: organizationId, status: 'open', ...input }; },
     update: async (_t: string, _o: string, _id: string, input: Record<string, unknown>) => { calls.push({ kind: 'update', input }); return { id: taskId, organization_id: organizationId, created_by: organizationId, title: 't', description: 'd', due_at: null, status: 'open', priority: 'normal', labels: [], checklist: [], ...input }; },
     remove: async () => true,
+    people: async () => [{ user_id: 'd9cc39fd-8e8c-4df8-a623-1f23a3a936bd', name: '김담당' }],
   };
   return { app: createApp({ organizations: organizations as never, tasks: tasks as never }), calls };
 }
@@ -47,7 +48,7 @@ describe('task routes', () => {
     const { app, calls } = fixture();
     const result = await app.inject({ method: 'POST', url: base, headers, payload: { title: '월말 정리', labels: ['재고', '월말'], checklist: [{ id: 'a', text: '상자', done: false }] } });
     expect(result.statusCode).toBe(200);
-    expect(calls[0].input).toEqual({ title: '월말 정리', description: '', due_at: null, priority: 'normal', labels: ['재고', '월말'], checklist: [{ id: 'a', text: '상자', done: false }], recurrence: null, customer_id: null });
+    expect(calls[0].input).toEqual({ title: '월말 정리', description: '', due_at: null, priority: 'normal', labels: ['재고', '월말'], checklist: [{ id: 'a', text: '상자', done: false }], recurrence: null, customer_id: null, assignee_id: null });
     const bare = await app.inject({ method: 'POST', url: base, headers, payload: { title: '기본' } });
     expect(bare.statusCode).toBe(200);
     expect(calls[1].input).toMatchObject({ labels: [], checklist: [] });
@@ -81,7 +82,7 @@ describe('task recurrence and customer link (048)', () => {
   it('defaults to no recurrence and no customer, and rejects recurrence without a due date', async () => {
     const { app, calls } = fixture();
     await app.inject({ method: 'POST', url: base, headers, payload: { title: '기본' } });
-    expect(calls[0].input).toMatchObject({ recurrence: null, customer_id: null });
+    expect(calls[0].input).toMatchObject({ recurrence: null, customer_id: null, assignee_id: null });
     expect((await app.inject({ method: 'POST', url: base, headers, payload: { title: 'x', recurrence: 'daily' } })).statusCode).toBe(422);
     expect((await app.inject({ method: 'POST', url: base, headers, payload: { title: 'x', due_at: '2026-10-20T01:00:00Z', recurrence: 'yearly' } })).statusCode).toBe(422);
     expect((await app.inject({ method: 'POST', url: base, headers, payload: { title: 'x', customer_id: 'not-a-uuid' } })).statusCode).toBe(422);
@@ -94,6 +95,39 @@ describe('task recurrence and customer link (048)', () => {
     await app.inject({ method: 'PATCH', url: `${base}/${taskId}`, headers, payload: { recurrence: 'monthly' } });
     await app.inject({ method: 'PATCH', url: `${base}/${taskId}`, headers, payload: { recurrence: null, customer_id: null } });
     expect(calls.map((call) => call.input)).toEqual([{ recurrence: 'monthly' }, { recurrence: null, customer_id: null }]);
+    await app.close();
+  });
+});
+
+describe('task assignee and completion record (049)', () => {
+  const assignee = 'd9cc39fd-8e8c-4df8-a623-1f23a3a936bd';
+  it('accepts an assignee on create and patch, and allows clearing it', async () => {
+    const { app, calls } = fixture();
+    await app.inject({ method: 'POST', url: base, headers, payload: { title: '청소', assignee_id: assignee } });
+    await app.inject({ method: 'PATCH', url: `${base}/${taskId}`, headers, payload: { assignee_id: null } });
+    expect(calls[0].input).toMatchObject({ assignee_id: assignee });
+    expect(calls[1].input).toEqual({ assignee_id: null });
+    expect((await app.inject({ method: 'POST', url: base, headers, payload: { title: 'x' } })).statusCode).toBe(200);
+    expect(calls[2].input).toMatchObject({ assignee_id: null });
+    await app.close();
+  });
+
+  it('never accepts client-supplied completion fields', async () => {
+    const { app, calls } = fixture();
+    for (const payload of [{ completed_by: assignee }, { completed_at: '2026-10-14T00:00:00Z' }, { completed_by_name: '위조' }]) {
+      expect((await app.inject({ method: 'PATCH', url: `${base}/${taskId}`, headers, payload })).statusCode).toBe(422);
+      expect((await app.inject({ method: 'POST', url: base, headers, payload: { title: 'x', ...payload } })).statusCode).toBe(422);
+    }
+    expect((await app.inject({ method: 'PATCH', url: `${base}/${taskId}`, headers, payload: { assignee_id: 'not-a-uuid' } })).statusCode).toBe(422);
+    expect(calls).toEqual([]);
+    await app.close();
+  });
+
+  it('lists organization people for the assignee picker', async () => {
+    const { app } = fixture();
+    const result = await app.inject({ method: 'GET', url: `/api/v1/organizations/${organizationId}/task-people`, headers });
+    expect(result.statusCode).toBe(200);
+    expect(result.json()).toEqual([{ user_id: assignee, name: '김담당' }]);
     await app.close();
   });
 });

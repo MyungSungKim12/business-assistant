@@ -17,6 +17,8 @@ export interface TaskPageProps {
   organizationId: string;
   /** member 등 조회 전용 계정. */
   readOnly?: boolean;
+  /** 로그인한 사용자 ID. 담당자 판정과 '내 담당' 필터에 쓴다. */
+  currentUserId?: string;
   /** 오늘로 취급할 날짜(테스트용). 기본은 실행 환경의 오늘. */
   todayKey?: DateKey;
 }
@@ -25,7 +27,7 @@ function mergeTask(items: Task[], next: Task): Task[] {
   return items.map((item) => (item.id === next.id ? { ...item, ...next } : item));
 }
 
-export function TaskPage({ api, organizationId, readOnly = false, todayKey: todayOverride }: TaskPageProps) {
+export function TaskPage({ api, organizationId, readOnly = false, currentUserId = '', todayKey: todayOverride }: TaskPageProps) {
   const todayKey = useMemo(() => todayOverride ?? toDateKey(new Date()), [todayOverride]);
   const [items, setItems] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
@@ -36,6 +38,13 @@ export function TaskPage({ api, organizationId, readOnly = false, todayKey: toda
   const [createDue, setCreateDue] = useState('');
   const [completing, setCompleting] = useState(false);
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [people, setPeople] = useState<Array<{ user_id: string; name: string }>>([]);
+  // 담당자 선택지. 불러오지 못해도 할 일 화면은 그대로 쓴다.
+  useEffect(() => { let live = true; Promise.resolve().then(() => api.listTaskPeople(organizationId)).then((rows) => { if (live) setPeople(rows); }, () => undefined); return () => { live = false; }; }, [api, organizationId]);
+  const personOptions = useMemo(() => people.map((person) => ({ id: person.user_id, name: person.name })), [people]);
+  const personName = useCallback((userId: string) => people.find((person) => person.user_id === userId)?.name ?? '(구성원 아님)', [people]);
+  /** 상태·체크리스트를 바꿀 수 있는 사람: 쓰기 권한이 있거나 그 할 일의 담당자. 서버(DB)도 같은 규칙을 강제한다. */
+  const canWork = useCallback((task: Task) => !readOnly || (currentUserId !== '' && task.assignee_id === currentUserId), [readOnly, currentUserId]);
   // 고객 연결 선택지. 불러오지 못해도 할 일 화면은 그대로 쓴다.
   useEffect(() => { let live = true; Promise.resolve().then(() => api.listCustomers(organizationId)).then((rows) => { if (live) setCustomers(rows.filter((row) => row.status !== 'archived')); }, () => undefined); return () => { live = false; }; }, [api, organizationId]);
   const customerOptions = useMemo(() => [...customers].sort((a, b) => a.name.localeCompare(b.name, 'ko')).map((row) => ({ id: row.id, name: row.name })), [customers]);
@@ -65,7 +74,7 @@ export function TaskPage({ api, organizationId, readOnly = false, todayKey: toda
   };
 
   const selected = useMemo(() => items.find((item) => item.id === selectedId) ?? null, [items, selectedId]);
-  const rows = useMemo(() => sortByDue(filterTasks(items, filters)), [items, filters]);
+  const rows = useMemo(() => sortByDue(filterTasks(items, filters, currentUserId)), [items, filters, currentUserId]);
 
   const selectTask = async (task: Task) => {
     if (task.id === selectedId) return;
@@ -86,13 +95,13 @@ export function TaskPage({ api, organizationId, readOnly = false, todayKey: toda
   };
 
   const createTask = async (values: TaskFormValues) => {
-    const created = await api.createTask(organizationId, { title: values.title, description: values.description, due_at: localInputToIso(values.due), priority: values.priority, labels: parseLabels(values.labels), recurrence: values.recurrence || null, customer_id: values.customerId || null });
+    const created = await api.createTask(organizationId, { title: values.title, description: values.description, due_at: localInputToIso(values.due), priority: values.priority, labels: parseLabels(values.labels), recurrence: values.recurrence || null, customer_id: values.customerId || null, assignee_id: values.assigneeId || null });
     setItems((current) => [...current, created]);
     setCreateDue('');
     setSelectedId(created.id);
   };
   const updateTask = async (task: Task, values: TaskFormValues) => {
-    const saved = await api.updateTask(organizationId, task.id, { title: values.title, description: values.description, due_at: localInputToIso(values.due), priority: values.priority, labels: parseLabels(values.labels), recurrence: values.recurrence || null, customer_id: values.customerId || null });
+    const saved = await api.updateTask(organizationId, task.id, { title: values.title, description: values.description, due_at: localInputToIso(values.due), priority: values.priority, labels: parseLabels(values.labels), recurrence: values.recurrence || null, customer_id: values.customerId || null, assignee_id: values.assigneeId || null });
     setItems((current) => mergeTask(current, saved));
   };
   const changeStatus = async (task: Task, status: TaskStatus) => {
@@ -103,7 +112,8 @@ export function TaskPage({ api, organizationId, readOnly = false, todayKey: toda
   };
   /** 화면에 보이는(필터 결과) 미완료 할 일을 하나씩 완료 처리한다. 일부가 실패해도 성공한 것은 유지하고 건수를 알린다. */
   const completeVisible = async (tasks: Task[]) => {
-    if (readOnly || completing || tasks.length === 0) return;
+    tasks = tasks.filter(canWork);
+    if (completing || tasks.length === 0) return;
     const ok = await confirm({ title: '일괄 완료', message: `보이는 할 일 ${tasks.length}건을 모두 완료 처리할까요? 완료한 항목은 상세에서 다시 열 수 있습니다.`, confirmLabel: '모두 완료' });
     if (!ok) return;
     setCompleting(true);
@@ -166,9 +176,13 @@ export function TaskPage({ api, organizationId, readOnly = false, todayKey: toda
         onRetry={() => void load()}
         onCompleteVisible={(tasks) => void completeVisible(tasks)}
         completing={completing}
+        canWork={canWork}
+        personName={personName}
       />
       <TaskDetail
         customers={customerOptions}
+        people={personOptions}
+        canWork={canWork}
         task={selected}
         createKey={createKey}
         createDue={createDue}

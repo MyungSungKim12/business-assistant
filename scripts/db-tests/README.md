@@ -93,3 +93,13 @@ creation (KST wall clock, month-end clamp), skipping past due dates, copying fie
 checklist, no successor for non-recurring/no-due/non-done transitions, at most one successor per task,
 a manager completing a member's task, cross-organization customer rejection, and that deleting a
 customer only clears the link.
+
+## Task assignee and completion record (049)
+
+Run `npm run test:ops-049 --prefix scripts/db-tests` to execute migrations 006, 024, 034, 047, 048, and 049
+(049 twice). It checks that an assignee must be an organization member, that an assignee-only member may
+change just status and checklist (title, description, and reassignment are rejected with 42501), that
+another member cannot touch the task, that the database stamps the real caller as completer with a
+name snapshot (forged values ignored, cleared on reopen), the email-prefix fallback name, that the name
+list exposes no email, that the completer record survives membership removal, and that recurring
+successors keep the assignee unless the assignee has left.
