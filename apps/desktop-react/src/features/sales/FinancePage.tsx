@@ -9,10 +9,13 @@ import { errorMessage, formatWon, isDefinitive, kst, moneyText, monthClosedMessa
 import { LedgerTable, LedgerTotals } from './LedgerTable';
 import { activeClosings, closedMonthNotice, closingForDate, defaultLedgerSort, searchTransactions, sortTransactions, summarizeLedger, type LedgerSort } from './ledger';
 import { MonthClosePanel } from './MonthClosePanel';
+import { RecurringPanel } from './RecurringPanel';
+import { TaxReportPanel } from './TaxReportPanel';
+import { DEFAULT_CATEGORIES, categorySuggestions } from './taxReport';
 import type { FinanceSummary, MonthClosing, Settlement, Transaction } from './types';
 import './sales.css';
 
-type Tab = 'ledger' | 'month' | 'settlement';
+type Tab = 'ledger' | 'recurring' | 'report' | 'month' | 'settlement';
 type TypeFilter = '' | 'income' | 'expense';
 const blankForm = (): TransactionInput => ({ transaction_type: 'income', amount: '', transaction_date: today(), category: '', counterparty: '', memo: '', is_archived: false });
 const toForm = (item: Transaction): TransactionInput => ({ transaction_type: item.transaction_type, amount: item.amount, transaction_date: item.transaction_date, category: item.category, counterparty: item.counterparty, memo: item.memo, is_archived: item.is_archived });
@@ -26,22 +29,28 @@ async function leave(dirty: boolean): Promise<boolean> {
 export function FinancePage({ api, organizationId, readOnly }: { api: ApiClient; organizationId: string; readOnly: boolean }) {
   const [tab, setTab] = useState<Tab>('ledger');
   const [dirty, setDirty] = useState(false);
+  // 분류 입력 제안: 수입·지출 탭에서 읽은 거래의 분류를 모아 반복 지출 입력과 나눠 쓴다.
+  const [categories, setCategories] = useState<string[]>([...DEFAULT_CATEGORIES]);
   async function switchTab(next: Tab) { if (next !== tab && await leave(dirty)) { setDirty(false); setTab(next); } }
   return <section className="finance-page">
     <div className="page-toolbar"><div><p className="eyebrow">FINANCE</p><h1>수입·지출·정산</h1><p className="muted">수입·지출 내역, 월 단위 장부 마감, 일 매출 대사와 시재(일 마감)를 관리합니다.</p></div></div>
     {readOnly && <p className="permission-banner">조회 전용입니다. 등록·수정·마감은 관리자만 할 수 있습니다.</p>}
     <div className="sales-tabs" role="tablist">
       <button type="button" role="tab" aria-selected={tab === 'ledger'} className={tab === 'ledger' ? 'is-active' : ''} onClick={() => void switchTab('ledger')}>수입·지출</button>
+      <button type="button" role="tab" aria-selected={tab === 'recurring'} className={tab === 'recurring' ? 'is-active' : ''} onClick={() => void switchTab('recurring')}>반복 지출</button>
+      <button type="button" role="tab" aria-selected={tab === 'report'} className={tab === 'report' ? 'is-active' : ''} onClick={() => void switchTab('report')}>분류·세무 자료</button>
       <button type="button" role="tab" aria-selected={tab === 'month'} className={tab === 'month' ? 'is-active' : ''} onClick={() => void switchTab('month')}>월 마감</button>
       <button type="button" role="tab" aria-selected={tab === 'settlement'} className={tab === 'settlement' ? 'is-active' : ''} onClick={() => void switchTab('settlement')}>미수·일 마감</button>
     </div>
-    {tab === 'ledger' && <LedgerPanel api={api} organizationId={organizationId} readOnly={readOnly} onDirty={setDirty} />}
+    {tab === 'ledger' && <LedgerPanel api={api} organizationId={organizationId} readOnly={readOnly} categories={categories} onCategories={setCategories} onDirty={setDirty} />}
+    {tab === 'recurring' && <RecurringPanel api={api} organizationId={organizationId} readOnly={readOnly} categories={categories} onDirty={setDirty} />}
+    {tab === 'report' && <TaxReportPanel api={api} organizationId={organizationId} />}
     {tab === 'month' && <MonthClosePanel api={api} organizationId={organizationId} readOnly={readOnly} onDirty={setDirty} />}
     {tab === 'settlement' && <SettlementPanel api={api} organizationId={organizationId} readOnly={readOnly} onDirty={setDirty} />}
   </section>;
 }
 
-function LedgerPanel({ api, organizationId, readOnly, onDirty }: { api: ApiClient; organizationId: string; readOnly: boolean; onDirty: (dirty: boolean) => void }) {
+function LedgerPanel({ api, organizationId, readOnly, categories, onCategories, onDirty }: { api: ApiClient; organizationId: string; readOnly: boolean; categories: string[]; onCategories: (categories: string[]) => void; onDirty: (dirty: boolean) => void }) {
   const [type, setType] = useState<TypeFilter>('');
   const [from, setFrom] = useState<string | null>(null);
   const [to, setTo] = useState<string | null>(null);
@@ -134,6 +143,8 @@ function LedgerPanel({ api, organizationId, readOnly, onDirty }: { api: ApiClien
     } finally { setSaving(false); }
   }
 
+  // 읽은 거래에서 쓰던 분류를 모아 입력 제안으로 올린다(자주 쓴 분류가 앞).
+  useEffect(() => { if (rows.length > 0) onCategories(categorySuggestions(rows)); }, [rows]); // eslint-disable-line react-hooks/exhaustive-deps
   const visible = useMemo(() => sortTransactions(searchTransactions(rows, text), sort), [rows, text, sort]);
   const visibleSummary = useMemo(() => summarizeLedger(visible), [visible]);
   const closedMonths = useMemo(() => new Set(activeClosings(closings).keys()), [closings]);
@@ -169,7 +180,8 @@ function LedgerPanel({ api, organizationId, readOnly, onDirty }: { api: ApiClien
       <label>거래 유형<Select aria-label="거래 유형" value={form.transaction_type} onChange={(value) => setForm({ ...form, transaction_type: value })} options={[{ value: 'income', label: '수입' }, { value: 'expense', label: '지출' }]} /></label>
       <label>일자<DateField aria-label="거래 일자" value={form.transaction_date || null} onChange={(value) => setForm({ ...form, transaction_date: value ?? '' })} /></label>
       <label>금액<input inputMode="decimal" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} /></label>
-      <label>분류<input maxLength={200} value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} /></label>
+      <label>분류<input maxLength={200} list="finance-categories" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} /></label>
+      <datalist id="finance-categories">{categories.map((name) => <option key={name} value={name} />)}</datalist>
       <label>거래처<input value={form.counterparty} onChange={(e) => setForm({ ...form, counterparty: e.target.value })} /></label>
       <label>메모<textarea value={form.memo} onChange={(e) => setForm({ ...form, memo: e.target.value })} /></label>
       {blocked && <p role="alert" className="form-error" data-testid="closed-month-notice">{closedMonthNotice(blockedDate)}</p>}

@@ -94,3 +94,9 @@
 .month-close__table { flex: 1; min-height: 80px; overflow: auto; }
 .ledger-totals { flex: none; }
 .ledger-categories__table { max-height: 140px; overflow: auto; margin-top: 4px; }
+
+/* 반복 지출·분류별 요약 */
+.tax-report { display: flex; flex-direction: column; gap: 6px; }
+.tax-report__grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 6px; align-items: start; }
+.tax-bar { display: block; height: 8px; min-width: 1px; background: var(--accent, #3b6fd4); border-radius: 4px; }
+.finance-layout tr.is-selected { background: var(--row-selected, #eef3fc); }

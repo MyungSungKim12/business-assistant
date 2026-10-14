@@ -120,3 +120,13 @@ in-memory PostgreSQL database. It checks owner/admin create-update-delete versus
 the `created_by` default, case/whitespace-insensitive unique names, every length limit, the version bump and
 timestamp trigger, optimistic locking via a `version` predicate (stale updates match no row), immutable
 organization/creator, and cross-organization isolation.
+
+## Recurring expenses (052)
+
+Run `npm run test:ops-052 --prefix scripts/db-tests` to execute migrations 008, 042, and 052 (052 twice)
+against a fresh in-memory PostgreSQL database, including the real month-close trigger. It checks
+owner/admin versus member access, input limits, unique names, the day-of-month clamp (31 becomes the last
+day), that registering the same month again creates nothing new while a newly added item is still
+registered, that inactive items are skipped, that edits and deletes never change registered transactions,
+the version/optimistic lock, the closed-month rejection and re-registration after reopening, the
+too-far-future guard, and cross-organization isolation.
