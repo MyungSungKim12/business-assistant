@@ -67,6 +67,10 @@ export const consentActionLabel: Record<ConsentAction, string> = { sign: '현장
 export const deliveryMethodLabel: Record<string, string> = { paper: '종이 교부', email: '외부 이메일', sms: '외부 문자', other: '기타' };
 export const FIELD_NAMES: Record<string, string> = {
   'customer.name': '고객 이름', 'customer.phone': '고객 연락처', 'customer.birth_date': '고객 생년월일', 'treatment.name': '시술명', 'treatment.date': '시술일',
-  'treatment.practitioner': '담당자', 'treatment.amount': '예정 금액', 'treatment.consultation_goal': '상담 목표', malformed_placeholder: '잘못된 중괄호 표시', '': '빈 자동 채움 표시',
+  'treatment.practitioner': '담당자', 'treatment.amount': '예정 금액', 'treatment.consultation_goal': '상담 목표',
+  // 054에서 추가한 항목
+  'organization.name': '매장 이름', today: '오늘 날짜', 'customer.skin_type': '고객 피부 타입', 'customer.allergies': '고객 알레르기·주의사항',
+  'treatment.category': '시술 분류', 'treatment.next_visit_date': '다음 방문일', 'treatment.consultation_plan': '예정 관리 내용', malformed_placeholder: '잘못된 중괄호 표시', '': '빈 자동 채움 표시',
 };
-export const TEMPLATE_FIELDS = ['customer.name', 'customer.phone', 'customer.birth_date', 'treatment.name', 'treatment.date', 'treatment.practitioner', 'treatment.amount', 'treatment.consultation_goal'];
+export const TEMPLATE_FIELDS = ['customer.name', 'customer.phone', 'customer.birth_date', 'treatment.name', 'treatment.date', 'treatment.practitioner', 'treatment.amount', 'treatment.consultation_goal',
+  'organization.name', 'today', 'customer.skin_type', 'customer.allergies', 'treatment.category', 'treatment.next_visit_date', 'treatment.consultation_plan'];

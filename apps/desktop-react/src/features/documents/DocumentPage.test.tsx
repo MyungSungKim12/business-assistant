@@ -204,3 +204,32 @@ describe('DocumentPage · 서식 관리', () => {
     expect(inTemplates().getByLabelText('서식 이름')).toHaveAttribute('readonly');
   });
 });
+
+describe('서식 자동 채움 항목 확장 (DOC-11)', () => {
+  it('모든 자동 채움 항목에 한국어 이름이 있고 새 항목이 목록에 있다', async () => {
+    const { FIELD_NAMES, TEMPLATE_FIELDS } = await import('./schemas');
+    for (const key of TEMPLATE_FIELDS) expect(FIELD_NAMES[key], key).toBeTruthy();
+    expect(new Set(TEMPLATE_FIELDS).size).toBe(TEMPLATE_FIELDS.length);
+    for (const key of ['organization.name', 'today', 'customer.skin_type', 'customer.allergies', 'treatment.category', 'treatment.next_visit_date', 'treatment.consultation_plan']) expect(TEMPLATE_FIELDS).toContain(key);
+  });
+
+  it.each([['today', '{{today}}'], ['customer.allergies', '{{customer.allergies}}'], ['organization.name', '{{organization.name}}']])('%s 항목을 선택해 본문에 삽입한다', async (key, token) => {
+    const { api } = fakeApi(base);
+    renderWithHosts(<DocumentPage api={api} organizationId={ORG} readOnly={false} />);
+    openTemplates();
+    fireEvent.click(await inTemplates().findByRole('button', { name: '새 서식' }));
+    const select = inTemplates().getByLabelText('자동 채움 항목');
+    expect(within(select).getAllByRole('option').map((option) => option.getAttribute('value'))).toContain(key);
+    fireEvent.change(select, { target: { value: key } });
+    fireEvent.click(inTemplates().getByRole('button', { name: '자동 채움 항목 삽입' }));
+    expect(inTemplates().getByLabelText('본문')).toHaveValue(token);
+  });
+
+  it('안내 문구가 알레르기 미등록 처리와 날짜 고정을 설명한다', async () => {
+    const { api } = fakeApi(base);
+    renderWithHosts(<DocumentPage api={api} organizationId={ORG} readOnly={false} />);
+    openTemplates();
+    fireEvent.click(await inTemplates().findByRole('button', { name: '새 서식' }));
+    expect(inTemplates().getByText(/없음.*미등록.*다른 항목/)).toBeInTheDocument();
+  });
+});

@@ -184,7 +184,7 @@ export function TemplateManager({ api, organizationId, readOnly, onChanged }: { 
             <label className="doc-grow">자동 채움 항목<select value={field} disabled={!textEditable} onChange={(e) => setField(e.target.value)}>{TEMPLATE_FIELDS.map((key) => <option key={key} value={key}>{FIELD_NAMES[key]}</option>)}</select></label>
             <button type="button" disabled={!textEditable} onClick={insertField}>자동 채움 항목 삽입</button>
           </div>}
-          <p className="muted">삽입한 항목은 발행 시 자동 채워집니다. 해당 값이 미등록이면 발행이 중지됩니다.</p>
+          <p className="muted">삽입한 항목은 발행 시 자동 채워집니다. 해당 값이 미등록이면 발행이 중지됩니다(알레르기처럼 "없음"과 "미등록"이 다른 항목은 고객 정보를 먼저 확인해 입력하세요). 오늘 날짜는 발행하는 날(한국 시간)이며, 발행본에는 그 시점의 값이 고정됩니다.</p>
           {!readOnly && <div className="doc-actions">{actions.map(([action, label, tone]) => <button key={action} type="button" className={tone} disabled={!editable || !allowed(action)} onClick={() => void mutate(action)}>{label}</button>)}</div>}
           {pending && !busy && <button type="button" onClick={() => void run(pending)}>같은 요청 재시도</button>}
           {status && <p role={failed ? 'alert' : 'status'} className={failed ? 'form-error' : 'muted'}>{status}</p>}

@@ -139,3 +139,12 @@ caller, time, name snapshot, and reason in the database (forged values ignored, 
 cleared on restore), the email-prefix fallback name, that failed-upload cleanup stays out of the trash, the
 reason constraint, owner/admin versus member write access, cross-organization isolation, and that the
 archiver name survives membership removal.
+
+## Document template fields (054)
+
+Run `npm run test:ops-054 --prefix scripts/db-tests` to execute migrations 007, 014, 016-019 and then 054
+(twice) against a fresh in-memory PostgreSQL database. It checks that the new fields are unknown before 054,
+that the original fields render unchanged afterwards, that organization name, KST date, skin type, allergies,
+treatment category, next visit date, and consultation plan fill in and land in the source snapshot, that an
+issued document keeps its values after the customer record changes, that blank values block issuance,
+that members can preview but not issue or call the renderer directly, and that malformed tokens still fail closed.
