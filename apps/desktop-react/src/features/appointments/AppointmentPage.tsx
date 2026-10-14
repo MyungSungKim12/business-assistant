@@ -11,8 +11,8 @@ import { AppointmentToolbar, type ViewMode } from './AppointmentToolbar';
 import { DayGrid } from './DayGrid';
 import { ReasonModal, type ReasonKind } from './ReasonModal';
 import { WeekGrid } from './WeekGrid';
-import { mergeAppointments, nameLookup, needsReason, type TargetStatus } from './appointmentRules';
-import { addDays, kstDateKey, localInputAt, todayKstKey, weekStartOf } from './appointmentTime';
+import { canEditAppointment, mergeAppointments, nameLookup, needsReason, type TargetStatus } from './appointmentRules';
+import { addDays, formatKstTime, kstDateKey, kstIso, localInputAt, todayKstKey, toKstLocalInput, weekStartOf } from './appointmentTime';
 import './appointments.css';
 
 /** 서버가 기본으로 돌려주는 범위(오늘 -7일 ~ +60일, KST). 그 밖의 날짜는 기간을 지정해 따로 불러온다. */
@@ -137,6 +137,37 @@ export function AppointmentPage({ api, organizationId, readOnly, canManageResour
   async function cancelEdit() {
     if (!(await canLeaveForm())) return;
     if (selected) setPanel({ kind: 'detail', id: selected.id });
+  }
+
+  /**
+   * 끌어서 옮기기(APT-14): 확인을 받은 뒤 예약 수정과 같은 PUT으로 시간·담당자만 바꾼다.
+   * 충돌·근무 시간·자원 검사는 서버가 하며, 거절되면 화면은 그대로 두고 안내한다.
+   */
+  async function moveAppointment(item: Appointment, target: { date: string; minutes: number; staffId?: string }) {
+    if (readOnly || busy || !canEditAppointment(item.status)) return;
+    const startLocal = localInputAt(target.date, target.minutes);
+    const staffId = target.staffId ?? item.staff_id;
+    if (startLocal === toKstLocalInput(item.start_at) && staffId === item.staff_id) return;
+    if (!(await canLeaveForm())) return;
+    const label = `${kstDateKey(kstIso(startLocal))} ${formatKstTime(kstIso(startLocal))}${staffId !== item.staff_id ? ` · ${staffName(staffId)}` : ''}`;
+    const ok = await confirm({ title: '예약 이동', message: `${customerName(item.customer_id)}님 예약을 ${label}(으)로 옮길까요?`, confirmLabel: '이동' });
+    if (!ok) return;
+    setBusy(true);
+    try {
+      const saved = await api.call('PUT', `/organizations/${organizationId}/appointments/${item.id}`, appointmentsSchema.element, {
+        customer_id: item.customer_id, staff_id: staffId, service_id: item.service_id, start_at: kstIso(startLocal), source: item.source,
+        expected_version: item.version, resource_ids: [...item.resource_ids].sort(), operation_id: crypto.randomUUID(),
+      });
+      setItems((old) => mergeAppointments(old, [{ ...saved, memo: saved.memo ?? item.memo }]));
+      setError('');
+      notify.success('예약을 옮겼습니다.');
+    } catch (failure) {
+      const status = (failure as { status?: number }).status;
+      setError(status === 409
+        ? '옮기지 못했습니다. 다른 곳에서 먼저 변경되었거나, 그 시간에 담당자·공간·장비가 사용 중이거나 근무 시간이 아닙니다. 최신 상태를 불러옵니다.'
+        : status === 422 ? '옮기지 못했습니다. 시간 또는 담당자가 올바르지 않습니다.' : '예약을 옮기지 못했습니다. 잠시 후 다시 시도해 주세요.');
+      void load();
+    } finally { setBusy(false); }
   }
 
   /** 메모만 저장한다. 응답에는 자원 선택이 없으므로 화면 목록에는 메모만 반영해 기존 값(버전·자원)을 지키지 않게 되는 일을 막는다. */
@@ -267,6 +298,8 @@ export function AppointmentPage({ api, organizationId, readOnly, canManageResour
               canCreate={!readOnly}
               onSelect={(appointment) => void selectAppointment(appointment)}
               onEmptyClick={(staffId, minutes) => void startCreate({ staff_id: staffId, start_at: localInputAt(day, minutes) })}
+              canMove={(appointment) => !readOnly && !busy && canEditAppointment(appointment.status)}
+              onMove={(appointment, staffId, minutes) => void moveAppointment(appointment, { date: day, minutes, staffId })}
             />
           )}
           {view === 'week' && (
@@ -280,6 +313,8 @@ export function AppointmentPage({ api, organizationId, readOnly, canManageResour
               canCreate={!readOnly}
               onSelect={(appointment) => void selectAppointment(appointment)}
               onEmptyClick={(date, minutes) => void startCreate({ start_at: localInputAt(date, minutes) })}
+              canMove={(appointment) => !readOnly && !busy && canEditAppointment(appointment.status)}
+              onMove={(appointment, date, minutes) => void moveAppointment(appointment, { date, minutes })}
             />
           )}
           {view === 'list' && (

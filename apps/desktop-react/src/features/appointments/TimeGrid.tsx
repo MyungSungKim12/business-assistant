@@ -1,12 +1,11 @@
-import { useEffect, useMemo, useRef, type CSSProperties } from 'react';
+import { useEffect, useMemo, useRef, type CSSProperties, type DragEvent } from 'react';
 import type { Appointment } from '../../api/schemas';
 import { formatKstTime, formatMinutes, intervalOnDay, kstParts, type DayInterval } from './appointmentTime';
 import { blockBox, computeGridRange, placeBlocks, type GridRange } from './layoutBlocks';
 import { isInactiveStatus, statusLabel } from './appointmentRules';
+import { SLOT_HEIGHT, SLOT_MINUTES, dropStartMinutes } from './dragMove';
 
-/** 30분 칸의 높이(px). 시간축 높이는 이 값에 비례한다. */
-export const SLOT_MINUTES = 30;
-export const SLOT_HEIGHT = 28;
+export { SLOT_HEIGHT, SLOT_MINUTES };
 const PX_PER_MINUTE = SLOT_HEIGHT / SLOT_MINUTES;
 
 export interface TimeGridColumn {
@@ -36,12 +35,18 @@ export interface TimeGridProps {
   renderBlock: (appointment: Appointment) => { title: string; lines: string[] };
   /** 열 최소 너비(px). */
   minColumnWidth?: number;
+  /** 이 예약을 끌어서 옮길 수 있는지. 없으면 끌기를 쓰지 않는다. */
+  canMove?: (appointment: Appointment) => boolean;
+  /** 끌어다 놓은 위치: 열(날짜·담당자)과 새 시작 분. */
+  onMove?: (appointment: Appointment, column: TimeGridColumn, startMinutes: number) => void;
 }
 
 interface PreparedBlock { appointment: Appointment; interval: DayInterval }
 
 /** 시간축 × 열 격자. 일 보기(직원별)와 주 보기(요일별)가 함께 쓴다. */
-export function TimeGrid({ columns, selectedId, now, canCreate, ariaLabel, onSelect, onEmptyClick, renderBlock, minColumnWidth = 110 }: TimeGridProps) {
+export function TimeGrid({ columns, selectedId, now, canCreate, ariaLabel, onSelect, onEmptyClick, renderBlock, minColumnWidth = 110, canMove, onMove }: TimeGridProps) {
+  const dragging = useRef<{ appointment: Appointment; grabOffsetY: number } | null>(null);
+  const byAppointmentId = useMemo(() => new Map(columns.flatMap((column) => column.items.map((item) => [item.id, item] as const))), [columns]);
   const prepared = useMemo(() => columns.map((column) => {
     const blocks: PreparedBlock[] = [];
     for (const appointment of column.items) {
@@ -96,7 +101,22 @@ export function TimeGrid({ columns, selectedId, now, canCreate, ariaLabel, onSel
             const byId = new Map(prepared[columnIndex].map((block) => [block.appointment.id, block]));
             const showNow = column.isToday && nowParts.date === column.date && nowParts.minutes >= range.startMin && nowParts.minutes < range.endMin;
             return (
-              <div key={column.key} className={column.isToday ? 'apt-col is-today' : 'apt-col'} role="group" aria-label={`${column.header} 일정`}>
+              <div
+                key={column.key}
+                className={column.isToday ? 'apt-col is-today' : 'apt-col'}
+                role="group"
+                aria-label={`${column.header} 일정`}
+                onDragOver={(event: DragEvent<HTMLDivElement>) => { if (dragging.current) event.preventDefault(); }}
+                onDrop={(event: DragEvent<HTMLDivElement>) => {
+                  const active = dragging.current;
+                  dragging.current = null;
+                  if (!active || !onMove) return;
+                  event.preventDefault();
+                  const top = event.currentTarget.getBoundingClientRect().top;
+                  const minutes = dropStartMinutes(range.startMin, event.clientY - top, active.grabOffsetY);
+                  if (minutes !== null) onMove(active.appointment, column, minutes);
+                }}
+              >
                 {slots.map((minute) => (canCreate
                   ? (
                     <button
@@ -116,7 +136,9 @@ export function TimeGrid({ columns, selectedId, now, canCreate, ariaLabel, onSel
                   const box = blockBox(block, range, PX_PER_MINUTE);
                   const text = renderBlock(appointment);
                   const style: CSSProperties = { top: box.top, height: box.height, left: `calc(${box.left}% + 1px)`, width: `calc(${box.width}% - 2px)`, '--apt-buffer': `${box.bufferHeight}px` } as CSSProperties;
+                  const movable = Boolean(canMove?.(appointment) && onMove);
                   const classes = ['apt-block', `apt-block--${appointment.status}`];
+                  if (movable) classes.push('is-movable');
                   if (isInactiveStatus(appointment.status)) classes.push('is-inactive');
                   if (appointment.id === selectedId) classes.push('is-selected');
                   return (
@@ -129,6 +151,14 @@ export function TimeGrid({ columns, selectedId, now, canCreate, ariaLabel, onSel
                       aria-pressed={appointment.id === selectedId}
                       aria-label={`${formatKstTime(appointment.start_at)} ${text.title} ${statusLabel(appointment.status)}`}
                       title={`${formatKstTime(appointment.start_at)}~${formatKstTime(appointment.end_at)} ${text.title} · ${statusLabel(appointment.status)}`}
+                      draggable={movable}
+                      onDragStart={movable ? (event: DragEvent<HTMLButtonElement>) => {
+                        const current = byAppointmentId.get(appointment.id) ?? appointment;
+                        dragging.current = { appointment: current, grabOffsetY: event.clientY - event.currentTarget.getBoundingClientRect().top };
+                        event.dataTransfer?.setData?.('text/plain', appointment.id);
+                        if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+                      } : undefined}
+                      onDragEnd={movable ? () => { dragging.current = null; } : undefined}
                       onClick={() => onSelect(appointment)}
                     >
                       <span className="apt-block__time">{formatKstTime(appointment.start_at)}</span>

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { createEvent, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { ConfirmDialog } from '@business-assistant/react-ui';
 import { describe, expect, it, vi } from 'vitest';
 import type { ApiClient } from '../../api/client';
@@ -391,5 +391,115 @@ describe('AppointmentPage 메모(APT-14)', () => {
     fireEvent.click(await block());
     expect(await screen.findByText('조용한 방')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '메모 저장' })).not.toBeInTheDocument();
+  });
+});
+
+describe('AppointmentPage 끌어서 옮기기(APT-14)', () => {
+  const otherStaff = '66666666-6666-4666-8666-666666666666';
+  const staffList = [
+    { id: ids.staff, organization_id: ids.org, name: '김담당', is_active: true, schedule_version: 1 },
+    { id: otherStaff, organization_id: ids.org, name: '이담당', is_active: true, schedule_version: 1 },
+  ];
+  const withStaff = (put?: () => Promise<unknown>, rows: unknown[] = [appointment]) => client({ listAppointmentStaff: vi.fn(async () => staffList) }, rows, put ? async (method) => (method === 'PUT' ? put() : []) : undefined);
+  const firstSlotMinutes = (region: HTMLElement) => {
+    const label = within(region).getAllByRole('button', { name: /빈 시간$/ })[0].getAttribute('aria-label')!;
+    const [h, m] = /(\d{2}):(\d{2}) 빈 시간$/.exec(label)!.slice(1).map(Number);
+    return h * 60 + m;
+  };
+  const SLOT = 28;
+  /** jsdom은 DragEvent 좌표를 복사하지 않으므로 clientY를 직접 지정한다. */
+  const drag = (type: 'dragStart' | 'dragOver' | 'drop', element: Element, clientY: number) => {
+    const event = createEvent[type](element);
+    Object.defineProperty(event, 'clientY', { value: clientY });
+    fireEvent(element, event);
+  };
+
+  it('주 보기에서 다른 날짜 칸에 놓으면 확인 후 시간만 바꿔 PUT으로 저장한다', async () => {
+    const saved = { ...appointment, start_at: `${addDays(today, 0)}T10:00:00+09:00`, version: 3 };
+    const api = withStaff(async () => saved);
+    renderPage(api);
+    await screen.findAllByRole('button', { name: /^10:00 김고객/ });
+    fireEvent.click(screen.getByRole('button', { name: '주' }));
+    const week = screen.getByRole('region', { name: '주 보기 달력' });
+    const days = within(week).getAllByRole('group');
+    const todayIndex = days.findIndex((group) => group.className.includes('is-today'));
+    const target = days[(todayIndex + 1) % 7];
+    const startMin = firstSlotMinutes(week);
+    const block = within(week).getByRole('button', { name: /^10:00 김고객/ });
+    drag('dragStart', block, 0);
+    drag('dragOver', target, SLOT * 4);
+    drag('drop', target, SLOT * 4);
+    fireEvent.click(await screen.findByRole('button', { name: '이동' }));
+    await waitFor(() => expect(putCalls(api)).toHaveLength(1));
+    const body = putCalls(api)[0][3] as Record<string, unknown>;
+    const expectedMinutes = startMin + 4 * 30;
+    const hh = String(Math.floor(expectedMinutes / 60)).padStart(2, '0');
+    const mm = String(expectedMinutes % 60).padStart(2, '0');
+    expect(String(body.start_at).endsWith(`T${hh}:${mm}:00+09:00`)).toBe(true);
+    expect(String(body.start_at).slice(0, 10)).not.toBe(today);
+    expect(body).toMatchObject({ staff_id: ids.staff, service_id: ids.service, customer_id: ids.customer, expected_version: 2, resource_ids: [] });
+    expect(body.operation_id).toEqual(expect.any(String));
+  });
+
+  it('일 보기에서 다른 담당자 열에 놓으면 담당자도 바뀐다', async () => {
+    const api = withStaff(async () => ({ ...appointment, staff_id: otherStaff, version: 3 }));
+    renderPage(api);
+    await block();
+    const day = screen.getByRole('region', { name: '일 보기 달력' });
+    const startMin = firstSlotMinutes(day);
+    const target = within(day).getByRole('group', { name: '이담당 일정' });
+    const sourceTop = (10 * 60 - startMin) / 30 * SLOT;
+    drag('dragStart', within(day).getByRole('button', { name: /^10:00 김고객/ }), 0);
+    drag('drop', target, sourceTop);
+    fireEvent.click(await screen.findByRole('button', { name: '이동' }));
+    await waitFor(() => expect(putCalls(api)).toHaveLength(1));
+    const body = putCalls(api)[0][3] as Record<string, unknown>;
+    expect(body.staff_id).toBe(otherStaff);
+    expect(String(body.start_at)).toContain('T10:00:00+09:00');
+  });
+
+  it('확인에서 취소하면 저장하지 않는다', async () => {
+    const api = withStaff(async () => appointment);
+    renderPage(api);
+    await block();
+    const day = screen.getByRole('region', { name: '일 보기 달력' });
+    drag('dragStart', within(day).getByRole('button', { name: /^10:00 김고객/ }), 0);
+    drag('drop', within(day).getByRole('group', { name: '이담당 일정' }), SLOT * 2);
+    fireEvent.click(await screen.findByRole('button', { name: '취소' }));
+    expect(putCalls(api)).toHaveLength(0);
+  });
+
+  it('같은 자리에 놓으면 아무 일도 하지 않는다', async () => {
+    const api = withStaff(async () => appointment);
+    renderPage(api);
+    await block();
+    const day = screen.getByRole('region', { name: '일 보기 달력' });
+    const startMin = firstSlotMinutes(day);
+    drag('dragStart', within(day).getByRole('button', { name: /^10:00 김고객/ }), 0);
+    drag('drop', within(day).getByRole('group', { name: '김담당 일정' }), (10 * 60 - startMin) / 30 * SLOT);
+    await Promise.resolve();
+    expect(screen.queryByRole('button', { name: '이동' })).not.toBeInTheDocument();
+    expect(putCalls(api)).toHaveLength(0);
+  });
+
+  it('서버가 409로 거절하면 안내하고 화면 예약은 그대로 둔다', async () => {
+    const api = withStaff(async () => { throw Object.assign(new Error('conflict'), { status: 409 }); });
+    renderPage(api);
+    await block();
+    const day = screen.getByRole('region', { name: '일 보기 달력' });
+    drag('dragStart', within(day).getByRole('button', { name: /^10:00 김고객/ }), 0);
+    drag('drop', within(day).getByRole('group', { name: '이담당 일정' }), SLOT * 2);
+    fireEvent.click(await screen.findByRole('button', { name: '이동' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('옮기지 못했습니다');
+    expect(await screen.findAllByRole('button', { name: /^10:00 김고객/ })).not.toHaveLength(0);
+  });
+
+  it('완료된 예약과 조회 전용 화면에서는 끌 수 없다', async () => {
+    const done = { ...appointment, status: 'completed' };
+    const { unmount } = renderPage(withStaff(undefined, [done]));
+    expect(await screen.findByRole('button', { name: /^10:00 김고객/ })).toHaveAttribute('draggable', 'false');
+    unmount();
+    renderPage(withStaff(), { readOnly: true });
+    expect(await screen.findByRole('button', { name: /^10:00 김고객/ })).toHaveAttribute('draggable', 'false');
   });
 });
