@@ -29,6 +29,6 @@ describe('customer photo upload preparation', () => {
     const config = { APP_SUPABASE_URL: 'https://x.supabase.co', APP_SUPABASE_PUBLISHABLE_KEY: 'k', APP_FILE_BUCKET: 'b', APP_API_PORT: 1 } as ServerConfig;
     const gateway = createCustomerPhotoGateway(config);
     await expect(gateway.createUpload('token', row.organization_id, row.customer_id, { original_name: 'face.jpg', content_type: 'image/jpeg', size_bytes: 4, caption: '' })).rejects.toMatchObject({ status: 503 });
-    expect(calls.some((call) => call.table === 'customer_photos' && JSON.stringify(call.patch) === '{"is_archived":true}')).toBe(true);
+    expect(calls.some((call) => call.table === 'customer_photos' && JSON.stringify(call.patch) === JSON.stringify({ is_archived: true, archived_reason: "upload_failed" }))).toBe(true);
   });
 });

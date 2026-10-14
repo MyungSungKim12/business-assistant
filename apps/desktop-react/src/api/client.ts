@@ -3,7 +3,7 @@ import { z } from 'zod';
 import type { Platform } from '../platform/types';
 import { ApiError, apiError } from './errors';
 import { auditEventsPageSchema } from './schemas';
-import { organizationSchema, signUpResultSchema, appointmentSchema, appointmentsSchema, appointmentStaffListSchema, appointmentServiceListSchema, operationRecordSchema, operationRecordsSchema, customerActivitySchema, customerActivitiesSchema, customerPhotoSchema, customerPhotosSchema, customerSchema, customersSchema, entitlementSchema, organizationsSchema, sessionSchema, signedPhotoSchema, taskPeopleSchema, taskSchema, tasksSchema, type Customer, type CustomerActivity, type CustomerPhoto, type Entitlement, type Organization, type Session, type SignedPhoto, type Task, type Appointment, type AppointmentStaff, type AppointmentService, type OperationRecord } from './schemas';
+import { organizationSchema, signUpResultSchema, appointmentSchema, appointmentsSchema, appointmentStaffListSchema, appointmentServiceListSchema, operationRecordSchema, operationRecordsSchema, customerActivitySchema, customerActivitiesSchema, customerPhotoSchema, customerPhotosSchema, customerSchema, customersSchema, entitlementSchema, organizationsSchema, sessionSchema, signedPhotoSchema, trashedPhotosSchema, taskPeopleSchema, taskSchema, tasksSchema, type Customer, type CustomerActivity, type CustomerPhoto, type TrashedPhoto, type Entitlement, type Organization, type Session, type SignedPhoto, type Task, type Appointment, type AppointmentStaff, type AppointmentService, type OperationRecord } from './schemas';
 import type { HttpRequest, HttpResponse } from './transport';
 
 export class ApiClient {
@@ -99,6 +99,8 @@ export class ApiClient {
   listCustomerPhotos(o:string,c:string):Promise<CustomerPhoto[]>{return this.authed({method:'GET',path:`/organizations/${o}/customers/${c}/photos`,headers:{}},customerPhotosSchema)}
   createPhotoUploadUrl(o:string,c:string,input:{original_name:string;content_type:string;size_bytes:number;caption:string}):Promise<SignedPhoto>{return this.authed({method:'POST',path:`/organizations/${o}/customers/${c}/photos/upload-url`,headers:{'Content-Type':'application/json'},body:JSON.stringify(input)},signedPhotoSchema)}
   createPhotoDownloadUrl(o:string,c:string,id:string):Promise<SignedPhoto>{return this.authed({method:'POST',path:`/organizations/${o}/customers/${c}/photos/${id}/download-url`,headers:{}},signedPhotoSchema)}
+  listTrashedPhotos(o:string,c:string):Promise<TrashedPhoto[]>{return this.authed({method:'GET',path:`/organizations/${o}/customers/${c}/photos/trash`,headers:{}},trashedPhotosSchema)}
+  restoreCustomerPhoto(o:string,c:string,id:string):Promise<CustomerPhoto>{return this.authed({method:'POST',path:`/organizations/${o}/customers/${c}/photos/${id}/restore`,headers:{}},customerPhotoSchema)}
   archiveCustomerPhoto(o:string,c:string,id:string):Promise<CustomerPhoto>{return this.authed({method:'DELETE',path:`/organizations/${o}/customers/${c}/photos/${id}`,headers:{}},customerPhotoSchema)}
   get filePlatform(): Platform{return this.platform;}
   listTasks(organizationId:string):Promise<Task[]>{return this.authed({method:'GET',path:`/organizations/${organizationId}/tasks`,headers:{}},tasksSchema)}

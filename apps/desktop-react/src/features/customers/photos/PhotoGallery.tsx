@@ -3,6 +3,7 @@ import { confirm } from '@business-assistant/react-ui';
 import type { ApiClient } from '../../../api/client';
 import type { CustomerPhoto } from '../../../api/schemas';
 import { PhotoLightbox } from './PhotoLightbox';
+import { PhotoTrashDialog } from './PhotoTrashDialog';
 import { PhotoThumb } from './PhotoThumb';
 import { groupPhotosByDate, groupTitle, type PhotoGroup } from './photoGroups';
 import { downloadPhotoBlob, ThumbnailLoader } from './thumbnailLoader';
@@ -60,6 +61,7 @@ export function PhotoGallery({ api, organizationId, customerId, readOnly, size, 
   const [lightboxError, setLightboxError] = useState('');
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [trashOpen, setTrashOpen] = useState(false);
   const apiRef = useRef(api);
   apiRef.current = api;
   const confirming = useRef(false);
@@ -71,6 +73,7 @@ export function PhotoGallery({ api, organizationId, customerId, readOnly, size, 
     setOpenId(null);
     setSelectMode(false);
     setSelectedIds(new Set());
+    setTrashOpen(false);
     return () => next.dispose();
   }, [organizationId, customerId]);
 
@@ -157,6 +160,7 @@ export function PhotoGallery({ api, organizationId, customerId, readOnly, size, 
           </>
         )}
         {!readOnly && !selectMode && library.items.length > 0 && <button type="button" onClick={() => setSelectMode(true)}>선택</button>}
+        {!readOnly && !selectMode && <button type="button" onClick={() => setTrashOpen(true)}>휴지통</button>}
         {!readOnly && !selectMode && <button type="button" disabled={library.uploading} onClick={() => void library.upload()}>사진 추가</button>}
       </div>
       {library.loadError && <p className="form-error pg-message" role="alert">{library.loadError} <button type="button" aria-label="사진 목록 다시 시도" onClick={() => void library.reload()}>다시 시도</button></p>}
@@ -175,6 +179,7 @@ export function PhotoGallery({ api, organizationId, customerId, readOnly, size, 
         {empty && <p className="pg-empty muted">등록된 사진이 없습니다.{readOnly ? '' : ' 오른쪽 위 ‘사진 추가’로 등록하세요.'}</p>}
         {library.loading && library.items.length === 0 && <p className="pg-empty muted">사진을 불러오는 중…</p>}
       </div>
+      {trashOpen && <PhotoTrashDialog api={api} organizationId={organizationId} customerId={customerId} onRestored={() => void library.reload()} onClose={() => setTrashOpen(false)} />}
       {loader && openIndex >= 0 && (
         <PhotoLightbox photos={ordered} index={openIndex} loader={loader} readOnly={readOnly} error={lightboxError}
           onIndexChange={moveLightbox} onClose={closeLightbox} onArchive={(photo) => void archive(photo)} />

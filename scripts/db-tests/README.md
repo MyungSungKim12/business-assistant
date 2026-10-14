@@ -130,3 +130,12 @@ day), that registering the same month again creates nothing new while a newly ad
 registered, that inactive items are skipped, that edits and deletes never change registered transactions,
 the version/optimistic lock, the closed-month rejection and re-registration after reopening, the
 too-far-future guard, and cross-organization isolation.
+
+## Customer photo trash (053)
+
+Run `npm run test:ops-053 --prefix scripts/db-tests` to execute the table/policy part of migration 022 and
+migration 053 (twice) against a fresh in-memory PostgreSQL database. It checks that archiving stamps the
+caller, time, name snapshot, and reason in the database (forged values ignored, record frozen while archived,
+cleared on restore), the email-prefix fallback name, that failed-upload cleanup stays out of the trash, the
+reason constraint, owner/admin versus member write access, cross-organization isolation, and that the
+archiver name survives membership removal.

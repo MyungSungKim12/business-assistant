@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node treatment-lifecycle.mjs && node treatment-consultation.mjs && node document-versions.mjs && node document-issuance.mjs && node document-consent.mjs && node treatment-sale-drafts.mjs && node visit-sale-carts.mjs && node visit-payments.mjs && node catalog-sales.mjs && node wallet-usage.mjs && node payment-refunds.mjs && node appointments.mjs && node treatment-consumables.mjs && node ops-047.mjs && node ops-048.mjs && node ops-049.mjs && node ops-050.mjs && node ops-051.mjs && node ops-052.mjs",
+    "test": "node treatment-lifecycle.mjs && node treatment-consultation.mjs && node document-versions.mjs && node document-issuance.mjs && node document-consent.mjs && node treatment-sale-drafts.mjs && node visit-sale-carts.mjs && node visit-payments.mjs && node catalog-sales.mjs && node wallet-usage.mjs && node payment-refunds.mjs && node appointments.mjs && node treatment-consumables.mjs && node ops-047.mjs && node ops-048.mjs && node ops-049.mjs && node ops-050.mjs && node ops-051.mjs && node ops-052.mjs && node ops-053.mjs",
     "test:consultation": "node treatment-consultation.mjs",
     "test:documents": "node document-versions.mjs",
     "test:issuance": "node document-issuance.mjs",
@@ -21,7 +21,8 @@
     "test:ops-049": "node ops-049.mjs",
     "test:ops-050": "node ops-050.mjs",
     "test:ops-051": "node ops-051.mjs",
-    "test:ops-052": "node ops-052.mjs"
+    "test:ops-052": "node ops-052.mjs",
+    "test:ops-053": "node ops-053.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.5.8"

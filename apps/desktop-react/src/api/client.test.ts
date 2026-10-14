@@ -148,3 +148,24 @@ describe('ApiClient', () => {
     expect(states).toEqual(['checking', 'checking', 'online', 'checking', 'offline']);
   });
 });
+
+describe('ApiClient customer photo trash (CRM-15)', () => {
+  it('lists the trash and restores a photo with the real client', async () => {
+    const photoId = '33333333-3333-4333-8333-333333333333';
+    const photo = { id: photoId, organization_id: ORG_ID, customer_id: USER_ID, original_name: 'a.jpg', storage_path: 'p', content_type: 'image/jpeg', size_bytes: 10, caption: '', created_at: '2026-10-13T00:00:00Z' };
+    const requests: HttpRequest[] = [];
+    const api = new ApiClient(platform(async (request) => {
+      requests.push(request);
+      if (request.path === '/auth/login') return json(200, session());
+      if (request.path.endsWith('/photos/trash')) return json(200, [{ ...photo, archived_at: '2026-10-14T01:00:00Z', archived_by_name: '원장' }]);
+      return json(200, photo);
+    }));
+    await api.login('owner@example.com', 'password');
+    const trash = await api.listTrashedPhotos(ORG_ID, USER_ID);
+    expect(trash[0]).toMatchObject({ id: photoId, archived_by_name: '원장' });
+    expect(requests[1]).toMatchObject({ method: 'GET', path: `/organizations/${ORG_ID}/customers/${USER_ID}/photos/trash` });
+    const restored = await api.restoreCustomerPhoto(ORG_ID, USER_ID, photoId);
+    expect(restored.id).toBe(photoId);
+    expect(requests[2]).toMatchObject({ method: 'POST', path: `/organizations/${ORG_ID}/customers/${USER_ID}/photos/${photoId}/restore` });
+  });
+});
