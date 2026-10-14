@@ -13,6 +13,10 @@ export const LOW_STOCK_THRESHOLD = 5;
 export const VISIT_WINDOW_DAYS = 7;
 export const WALLET_WINDOW_DAYS = 30;
 export const CHART_DAYS = 14;
+/** 홈 차트에서 고를 수 있는 기간(일)과 그중 가장 긴 값. */
+export const CHART_PERIODS = [7, 14, 30] as const;
+export type ChartPeriod = (typeof CHART_PERIODS)[number];
+export const CHART_MAX_DAYS = 30;
 
 /** KST 기준 YYYY-MM-DD. 해석할 수 없는 값이면 null. */
 export function kstDateKey(value: Date | string | number): string | null {
@@ -164,6 +168,41 @@ export function sumTransactions(transactions: Transaction[], from: string, to: s
 
 export function monthTotals(transactions: Transaction[], todayKey: string): MoneyTotals {
   return sumTransactions(transactions, monthStartKey(todayKey), todayKey);
+}
+
+/** 전월 1일. */
+export function prevMonthStartKey(key: string): string {
+  return monthStartKey(addDaysKey(monthStartKey(key), -1));
+}
+
+/** 이번 달 1일~오늘과 비교할 전월 같은 기간. 전월에 같은 일자가 없으면(예: 3/31 → 2월) 전월 말일까지. */
+export function previousMonthPeriod(todayKey: string): { from: string; to: string } {
+  const from = prevMonthStartKey(todayKey);
+  const lastDay = addDaysKey(monthStartKey(todayKey), -1);
+  const wanted = `${from.slice(0, 7)}-${todayKey.slice(8, 10)}`;
+  return { from, to: wanted <= lastDay ? wanted : lastDay };
+}
+
+export interface MonthComparison { current: MoneyTotals; previous: MoneyTotals }
+
+/** 이번 달(오늘까지)과 전월 같은 기간의 수입·지출 합계. */
+export function compareWithPreviousMonth(transactions: Transaction[], todayKey: string): MonthComparison {
+  const period = previousMonthPeriod(todayKey);
+  return { current: monthTotals(transactions, todayKey), previous: sumTransactions(transactions, period.from, period.to) };
+}
+
+/**
+ * 전월 동기 대비 변화 문구. 기준(전월)이 0이면 비율을 계산하지 않는다. 음수 기준은 절댓값을 분모로 쓰고,
+ * 비율은 소수점 첫째 자리에서 반올림한 정수 %다. 변화가 없으면 "변화 없음".
+ */
+export function changeLabel(current: bigint, previous: bigint): string {
+  if (previous === 0n) return current === 0n ? '전월 동기와 같음' : '전월 동기 기록 없음';
+  const diff = current - previous;
+  if (diff === 0n) return '전월 동기와 같음';
+  const base = previous < 0n ? -previous : previous;
+  const percent = Number((diff * 1000n) / base) / 10;
+  const rounded = Math.round(Math.abs(percent));
+  return `전월 동기 대비 ${diff > 0n ? '▲' : '▼'} ${rounded}%`;
 }
 
 export function wonOf(total: bigint): string {

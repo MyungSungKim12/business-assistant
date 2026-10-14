@@ -1,6 +1,6 @@
 import type { MenuId } from '../../shell/TopBar';
 import {
-  LOW_STOCK_THRESHOLD, VISIT_WINDOW_DAYS, activeCustomers, bucketTasks, groupDigits, lowStock, monthTotals, receivableSummary,
+  LOW_STOCK_THRESHOLD, VISIT_WINDOW_DAYS, activeCustomers, bucketTasks, changeLabel, compareWithPreviousMonth, groupDigits, lowStock, receivableSummary,
   summarizeAppointments, appointmentsOnDay, upcomingVisits, wonOf,
 } from '../dashboardMetrics';
 import type { DashboardSources } from '../useDashboardData';
@@ -36,8 +36,8 @@ export function MetricCards({ sources, today, onNavigate }: { sources: Dashboard
       return { value: `${groupDigits(buckets.active)}건`, sub: `기한 지남 ${buckets.overdue.length} · 오늘 ${buckets.today.length}`, tone };
     }),
     build(sources.transactions, '이번 달 순수입', 'finance', 'finance', (transactions) => {
-      const totals = monthTotals(transactions, today);
-      return { value: wonOf(totals.net), sub: `수입 ${wonOf(totals.income)} · 지출 ${wonOf(totals.expense)}`, tone: totals.net < 0n ? 'bad' : 'normal' };
+      const { current: totals, previous } = compareWithPreviousMonth(transactions, today);
+      return { value: wonOf(totals.net), sub: `수입 ${wonOf(totals.income)} · 지출 ${wonOf(totals.expense)} · ${changeLabel(totals.net, previous.net)}`, tone: totals.net < 0n ? 'bad' : 'normal' };
     }),
     build(sources.receivables, '전체 미수금', 'sales', 'receivable', (receivables) => {
       const due = receivableSummary(receivables);

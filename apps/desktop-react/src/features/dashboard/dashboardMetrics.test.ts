@@ -3,7 +3,7 @@ import type { Appointment, Customer, Task } from '../../api/schemas';
 import type { Transaction } from '../sales/types';
 import { buildChartModel } from './components/FinanceChart';
 import {
-  addDaysKey, appointmentsOnDay, bucketTasks, compactWon, dailySeries, expiringWallets, formatKstHeading, kstDateKey, kstTime, lowStock,
+  addDaysKey, appointmentsOnDay, bucketTasks, changeLabel, compareWithPreviousMonth, compactWon, prevMonthStartKey, previousMonthPeriod, dailySeries, expiringWallets, formatKstHeading, kstDateKey, kstTime, lowStock,
   monthTotals, niceMax, receivableSummary, receivableTotal, recentVisitors, stockThreshold, summarizeAppointments, upcomingVisits, wonOf,
 } from './dashboardMetrics';
 
@@ -215,5 +215,45 @@ describe('미수금·재고·회원권', () => {
       { id: 'w6', expires_on: null, money_balance: '1000' },
     ], '2026-10-13');
     expect(rows.map((row) => [row.id, row.daysLeft])).toEqual([['w3', 1], ['w1', 30]]);
+  });
+});
+
+describe('전월 동기 비교(HOME-03)', () => {
+  it('전월 1일과 같은 기간을 구하고, 전월에 없는 일자는 말일로 맞춘다', () => {
+    expect(prevMonthStartKey('2026-10-13')).toBe('2026-09-01');
+    expect(prevMonthStartKey('2026-01-15')).toBe('2025-12-01');
+    expect(previousMonthPeriod('2026-10-13')).toEqual({ from: '2026-09-01', to: '2026-09-13' });
+    expect(previousMonthPeriod('2026-03-31')).toEqual({ from: '2026-02-01', to: '2026-02-28' });
+    expect(previousMonthPeriod('2024-03-31')).toEqual({ from: '2024-02-01', to: '2024-02-29' });
+    expect(previousMonthPeriod('2026-01-15')).toEqual({ from: '2025-12-01', to: '2025-12-15' });
+  });
+
+  it('이번 달 오늘까지와 전월 같은 기간만 합산한다(보관·범위 밖 거래 제외)', () => {
+    const rows = [
+      tx(1, 'income', '300000', '2026-10-12'), tx(2, 'expense', '100000', '2026-10-13'), tx(3, 'income', '999', '2026-10-14'),
+      tx(4, 'income', '200000', '2026-09-05'), tx(5, 'expense', '50000', '2026-09-13'), tx(6, 'income', '777000', '2026-09-14'), tx(7, 'income', '123000', '2026-09-02', true),
+    ];
+    const { current, previous } = compareWithPreviousMonth(rows, '2026-10-13');
+    expect(current.net).toBe(20_000_000n);
+    expect(previous.net).toBe(15_000_000n);
+    expect(previous.income).toBe(20_000_000n);
+  });
+
+  it('변화 문구: 증감 비율, 기준 0, 변화 없음, 음수 기준', () => {
+    expect(changeLabel(15_000_000n, 10_000_000n)).toBe('전월 동기 대비 ▲ 50%');
+    expect(changeLabel(5_000_000n, 10_000_000n)).toBe('전월 동기 대비 ▼ 50%');
+    expect(changeLabel(10_000_000n, 10_000_000n)).toBe('전월 동기와 같음');
+    expect(changeLabel(0n, 0n)).toBe('전월 동기와 같음');
+    expect(changeLabel(5_000_000n, 0n)).toBe('전월 동기 기록 없음');
+    expect(changeLabel(-5_000_000n, -10_000_000n)).toBe('전월 동기 대비 ▲ 50%');
+    expect(changeLabel(-15_000_000n, -10_000_000n)).toBe('전월 동기 대비 ▼ 50%');
+    expect(changeLabel(10_001_000n, 10_000_000n)).toBe('전월 동기 대비 ▲ 0%');
+  });
+
+  it('차트 기간을 30일까지 늘려 시계열을 만든다', () => {
+    const series = dailySeries([tx(1, 'income', '1000', '2026-09-15')], '2026-10-13', 30);
+    expect(series).toHaveLength(30);
+    expect(series[0].date).toBe('2026-09-14');
+    expect(series[1].income).toBe(1000);
   });
 });

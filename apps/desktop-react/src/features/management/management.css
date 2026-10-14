@@ -19,3 +19,21 @@
   margin: 4px 0;
   font-weight: 600;
 }
+
+/* 이전 기간 비교·담당자 막대 */
+.management-compare { margin: 8px 0; }
+.management-compare header { display: flex; align-items: center; gap: 10px; }
+.management-compare h2 { margin: 0; font-size: 14px; }
+.management-compare table { width: 100%; border-collapse: collapse; }
+.management-compare th, .management-compare td { padding: 3px 8px; text-align: left; border-bottom: 1px solid var(--border, #e3e6ea); }
+.management-compare__bars { width: 22%; }
+.management-bar { display: block; height: 6px; margin: 2px 0; border-radius: 3px; }
+.management-bar--now { background: var(--accent, #3b6fd4); }
+.management-bar--before { background: #b9c2d0; }
+.management-staff-chart { list-style: none; margin: 8px 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.management-staff-chart li { display: grid; grid-template-columns: 140px 1fr 120px; align-items: center; gap: 8px; }
+.management-staff-chart__track { height: 10px; background: #eef1f5; border-radius: 5px; overflow: hidden; }
+.management-staff-chart__track i { display: block; height: 100%; background: var(--accent, #3b6fd4); }
+.management-staff-chart__value { text-align: right; }
+.management-actions { display: flex; justify-content: flex-end; margin: 4px 0; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

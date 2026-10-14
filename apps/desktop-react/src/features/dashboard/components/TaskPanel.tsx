@@ -7,7 +7,13 @@ import { Panel } from './Panel';
 const priorityLabel: Record<string, string> = { high: '높음', normal: '보통', low: '낮음' };
 const statusLabel: Record<string, string> = { open: '대기', in_progress: '진행' };
 
-function TaskGroup({ label, tone, tasks, onOpen }: { label: string; tone: string; tasks: Task[]; onOpen: () => void }) {
+interface CompleteProps {
+  /** 이 할 일을 홈에서 바로 완료할 수 있는지. 없으면 완료 버튼을 보이지 않는다. */
+  canComplete?: (task: Task) => boolean;
+  onComplete?: (task: Task) => Promise<void>;
+}
+
+function TaskGroup({ label, tone, tasks, onOpen, canComplete, onComplete }: { label: string; tone: string; tasks: Task[]; onOpen: () => void } & CompleteProps) {
   if (tasks.length === 0) return null;
   return (
     <li className="dash-group">
@@ -16,13 +22,14 @@ function TaskGroup({ label, tone, tasks, onOpen }: { label: string; tone: string
         {tasks.map((task) => {
           const due = task.due_at ? kstDateKey(task.due_at) : null;
           return (
-            <li key={task.id}>
+            <li key={task.id} className="dash-task-item">
               <button type="button" className="dash-row dash-row--task" onClick={onOpen}>
                 <span className={`priority priority--${task.priority}`}>{priorityLabel[task.priority] ?? task.priority}</span>
                 <span className="dash-row__main"><strong>{task.title}</strong></span>
                 <small>{statusLabel[task.status] ?? task.status}</small>
                 <small className="dash-row__date">{due ? shortDate(due) : ''}</small>
               </button>
+              {onComplete && canComplete?.(task) && <button type="button" className="ba-mini dash-task-done" aria-label={`${task.title} 완료`} onClick={() => void onComplete(task)}>완료</button>}
             </li>
           );
         })}
@@ -31,8 +38,8 @@ function TaskGroup({ label, tone, tasks, onOpen }: { label: string; tone: string
   );
 }
 
-/** 기한 지난/오늘/이번 주 할 일. 완료 처리는 하지 않고 클릭하면 할 일 메뉴로 이동한다. */
-export function TaskPanel({ state, today, onRetry, onNavigate }: { state: Source<Task[]>; today: string; onRetry: () => void; onNavigate: (menu: MenuId) => void }) {
+/** 기한 지난/오늘/이번 주 할 일. 행을 누르면 할 일 메뉴로 이동하고, 권한이 있으면 "완료" 버튼으로 바로 처리한다. */
+export function TaskPanel({ state, today, onRetry, onNavigate, canComplete, onComplete }: { state: Source<Task[]>; today: string; onRetry: () => void; onNavigate: (menu: MenuId) => void } & CompleteProps) {
   const open = () => onNavigate('tasks');
   return (
     <Panel
@@ -55,9 +62,9 @@ export function TaskPanel({ state, today, onRetry, onNavigate }: { state: Source
         const shown = buckets.overdue.length + buckets.today.length + buckets.week.length;
         return (
           <ul className="dash-groups">
-            <TaskGroup label="기한 지남" tone="bad" tasks={buckets.overdue} onOpen={open} />
-            <TaskGroup label="오늘" tone="warn" tasks={buckets.today} onOpen={open} />
-            <TaskGroup label="이번 주" tone="normal" tasks={buckets.week} onOpen={open} />
+            <TaskGroup label="기한 지남" tone="bad" tasks={buckets.overdue} onOpen={open} canComplete={canComplete} onComplete={onComplete} />
+            <TaskGroup label="오늘" tone="warn" tasks={buckets.today} onOpen={open} canComplete={canComplete} onComplete={onComplete} />
+            <TaskGroup label="이번 주" tone="normal" tasks={buckets.week} onOpen={open} canComplete={canComplete} onComplete={onComplete} />
             {shown === 0 && <li className="dash-note">7일 이내 기한인 할 일이 없습니다. 기한이 더 멀거나 없는 할 일 {buckets.later}건</li>}
           </ul>
         );

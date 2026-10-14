@@ -382,3 +382,10 @@
   font-size: 11px;
   text-align: center;
 }
+
+/* 홈: 할 일 바로 완료, 차트 기간 선택 */
+.dash-task-item { display: flex; align-items: center; gap: 4px; }
+.dash-task-item .dash-row { flex: 1; min-width: 0; }
+.dash-task-done { flex: none; }
+.dash-period { display: inline-flex; gap: 2px; margin-right: 6px; }
+.dash-period .is-active { font-weight: 700; text-decoration: underline; }

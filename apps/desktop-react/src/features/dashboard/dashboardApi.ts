@@ -3,10 +3,10 @@ import type { ApiClient } from '../../api/client';
 import { appointmentsSchema, type Appointment, type AppointmentService, type AppointmentStaff } from '../../api/schemas';
 import { salesApi } from '../sales/api';
 import type { Receivables, Transaction } from '../sales/types';
-import { addDaysKey, monthStartKey, type StockItem, type WalletRow } from './dashboardMetrics';
+import { CHART_MAX_DAYS, addDaysKey, monthStartKey, prevMonthStartKey, type StockItem, type WalletRow } from './dashboardMetrics';
 
 /** 대시보드가 쓰는 ApiClient의 부분. 테스트에서는 이 메서드만 가진 가짜를 넣는다. */
-export type DashboardApi = Pick<ApiClient, 'call' | 'listCustomers' | 'listTasks' | 'listAppointmentStaff' | 'listAppointmentServices' | 'listOperationRecords'>;
+export type DashboardApi = Pick<ApiClient, 'call' | 'listCustomers' | 'listTasks' | 'updateTask' | 'listAppointmentStaff' | 'listAppointmentServices' | 'listOperationRecords'>;
 
 const org = (organizationId: string) => `/organizations/${organizationId}`;
 
@@ -45,11 +45,10 @@ export const dashboardApi = {
     return { appointments, staff, services };
   },
 
-  /** 이번 달 초와 최근 14일 중 더 이른 날부터 오늘까지의 수입·지출을 한 번에 받는다. */
+  /** 전월 1일, 이번 달 초, 최근 30일(차트 최대 기간) 중 가장 이른 날부터 오늘까지의 수입·지출을 한 번에 받는다. */
   transactions(api: DashboardApi, organizationId: string, today: string): Promise<Transaction[]> {
-    const chartStart = addDaysKey(today, -13);
-    const monthStart = monthStartKey(today);
-    return salesApi.transactions(api as ApiClient, organizationId, { from: chartStart < monthStart ? chartStart : monthStart, to: today });
+    const from = [addDaysKey(today, -(CHART_MAX_DAYS - 1)), prevMonthStartKey(today), monthStartKey(today)].sort()[0];
+    return salesApi.transactions(api as ApiClient, organizationId, { from, to: today });
   },
 
   /** 조직 전체 미수금(오늘 미수가 아니다). 건수·합계와 오래된 미수 상위 몇 건을 받는다. */

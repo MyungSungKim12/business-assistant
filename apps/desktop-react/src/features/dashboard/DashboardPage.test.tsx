@@ -267,3 +267,57 @@ describe('DashboardPage', () => {
     expect(within(stockPanel).getByText('안전재고 5개 (기본)')).toBeInTheDocument();
   });
 });
+
+describe('DashboardPage 홈 확장(HOME-03)', () => {
+  it('이번 달 순수입 카드에 전월 동기 대비 변화를 보인다', async () => {
+    const prior = [...transactions, { id: id(53), transaction_type: 'income', amount: '120000', transaction_date: '2026-09-05', is_archived: false }];
+    const { api } = makeApi({ transactions: () => prior });
+    renderPage(api);
+    expect(await screen.findByRole('button', { name: /^이번 달 순수입 180,000원 .*전월 동기 대비 ▲ 50%$/ })).toBeInTheDocument();
+  });
+
+  it('전월 기록이 없으면 비율 대신 안내한다', async () => {
+    const { api } = makeApi();
+    renderPage(api);
+    expect(await screen.findByRole('button', { name: /^이번 달 순수입 .*전월 동기 기록 없음$/ })).toBeInTheDocument();
+  });
+
+  it('차트 기간을 고르면 제목·요약이 바뀌고 설정으로 기억한다', async () => {
+    const { api } = makeApi();
+    renderPage(api);
+    const chartPanel = await screen.findByRole('region', { name: /최근 14일 수입·지출/ });
+    fireEvent.click(within(chartPanel).getByRole('button', { name: '30일' }));
+    const updated = await screen.findByRole('region', { name: /최근 30일 수입·지출/ });
+    expect(within(updated).getByRole('img')).toHaveAccessibleName('최근 30일 수입 합계 300,000원, 지출 합계 120,000원');
+    expect(within(updated).getByRole('button', { name: '30일' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(within(updated).getByRole('button', { name: '7일' }));
+    expect(await screen.findByRole('region', { name: /최근 7일 수입·지출/ })).toBeInTheDocument();
+  });
+
+  it('권한이 있으면 할 일을 홈에서 바로 완료하고 목록을 다시 읽는다', async () => {
+    const { api, handlers } = makeApi();
+    const updateTask = vi.fn(async () => ({}));
+    renderPage({ ...api, updateTask } as unknown as DashboardApi);
+    fireEvent.click(await screen.findByRole('button', { name: '지난 업무 완료' }));
+    await waitFor(() => expect(updateTask).toHaveBeenCalledWith('org', id(11), { status: 'done' }));
+    await waitFor(() => expect(handlers.tasks).toHaveBeenCalledTimes(2));
+  });
+
+  it('조회 전용 구성원은 자기에게 지정된 할 일만 완료 버튼이 보인다', async () => {
+    const mine = '99999999-9999-4999-8999-999999999999';
+    const assigned = tasks.map((task) => (task.id === id(12) ? { ...task, assignee_id: mine } : task));
+    const { api } = makeApi({ tasks: () => assigned });
+    renderPage({ ...api, updateTask: vi.fn() } as unknown as DashboardApi, { readOnly: true, currentUserId: mine });
+    expect(await screen.findByRole('button', { name: '오늘 업무 완료' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '지난 업무 완료' })).not.toBeInTheDocument();
+  });
+
+  it('완료에 실패해도 목록은 그대로 두고 오류를 알린다', async () => {
+    const { api, handlers } = makeApi();
+    const updateTask = vi.fn(async () => { throw new Error('x'); });
+    renderPage({ ...api, updateTask } as unknown as DashboardApi);
+    fireEvent.click(await screen.findByRole('button', { name: '지난 업무 완료' }));
+    await waitFor(() => expect(updateTask).toHaveBeenCalled());
+    expect(handlers.tasks).toHaveBeenCalledTimes(1);
+  });
+});

@@ -2,6 +2,9 @@ import { useCallback, useEffect, useState } from 'react';
 import { z } from 'zod';
 import { DataGrid, DateField, ErrorState, LoadingState, type Column } from '@business-assistant/react-ui';
 import type { ApiClient } from '../../api/client';
+import { ExportButton } from '../../lib/io/ExportButton';
+import { buildComparison, comparisonExportColumns, previousPeriod, staffBars } from './managementCompare';
+import { centsToText } from '../sales/format';
 import './management.css';
 
 const money = z.union([z.string(), z.number()]).transform(String);
@@ -35,6 +38,66 @@ const columns: Column<StaffRow>[] = [
   { key: 'state', header: '확정 여부', width: 100, value: () => '수당 미확정' },
 ];
 
+const staffExportColumns = [
+  { header: '담당자', width: 18, value: (row: StaffRow) => row.staff_name_snapshot || '담당 미지정' },
+  { header: '항목 수', type: 'number' as const, width: 10, value: (row: StaffRow) => row.line_count },
+  { header: '판매 항목 총액(원)', type: 'number' as const, width: 18, value: (row: StaffRow) => Number(row.gross_line_total) },
+  { header: '확정 여부', width: 12, value: () => '수당 미확정' },
+];
+
+/** 이번 기간과 같은 길이의 이전 기간을 나란히 비교한다. 원가·인건비·세금은 기록이 없어 포함하지 않는다. */
+function ComparisonSection({ result, previous, previousFailed }: { result: ManagementPreview; previous: ManagementPreview | null; previousFailed: boolean }) {
+  const summary = (preview: ManagementPreview) => ({ income: preview.recorded_income, expense: preview.recorded_expense, net: preview.recorded_net, receipts: preview.visit_receipts, refunds: preview.visit_refunds });
+  const rows = buildComparison(summary(result), previous ? summary(previous) : null);
+  const peak = rows.reduce((max, row) => Math.max(max, Math.abs(Number(row.current)), Math.abs(Number(row.previous ?? 0n))), 0);
+  const width = (value: bigint | null) => (value === null || peak === 0 ? 0 : Math.max(1, (Math.abs(Number(value)) / peak) * 100));
+  return (
+    <section className="management-compare" aria-label="이전 기간 비교">
+      <header>
+        <h2>이전 기간 비교</h2>
+        <span className="muted">{previous ? `이전 기간 ${previous.from_date} ~ ${previous.to_date}` : '이전 기간을 불러오지 못했습니다'}</span>
+        <ExportButton title="수지 비교" label="비교 내보내기" columns={comparisonExportColumns} rows={rows} />
+      </header>
+      {previousFailed && <p className="muted">이전 기간 데이터를 불러오지 못해 이번 기간만 표시합니다. 조회를 다시 눌러 보세요.</p>}
+      <table>
+        <caption className="visually-hidden">이번 기간과 이전 기간 수지 비교</caption>
+        <thead><tr><th>항목</th><th>이번 기간</th><th>이전 기간</th><th>변화</th><th aria-hidden="true">막대</th></tr></thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.metric}>
+              <td>{row.label}</td>
+              <td>{formatWon(centsToText(row.current))}</td>
+              <td>{row.previous === null ? '-' : formatWon(centsToText(row.previous))}</td>
+              <td data-testid={`change-${row.metric}`}>{row.change}</td>
+              <td aria-hidden="true" className="management-compare__bars">
+                <i className="management-bar management-bar--now" style={{ width: `${width(row.current)}%` }} />
+                <i className="management-bar management-bar--before" style={{ width: `${width(row.previous)}%` }} />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
+  );
+}
+
+/** 담당자별 판매 항목 총액 막대(총액 큰 순). 수당 확정액이 아니다. */
+function StaffChart({ rows }: { rows: StaffRow[] }) {
+  const bars = staffBars(rows);
+  if (bars.length === 0) return null;
+  return (
+    <ul className="management-staff-chart" aria-label="담당자별 판매 항목 총액 막대">
+      {bars.map((bar) => (
+        <li key={bar.key} title={`${bar.name} ${formatWon(String(bar.amount))}`}>
+          <span className="management-staff-chart__name">{bar.name}</span>
+          <span className="management-staff-chart__track"><i style={{ width: `${bar.share}%` }} /></span>
+          <span className="management-staff-chart__value">{formatWon(String(bar.amount))}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export interface ManagementPageProps { api: ApiClient; organizationId: string; readOnly: boolean }
 
 /** 운영 수지 · 담당 매출 근거(분석·경영 실험실 미리보기). 관리자(owner/admin)만 조회한다. 확정 손익이 아니다. */
@@ -43,6 +106,9 @@ export function ManagementPage({ api, organizationId, readOnly }: ManagementPage
   const [from, setFrom] = useState<string | null>(localDate(new Date(today.getFullYear(), today.getMonth(), 1)));
   const [to, setTo] = useState<string | null>(localDate(today));
   const [result, setResult] = useState<ManagementPreview | null>(null);
+  /** 같은 길이의 이전 기간. 불러오지 못하면 null(이번 기간만 보여 준다). */
+  const [previous, setPrevious] = useState<ManagementPreview | null>(null);
+  const [previousFailed, setPreviousFailed] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [periodError, setPeriodError] = useState('');
@@ -51,12 +117,22 @@ export function ManagementPage({ api, organizationId, readOnly }: ManagementPage
     if (!start || !end || !validPeriod(start, end)) { setPeriodError('시작일과 종료일을 366일 이내의 YYYY-MM-DD로 입력하세요.'); return; }
     setPeriodError(''); setError(''); setLoading(true);
     try {
-      const preview = await api.call('GET', `/organizations/${organizationId}/management-preview?from_date=${start}&to_date=${end}`, managementPreviewSchema);
+      const before = previousPeriod(start, end);
+      const fetchPreview = (a: string, b: string) => api.call('GET', `/organizations/${organizationId}/management-preview?from_date=${a}&to_date=${b}`, managementPreviewSchema);
+      const [current, prior] = await Promise.allSettled([fetchPreview(start, end), before ? fetchPreview(before.from, before.to) : Promise.reject(new Error('no previous period'))]);
+      if (current.status === 'rejected') throw current.reason;
+      const preview = current.value;
+      // 이전 기간도 확정 표시가 붙은 응답이면 쓰지 않는다.
+      const priorOk = prior.status === 'fulfilled' && !prior.value.is_final_profit && !prior.value.staff_basis_is_commission;
+      setPrevious(priorOk ? prior.value : null);
+      setPreviousFailed(!priorOk);
       // 확정 손익·수당 확정으로 표시된 응답은 이 화면이 보여 줄 수 없다(Python 클라이언트와 같은 방어).
       if (preview.is_final_profit || preview.staff_basis_is_commission) throw new Error('unexpected finalization');
       setResult(preview);
     } catch (failure) {
       setResult(null);
+      setPrevious(null);
+      setPreviousFailed(false);
       setError((failure as { status?: number }).status === 403 ? '관리자만 조회할 수 있습니다.' : '조회하지 못했습니다. 서버와 036 SQL 적용 상태를 확인하고 다시 시도하세요.');
     } finally { setLoading(false); }
   }, [api, organizationId]);
@@ -91,6 +167,9 @@ export function ManagementPage({ api, organizationId, readOnly }: ManagementPage
         <>
           <p className="management-summary">기록된 수입 {formatWon(result.recorded_income)} · 지출 {formatWon(result.recorded_expense)} · 순액 {formatWon(result.recorded_net)}</p>
           <p className="management-summary">방문 수납 {formatWon(result.visit_receipts)} · 방문 환불 {formatWon(result.visit_refunds)} · 원장 거래 {result.transaction_count}건</p>
+          <ComparisonSection result={result} previous={previous} previousFailed={previousFailed} />
+          <StaffChart rows={result.staff_sales_basis} />
+          <div className="management-actions"><ExportButton title="담당자별 판매 근거" label="담당자별 내보내기" columns={staffExportColumns} rows={result.staff_sales_basis} disabled={result.staff_sales_basis.length === 0} /></div>
           <DataGrid rows={result.staff_sales_basis} columns={columns} rowKey={(row) => `${row.staff_id ?? 'none'}:${row.staff_name_snapshot}`} ariaLabel="담당자별 판매 근거" emptyText="해당 기간에 담당자별 판매 항목이 없습니다." />
           <p className="muted">조회 완료 · 해당 기간에 기록된 원장 기준{result.excluded_costs.length ? ` · 제외 항목: ${result.excluded_costs.join(', ')}` : ''}</p>
         </>
