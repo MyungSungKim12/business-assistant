@@ -146,3 +146,13 @@
 - `046_treatment_consumables.sql`: 예약 서비스에 조직별 실물 상품 소모량 기준을 저장하고, 시술 기록에 적용 서비스를 연결한다. 연결된 시술을 완료할 때 서비스 기준량을 재고에서 차감하고 `catalog_stock_ledger`에 `treatment_use` 원장을 같은 트랜잭션으로 기록한다. 재고가 부족하거나 서비스/상품 조직이 다르면 완료 요청 전체가 롤백된다. 기존 시술은 연결하지 않으며 소급 차감하지 않는다.
 - 기존 재고 원장의 `customer_return`·`adjustment` 이동 종류와 시술 이벤트의 `consult` 액션을 보존한다. 고객 반품이나 과거 조정 원장이 있어도 제약조건 재생성에 실패하지 않는다.
 - **045 다음에 적용한다.** 격리 PostgreSQL 검증은 `npm run test:treatment-consumables --prefix scripts/db-tests`로 실행한다. 이 검증은 운영 Supabase 적용이나 실제 동시 세션 검증을 대신하지 않는다. 로컬 코드에는 서비스별 레시피 관리, 시술 서비스 연결과 매출 화면의 기존 회원권 사용 진입점이 포함돼 있다. DB 적용과 실제 권한 왕복 검증은 별도 인수 항목이다.
+
+## 047 예약 메모·할 일 라벨/체크리스트·고객 마케팅 수신 동의
+
+- `047_ops_memo_labels_consent.sql`: 모두 기본값이 있는 컬럼과 함수 추가라 기존 행을 바꾸지 않는다. 여러 번 실행해도 안전하다(멱등).
+  - `tasks.labels`(최대 10개), `tasks.checklist`(JSON 배열, 최대 50항목·20KB)와 개수·크기 제약.
+  - `customers.marketing_consent`(기본 false)와 `marketing_consent_at`. 동의 시각은 트리거(`private.stamp_marketing_consent`)가 **값이 바뀔 때** DB에서 찍으므로 클라이언트가 조작할 수 없다. 다른 필드만 바꾸면 시각은 유지된다.
+  - `appointments.memo`(최대 1000자)와 `public.set_appointment_memo(조직, 예약, 메모)` RPC. 일정 저장(버전·충돌 검사)과 분리되어 예약 버전을 올리지 않으며, owner/admin/member가 쓸 수 있다.
+- **순서: 마이그레이션 적용 → API 서버 재시작 → 앱 갱신.** 새 API는 고객·할 일 조회에 새 컬럼을 읽으므로, 047 적용 전에 서버를 먼저 올리면 고객 목록과 할 일 목록이 실패한다.
+- 고객 병합(044)은 수신 동의를 합치지 않는다. 주 고객의 값이 그대로 남으므로 병합 뒤 동의 여부를 확인한다.
+- 격리 PostgreSQL(PGlite)에서 `npm run test:ops-047 --prefix scripts/db-tests`로 제약·동의 시각 트리거·메모 권한과 다른 조직 격리를 검증했다. 실제 Supabase 적용과 역할별 확인은 아직이다.

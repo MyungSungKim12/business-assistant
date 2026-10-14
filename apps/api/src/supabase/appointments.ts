@@ -58,6 +58,10 @@ export function createAppointmentGateway(config: ServerConfig, rawFetcher: typeo
       return parse(z.array(appointmentServiceSchema), await call(token, 'appointment_services', { organization_id: `eq.${organizationId}`, order: 'name.asc' }), organizationId);
     },
     save: (token, organizationId, id, input) => resources.saveAppointment(token, organizationId, id, input),
+    async setMemo(token, organizationId, id, memo) {
+      const saved = parse(appointmentSchema, await call(token, 'rpc/set_appointment_memo', {}, { p_organization_id: organizationId, p_appointment_id: id, p_memo: memo }), organizationId);
+      return saved;
+    },
     async transition(token, organizationId, id, input) {
       return parse(appointmentSchema, await call(token, 'rpc/transition_appointment', {}, { p_organization_id: organizationId, p_appointment_id: id, ...prefixed(input) }), organizationId);
     },

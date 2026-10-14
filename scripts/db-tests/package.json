@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node treatment-lifecycle.mjs && node treatment-consultation.mjs && node document-versions.mjs && node document-issuance.mjs && node document-consent.mjs && node treatment-sale-drafts.mjs && node visit-sale-carts.mjs && node visit-payments.mjs && node catalog-sales.mjs && node wallet-usage.mjs && node payment-refunds.mjs && node appointments.mjs && node treatment-consumables.mjs",
+    "test": "node treatment-lifecycle.mjs && node treatment-consultation.mjs && node document-versions.mjs && node document-issuance.mjs && node document-consent.mjs && node treatment-sale-drafts.mjs && node visit-sale-carts.mjs && node visit-payments.mjs && node catalog-sales.mjs && node wallet-usage.mjs && node payment-refunds.mjs && node appointments.mjs && node treatment-consumables.mjs && node ops-047.mjs",
     "test:consultation": "node treatment-consultation.mjs",
     "test:documents": "node document-versions.mjs",
     "test:issuance": "node document-issuance.mjs",
@@ -15,7 +15,8 @@
     "test:wallet-usage": "node wallet-usage.mjs",
     "test:payment-refunds": "node payment-refunds.mjs",
     "test:appointments": "node appointments.mjs",
-    "test:treatment-consumables": "node treatment-consumables.mjs"
+    "test:treatment-consumables": "node treatment-consumables.mjs",
+    "test:ops-047": "node ops-047.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.5.8"

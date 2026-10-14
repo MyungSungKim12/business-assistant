@@ -10,6 +10,7 @@ const optionalProfile = {
   email: nullableText(255), phone: nullableText(50), notes: z.string().max(5_000).optional(), birth_date: nullableText(10), skin_type: nullableText(100),
   concerns: z.array(z.string().trim().min(1).max(100)).max(30).optional(), allergies: z.string().max(1_000).optional(),
   last_visit_date: nullableText(10), next_visit_date: nullableText(10), tags: z.array(z.string().trim().min(1).max(50)).max(30).optional(), status: z.enum(['active', 'archived']).optional(),
+  marketing_consent: z.boolean().optional(),
 };
 const createInput = z.object({ name: z.string().trim().min(1).max(200), ...optionalProfile }).strict();
 const patchInput = createInput.partial().refine(value => Object.keys(value).length > 0);

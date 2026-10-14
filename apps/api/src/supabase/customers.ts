@@ -9,6 +9,8 @@ const customer = z.object({
   birth_date: z.string().nullable(), skin_type: z.string().nullable(), concerns: z.array(z.string()), allergies: z.string(),
   last_visit_date: z.string().nullable(), next_visit_date: z.string().nullable(), tags: z.array(z.string()), status: z.string(),
   created_at: z.string().optional(),
+  /** 마케팅 수신 동의(047). 동의 시각은 DB가 값이 바뀔 때 찍으므로 입력으로 받지 않는다. */
+  marketing_consent: z.boolean().optional(), marketing_consent_at: z.string().nullable().optional(),
 });
 
 export type CustomerInput = z.infer<typeof customer>;
@@ -94,7 +96,7 @@ export function createCustomerGateway(config: ServerConfig, fetcher: typeof fetc
     if (!result.success) throw new ApiFailure(503, 'Customer service unavailable');
     return result.data;
   }
-  const select = 'id,organization_id,name,email,phone,notes,birth_date,skin_type,concerns,allergies,last_visit_date,next_visit_date,tags,status,created_at';
+  const select = 'id,organization_id,name,email,phone,notes,birth_date,skin_type,concerns,allergies,last_visit_date,next_visit_date,tags,status,created_at,marketing_consent,marketing_consent_at';
   const rpc = <T>(token: string, name: string, organizationId: string, args: Record<string, unknown>, schema: z.ZodType<T>) =>
     rest.rpc(token, name, { p_organization_id: organizationId, ...args }, schema);
 

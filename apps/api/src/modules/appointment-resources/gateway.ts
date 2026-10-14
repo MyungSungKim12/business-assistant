@@ -37,7 +37,7 @@ export const appointmentSchema = z.object({
   duration_minutes: z.number().int(), buffer_minutes: z.number().int(), start_at: z.string(), end_at: z.string(),
   status: z.enum(['reserved', 'confirmed', 'checked_in', 'completed', 'canceled', 'no_show']),
   source: z.enum(['manual', 'phone', 'walk_in', 'online']), cancellation_reason: z.string().nullable(),
-  version: z.number().int().min(1), resource_ids: z.array(z.uuid()).max(20).default([]),
+  version: z.number().int().min(1), memo: z.string().default(''), resource_ids: z.array(z.uuid()).max(20).default([]),
 });
 
 export type AppointmentStaff = z.infer<typeof staffSchema>;

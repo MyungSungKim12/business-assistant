@@ -544,3 +544,10 @@ button.apt-slot:focus-visible {
     height: 70vh;
   }
 }
+
+/* 예약 메모 */
+.apt-memo { margin-top: 12px; display: flex; flex-direction: column; gap: 6px; }
+.apt-memo h3 { margin: 0 0 4px; font-size: 13px; }
+.apt-memo textarea { width: 100%; min-height: 72px; resize: vertical; }
+.apt-memo__foot { display: flex; justify-content: space-between; align-items: center; }
+.apt-memo__text { margin: 0; white-space: pre-wrap; }

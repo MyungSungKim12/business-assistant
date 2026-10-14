@@ -3,6 +3,7 @@ import { DataGrid, DateRangeField, Select, type Column } from '@business-assista
 import type { Task } from '../../api/schemas';
 import { formatDue, rangeForPreset, type DateKey, type RangePreset } from './taskDates';
 import { PRIORITY_LABELS, STATUS_LABELS, priorityOf, statusOf } from './taskMeta';
+import { checklistOf, checklistProgress, labelsOf } from './checklistLogic';
 import type { TaskFilters } from './taskFilters';
 
 const STATUS_OPTIONS = [{ value: 'all' as const, label: '상태 전체' }, ...Object.entries(STATUS_LABELS).map(([value, label]) => ({ value: value as keyof typeof STATUS_LABELS, label }))];
@@ -33,7 +34,14 @@ export interface TaskListProps {
 }
 
 const columns: Column<Task>[] = [
-  { key: 'title', header: '제목', width: 220, minWidth: 100, value: (task) => task.title },
+  {
+    key: 'title', header: '제목', width: 220, minWidth: 100, value: (task) => task.title,
+    render: (task) => {
+      const { done, total } = checklistProgress(checklistOf(task));
+      return <>{task.title}{total > 0 && <span className="tasks-label" title="체크리스트 진행">{done}/{total}</span>}{labelsOf(task).map((label) => <span key={label} className="tasks-label">{label}</span>)}</>;
+    },
+    title: (task) => task.title,
+  },
   { key: 'due_at', header: '기한', width: 130, minWidth: 90, value: (task) => task.due_at ?? '', render: (task) => formatDue(task.due_at), title: (task) => formatDue(task.due_at) },
   { key: 'priority', header: '우선순위', width: 80, minWidth: 60, value: (task) => PRIORITY_LABELS[priorityOf(task)], render: (task) => <span className={`tasks-priority tasks-priority--${priorityOf(task)}`}>{PRIORITY_LABELS[priorityOf(task)]}</span> },
   { key: 'status', header: '상태', width: 70, minWidth: 60, value: (task) => STATUS_LABELS[statusOf(task)], render: (task) => <span className={`tasks-status tasks-status--${statusOf(task)}`}>{STATUS_LABELS[statusOf(task)]}</span> },

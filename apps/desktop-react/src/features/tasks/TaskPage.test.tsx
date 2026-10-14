@@ -9,7 +9,7 @@ const TODAY = '2026-10-15';
 const local = (y: number, m: number, d: number, h = 10, mi = 0) => new Date(y, m - 1, d, h, mi).toISOString();
 
 function makeTask(n: number, patch: Partial<Task> = {}): Task {
-  return { id: `00000000-0000-4000-8000-00000000000${n}`, organization_id: ORG, created_by: '33333333-3333-4333-8333-333333333333', title: `할일${n}`, description: `설명${n}`, due_at: null, status: 'open', priority: 'normal', ...patch };
+  return { id: `00000000-0000-4000-8000-00000000000${n}`, organization_id: ORG, created_by: '33333333-3333-4333-8333-333333333333', title: `할일${n}`, description: `설명${n}`, due_at: null, status: 'open', priority: 'normal', labels: [], checklist: [], ...patch };
 }
 const seed = () => [
   makeTask(1, { title: '재고 확인', due_at: local(2026, 10, 15, 10), priority: 'high' }),
@@ -368,5 +368,62 @@ describe('TaskPage 일괄 완료(TASK-02)', () => {
     fireEvent.click(await screen.findByRole('button', { name: '모두 완료' }));
     await waitFor(() => expect(api.updateTask).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(screen.getByRole('button', { name: '보이는 1건 완료' })).toBeInTheDocument());
+  });
+});
+
+describe('TaskPage 라벨·체크리스트(TASK-02)', () => {
+  const withChecklist = () => [makeTask(1, { title: '재고 확인', labels: ['재고'], checklist: [{ id: 'a', text: '상자 세기', done: true }, { id: 'b', text: '주문서 작성', done: false }] })];
+
+  it('목록에 라벨과 체크리스트 진행이 보인다', async () => {
+    renderPage(makeApi(withChecklist()));
+    await ready();
+    const row = within(grid()).getByText('재고 확인').closest('tr')!;
+    expect(within(row).getByText('1/2')).toBeInTheDocument();
+    expect(within(row).getByText('재고')).toBeInTheDocument();
+  });
+
+  it('항목을 체크·추가·삭제하면 그때마다 checklist만 저장한다', async () => {
+    const api = makeApi(withChecklist());
+    renderPage(api);
+    await ready();
+    fireEvent.click(within(grid()).getByText('재고 확인'));
+    const box = () => screen.getByRole('region', { name: '체크리스트' });
+    fireEvent.click(within(box()).getByRole('checkbox', { name: '주문서 작성' }));
+    await waitFor(() => expect(api.updateTask).toHaveBeenLastCalledWith(ORG, expect.any(String), { checklist: [{ id: 'a', text: '상자 세기', done: true }, { id: 'b', text: '주문서 작성', done: true }] }));
+    fireEvent.change(within(box()).getByLabelText('체크리스트 항목'), { target: { value: '택배 확인' } });
+    fireEvent.click(within(box()).getByRole('button', { name: '추가' }));
+    await waitFor(() => expect(within(box()).getByText('택배 확인')).toBeInTheDocument());
+    fireEvent.click(within(box()).getByRole('button', { name: '상자 세기 삭제' }));
+    await waitFor(() => expect(within(box()).queryByText('상자 세기')).not.toBeInTheDocument());
+    expect(within(box()).getByRole('heading', { name: '체크리스트 (1/2)' })).toBeInTheDocument();
+  });
+
+  it('저장에 실패하면 오류를 알리고 항목 상태를 바꾸지 않는다', async () => {
+    const api = makeApi(withChecklist());
+    api.updateTask.mockImplementationOnce(async () => { throw new Error('x'); });
+    renderPage(api);
+    await ready();
+    fireEvent.click(within(grid()).getByText('재고 확인'));
+    fireEvent.click(screen.getByRole('checkbox', { name: '주문서 작성' }));
+    expect(await screen.findByText('체크리스트를 저장하지 못했습니다. 다시 시도하세요.')).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: '주문서 작성' })).not.toBeChecked();
+  });
+
+  it('라벨을 쉼표로 입력해 저장한다', async () => {
+    const api = makeApi(withChecklist());
+    renderPage(api);
+    await ready();
+    fireEvent.click(within(grid()).getByText('재고 확인'));
+    fireEvent.change(within(detail()).getByLabelText('라벨'), { target: { value: '재고, 월말, 재고' } });
+    fireEvent.click(within(detail()).getByRole('button', { name: '저장' }));
+    await waitFor(() => expect(api.updateTask).toHaveBeenCalledWith(ORG, expect.any(String), expect.objectContaining({ labels: ['재고', '월말'] })));
+  });
+
+  it('조회 전용이면 체크박스는 보이지만 바꿀 수 없다', async () => {
+    renderPage(makeApi(withChecklist()), { readOnly: true });
+    await ready();
+    fireEvent.click(within(grid()).getByText('재고 확인'));
+    expect(screen.getByRole('checkbox', { name: '주문서 작성' })).toBeDisabled();
+    expect(screen.queryByLabelText('체크리스트 항목')).not.toBeInTheDocument();
   });
 });

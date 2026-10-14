@@ -3,6 +3,7 @@ import { DateTimeField, Select } from '@business-assistant/react-ui';
 import type { Task } from '../../api/schemas';
 import { isoToLocalInput } from './taskDates';
 import { PRIORITY_LABELS, priorityOf, type TaskPriority } from './taskMeta';
+import { labelsOf, labelsText } from './checklistLogic';
 
 export interface TaskFormValues {
   title: string;
@@ -10,16 +11,18 @@ export interface TaskFormValues {
   /** datetime-local 형식(로컬 시간). 비어 있으면 기한 없음. */
   due: string;
   priority: TaskPriority;
+  /** 쉼표로 구분한 라벨 입력(최대 10개) */
+  labels: string;
 }
 
 const PRIORITY_OPTIONS = (Object.keys(PRIORITY_LABELS) as TaskPriority[]).map((value) => ({ value, label: PRIORITY_LABELS[value] }));
 
 export function valuesFromTask(task: Task | null, defaultDue: string): TaskFormValues {
-  if (!task) return { title: '', description: '', due: defaultDue, priority: 'normal' };
-  return { title: task.title, description: task.description, due: isoToLocalInput(task.due_at), priority: priorityOf(task) };
+  if (!task) return { title: '', description: '', due: defaultDue, priority: 'normal', labels: '' };
+  return { title: task.title, description: task.description, due: isoToLocalInput(task.due_at), priority: priorityOf(task), labels: labelsText(labelsOf(task)) };
 }
 
-const same = (a: TaskFormValues, b: TaskFormValues) => a.title === b.title && a.description === b.description && a.due === b.due && a.priority === b.priority;
+const same = (a: TaskFormValues, b: TaskFormValues) => a.title === b.title && a.description === b.description && a.due === b.due && a.priority === b.priority && a.labels === b.labels;
 
 export interface TaskFormProps {
   /** 편집할 할 일. null이면 신규 등록. */
@@ -46,7 +49,7 @@ export function TaskForm({ task, defaultDue, readOnly, onSubmit, onDirtyChange }
     if (same(previous, base)) return;
     setValues((current) => (same(current, previous) ? base : current));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [base.title, base.description, base.due, base.priority]);
+  }, [base.title, base.description, base.due, base.priority, base.labels]);
 
   const dirty = !same(values, base);
   useEffect(() => { onDirtyChange(dirty); }, [dirty, onDirtyChange]);
@@ -79,6 +82,7 @@ export function TaskForm({ task, defaultDue, readOnly, onSubmit, onDirtyChange }
         <label>기한<DateTimeField value={values.due || null} disabled={readOnly} onChange={(due) => patch({ due: due ?? '' })} /></label>
         <label>우선순위<Select options={PRIORITY_OPTIONS} value={values.priority} disabled={readOnly} onChange={(priority) => patch({ priority })} /></label>
       </div>
+      <label>라벨<input value={values.labels} disabled={readOnly} placeholder="쉼표로 구분(예: 재고, 월말)" onChange={(event) => patch({ labels: event.currentTarget.value })} /></label>
       {error && <p role="alert" className="tasks-error">{error}</p>}
       {!readOnly && (
         <div className="tasks-form__actions">

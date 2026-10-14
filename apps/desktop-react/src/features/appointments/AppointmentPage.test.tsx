@@ -7,7 +7,7 @@ import { addDays, todayKstKey } from './appointmentTime';
 
 const ids = { org: '22222222-2222-4222-8222-222222222222', customer: '11111111-1111-4111-8111-111111111111', staff: '33333333-3333-4333-8333-333333333333', service: '44444444-4444-4444-8444-444444444444', appointment: '55555555-5555-4555-8555-555555555555' };
 const today = todayKstKey();
-const appointment = { id: ids.appointment, organization_id: ids.org, customer_id: ids.customer, staff_id: ids.staff, service_id: ids.service, service_name_snapshot: '피부관리', duration_minutes: 60, buffer_minutes: 10, start_at: `${today}T10:00:00+09:00`, end_at: `${today}T11:00:00+09:00`, status: 'reserved', source: 'manual', cancellation_reason: null, version: 2, resource_ids: [] };
+const appointment = { id: ids.appointment, organization_id: ids.org, customer_id: ids.customer, staff_id: ids.staff, service_id: ids.service, service_name_snapshot: '피부관리', duration_minutes: 60, buffer_minutes: 10, start_at: `${today}T10:00:00+09:00`, end_at: `${today}T11:00:00+09:00`, status: 'reserved', source: 'manual', cancellation_reason: null, version: 2, memo: '', resource_ids: [] };
 
 type Handler = (method: string, path: string, schema: unknown, body?: unknown) => Promise<unknown>;
 
@@ -357,5 +357,39 @@ describe('AppointmentPage 담당자 필터(APT-14)', () => {
     expect(screen.getAllByRole('button', { name: /^10:00 김고객 상세/ })).toHaveLength(1);
     fireEvent.change(screen.getByRole('combobox', { name: '담당자 필터' }), { target: { value: '' } });
     expect(screen.getAllByRole('button', { name: /^10:00 김고객 상세/ })).toHaveLength(2);
+  });
+});
+
+describe('AppointmentPage 메모(APT-14)', () => {
+  it('상세에서 메모를 저장하면 API를 호출하고 화면에 반영하며 자원·버전은 유지한다', async () => {
+    const setAppointmentMemo = vi.fn(async (_o: string, _id: string, memo: string) => ({ ...appointment, memo, resource_ids: [] }));
+    renderPage(client({ setAppointmentMemo }, [{ ...appointment, resource_ids: ['88888888-8888-4888-8888-888888888888'] }]));
+    fireEvent.click(await block());
+    const textarea = await screen.findByRole('textbox', { name: /메모/ });
+    const save = screen.getByRole('button', { name: '메모 저장' });
+    expect(save).toBeDisabled();
+    fireEvent.change(textarea, { target: { value: '알레르기 주의' } });
+    fireEvent.click(save);
+    await waitFor(() => expect(setAppointmentMemo).toHaveBeenCalledWith(ids.org, ids.appointment, '알레르기 주의'));
+    await waitFor(() => expect(screen.getByRole('button', { name: '메모 저장' })).toBeDisabled());
+    expect(screen.getByRole('textbox', { name: /메모/ })).toHaveValue('알레르기 주의');
+    expect(screen.getByText('알 수 없는 자원')).toBeInTheDocument();
+  });
+
+  it('저장에 실패하면 입력을 유지하고 오류를 알린다', async () => {
+    const setAppointmentMemo = vi.fn(async () => { throw new Error('x'); });
+    renderPage(client({ setAppointmentMemo }));
+    fireEvent.click(await block());
+    fireEvent.change(await screen.findByRole('textbox', { name: /메모/ }), { target: { value: '요청' } });
+    fireEvent.click(screen.getByRole('button', { name: '메모 저장' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('메모를 저장하지 못했습니다');
+    expect(screen.getByRole('textbox', { name: /메모/ })).toHaveValue('요청');
+  });
+
+  it('조회 전용이면 메모를 읽기만 한다', async () => {
+    renderPage(client({}, [{ ...appointment, memo: '조용한 방' }]), { readOnly: true });
+    fireEvent.click(await block());
+    expect(await screen.findByText('조용한 방')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '메모 저장' })).not.toBeInTheDocument();
   });
 });

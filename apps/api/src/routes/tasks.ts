@@ -2,15 +2,26 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { ApiFailure } from '../errors.js';
 import { bearerToken } from './organizations.js';
-import type { TaskGateway } from '../supabase/tasks.js';
+import { checklistSchema, type TaskGateway } from '../supabase/tasks.js';
 
-const taskInput = z.object({
+// 필드 정의는 한 곳에 두고, 생성에는 기본값을, 수정(PATCH)에는 "보낸 필드만"을 쓴다.
+// 기본값이 붙은 스키마에 partial()을 쓰면 빈 필드가 기본값으로 채워져 설명·기한·우선순위가 지워지므로 수정용은 따로 만든다.
+const fields = {
   title: z.string().trim().min(1).max(300),
-  description: z.string().max(5_000).default(''),
-  due_at: z.iso.datetime().nullable().default(null),
-  priority: z.enum(['low', 'normal', 'high']).default('normal'),
+  description: z.string().max(5_000),
+  due_at: z.iso.datetime().nullable(),
+  priority: z.enum(['low', 'normal', 'high']),
+  labels: z.array(z.string().trim().min(1).max(30)).max(10).refine((value) => new Set(value).size === value.length),
+  checklist: checklistSchema,
+};
+const taskInput = z.object({
+  title: fields.title, description: fields.description.default(''), due_at: fields.due_at.default(null), priority: fields.priority.default('normal'),
+  labels: fields.labels.default([]), checklist: fields.checklist.default([]),
 }).strict();
-const taskPatch = taskInput.partial().extend({ status: z.enum(['open', 'in_progress', 'done', 'canceled']).optional() }).refine((value) => Object.keys(value).length > 0);
+const taskPatch = z.object({
+  title: fields.title.optional(), description: fields.description.optional(), due_at: fields.due_at.optional(), priority: fields.priority.optional(),
+  labels: fields.labels.optional(), checklist: fields.checklist.optional(), status: z.enum(['open', 'in_progress', 'done', 'canceled']).optional(),
+}).strict().refine((value) => Object.keys(value).length > 0);
 
 export function registerTaskRoutes(app: FastifyInstance, organizations: Pick<{ requireAccess(token: string, id: string, feature: string, write?: boolean): Promise<string> }, 'requireAccess'> | undefined, tasks?: TaskGateway): void {
   function service(request: FastifyRequest) {

@@ -6,6 +6,7 @@ import { TaskCalendar } from './TaskCalendar';
 import { TaskDetail } from './TaskDetail';
 import type { TaskFormValues } from './TaskForm';
 import { TaskList } from './TaskList';
+import { parseLabels, type Checklist } from './checklistLogic';
 import { dateKeyToLocalInput, dueDateKey, localInputToIso, moveDueToDate, toDateKey, type DateKey } from './taskDates';
 import { EMPTY_FILTERS, filterTasks, sortByDue, type TaskFilters } from './taskFilters';
 import type { TaskStatus } from './taskMeta';
@@ -81,13 +82,13 @@ export function TaskPage({ api, organizationId, readOnly = false, todayKey: toda
   };
 
   const createTask = async (values: TaskFormValues) => {
-    const created = await api.createTask(organizationId, { title: values.title, description: values.description, due_at: localInputToIso(values.due), priority: values.priority });
+    const created = await api.createTask(organizationId, { title: values.title, description: values.description, due_at: localInputToIso(values.due), priority: values.priority, labels: parseLabels(values.labels) });
     setItems((current) => [...current, created]);
     setCreateDue('');
     setSelectedId(created.id);
   };
   const updateTask = async (task: Task, values: TaskFormValues) => {
-    const saved = await api.updateTask(organizationId, task.id, { title: values.title, description: values.description, due_at: localInputToIso(values.due), priority: values.priority });
+    const saved = await api.updateTask(organizationId, task.id, { title: values.title, description: values.description, due_at: localInputToIso(values.due), priority: values.priority, labels: parseLabels(values.labels) });
     setItems((current) => mergeTask(current, saved));
   };
   const changeStatus = async (task: Task, status: TaskStatus) => {
@@ -110,6 +111,10 @@ export function TaskPage({ api, organizationId, readOnly = false, todayKey: toda
     setCompleting(false);
     if (failed === 0) notify.success(`${tasks.length}건을 완료했습니다.`);
     else notify.error(`${tasks.length - failed}건을 완료했고 ${failed}건은 처리하지 못했습니다. 다시 시도해 주세요.`);
+  };
+  const changeChecklist = async (task: Task, checklist: Checklist) => {
+    const saved = await api.updateTask(organizationId, task.id, { checklist });
+    setItems((current) => mergeTask(current, saved));
   };
   const deleteTask = async (task: Task) => {
     await api.deleteTask(organizationId, task.id);
@@ -161,6 +166,7 @@ export function TaskPage({ api, organizationId, readOnly = false, todayKey: toda
         onCreate={createTask}
         onUpdate={updateTask}
         onStatus={changeStatus}
+        onChecklist={changeChecklist}
         onDelete={deleteTask}
         onDirtyChange={onDirtyChange}
       />

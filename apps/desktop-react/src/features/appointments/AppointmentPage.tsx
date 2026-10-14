@@ -139,6 +139,12 @@ export function AppointmentPage({ api, organizationId, readOnly, canManageResour
     if (selected) setPanel({ kind: 'detail', id: selected.id });
   }
 
+  /** 메모만 저장한다. 응답에는 자원 선택이 없으므로 화면 목록에는 메모만 반영해 기존 값(버전·자원)을 지키지 않게 되는 일을 막는다. */
+  async function saveMemo(item: Appointment, memo: string) {
+    const saved = await api.setAppointmentMemo(organizationId, item.id, memo);
+    setItems((old) => old.map((row) => (row.id === item.id ? { ...row, memo: saved.memo } : row)));
+  }
+
   async function transition(item: Appointment, target: TargetStatus, reason: string | null = null) {
     setBusy(true);
     try {
@@ -221,6 +227,7 @@ export function AppointmentPage({ api, organizationId, readOnly, canManageResour
           readOnly={readOnly}
           busy={busy}
           onTransition={(target) => void advance(selected, target)}
+          onSaveMemo={(memo) => saveMemo(selected, memo)}
           onEdit={startEdit}
           onClose={() => void closePanel()}
         />

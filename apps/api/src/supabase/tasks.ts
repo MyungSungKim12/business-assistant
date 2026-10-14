@@ -2,9 +2,15 @@ import { z } from 'zod';
 import type { ServerConfig } from '../config.js';
 import { ApiFailure } from '../errors.js';
 
-const task = z.object({ id: z.uuid(), organization_id: z.uuid(), created_by: z.uuid(), title: z.string(), description: z.string(), due_at: z.string().nullable(), status: z.string(), priority: z.string() });
+const checklistItem = z.object({ id: z.string().min(1).max(64), text: z.string().trim().min(1).max(200), done: z.boolean() }).strict();
+/** 할 일 체크리스트 항목(최대 50개, 047). */
+export const checklistSchema = z.array(checklistItem).max(50);
+const task = z.object({
+  id: z.uuid(), organization_id: z.uuid(), created_by: z.uuid(), title: z.string(), description: z.string(), due_at: z.string().nullable(), status: z.string(), priority: z.string(),
+  labels: z.array(z.string()).default([]), checklist: checklistSchema.default([]),
+});
 export type TaskRecord = z.infer<typeof task>;
-export type NewTask = Pick<TaskRecord, 'title' | 'description' | 'due_at' | 'priority'>;
+export type NewTask = Pick<TaskRecord, 'title' | 'description' | 'due_at' | 'priority'> & Partial<Pick<TaskRecord, 'labels' | 'checklist'>>;
 
 export function createTaskGateway(config: ServerConfig, fetcher: typeof fetch = fetch) {
   const headers = (token: string, write = false) => ({ apikey: config.APP_SUPABASE_PUBLISHABLE_KEY, Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...(write ? { Prefer: 'return=representation' } : {}) });
@@ -40,7 +46,7 @@ export function createTaskGateway(config: ServerConfig, fetcher: typeof fetch = 
     if (!parsed.success) throw new ApiFailure(503, 'Task service unavailable');
     return parsed.data;
   };
-  const select = 'id,organization_id,created_by,title,description,due_at,status,priority';
+  const select = 'id,organization_id,created_by,title,description,due_at,status,priority,labels,checklist';
   return {
     async list(token: string, organizationId: string) { return rows(await request(token, 'GET', { select, organization_id: `eq.${organizationId}`, order: 'due_at.asc.nullslast,created_at.desc' })); },
     async create(token: string, organizationId: string, input: NewTask) {

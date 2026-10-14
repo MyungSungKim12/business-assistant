@@ -93,3 +93,14 @@
 .tasks-cal__more { border-color: transparent; background: transparent; color: var(--text-muted); }
 .tasks-undated { display: flex; flex-direction: column; gap: 4px; min-height: 0; padding: 6px; border-left: 1px solid var(--border); background: var(--row-alt); }
 .tasks-undated h3 { margin: 0; font-size: var(--font-size-body); }
+
+/* 라벨·체크리스트 */
+.tasks-label { display: inline-block; margin-left: 4px; padding: 0 6px; border: 1px solid var(--border, #c9ced6); border-radius: 10px; font-size: 11px; color: var(--label); }
+.tasks-checklist { margin-top: 12px; display: flex; flex-direction: column; gap: 6px; }
+.tasks-checklist h3 { margin: 0; font-size: 13px; }
+.tasks-checklist ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; max-height: 160px; overflow: auto; }
+.tasks-checklist li { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+.tasks-checklist li label { display: flex; align-items: center; gap: 6px; }
+.tasks-checklist__done { text-decoration: line-through; opacity: 0.6; }
+.tasks-checklist__add { display: flex; gap: 4px; }
+.tasks-checklist__add input { flex: 1; }

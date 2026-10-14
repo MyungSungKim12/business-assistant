@@ -76,3 +76,11 @@ It verifies normalized strokes and limits, exact field validation, required conf
 manager/admin and tenant boundaries, SHA256 binding, optimistic revisions, exact replay,
 repeat delivery, terminal withdrawal, immutable events and restrictive references.
 Python/Qt and real PostgREST/multi-session verification remain separate pending checks.
+
+## Ops memo, labels, consent (047)
+
+Run `npm run test:ops-047 --prefix scripts/db-tests` to execute migrations 006, 024, 034, and 047
+(twice, to prove idempotency) against a fresh in-memory PostgreSQL database. It checks the task
+label/checklist limits, that the database stamps the marketing-consent time only when the value
+changes (a client-supplied timestamp is ignored), and the appointment memo RPC: member/owner access,
+outsider and cross-organization rejection, length limits, no version bump, and no direct table update.

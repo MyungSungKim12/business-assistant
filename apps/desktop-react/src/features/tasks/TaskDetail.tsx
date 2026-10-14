@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { confirm } from '@business-assistant/react-ui';
 import type { Task } from '../../api/schemas';
 import { formatDue } from './taskDates';
+import { TaskChecklist } from './TaskChecklist';
+import type { Checklist } from './checklistLogic';
 import { TaskForm, type TaskFormValues } from './TaskForm';
 import { STATUS_LABELS, statusActions, statusOf, type TaskStatus } from './taskMeta';
 
@@ -16,6 +18,7 @@ export interface TaskDetailProps {
   onCreate: (values: TaskFormValues) => Promise<void>;
   onUpdate: (task: Task, values: TaskFormValues) => Promise<void>;
   onStatus: (task: Task, status: TaskStatus) => Promise<void>;
+  onChecklist: (task: Task, checklist: Checklist) => Promise<void>;
   onDelete: (task: Task) => Promise<void>;
   onDirtyChange: (dirty: boolean) => void;
 }
@@ -25,7 +28,7 @@ function createdAtOf(task: Task): string | null {
   return typeof value === 'string' ? formatDue(value) : null;
 }
 
-export function TaskDetail({ task, createKey, createDue, readOnly, onCreate, onUpdate, onStatus, onDelete, onDirtyChange }: TaskDetailProps) {
+export function TaskDetail({ task, createKey, createDue, readOnly, onCreate, onUpdate, onStatus, onChecklist, onDelete, onDirtyChange }: TaskDetailProps) {
   const [actionError, setActionError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -70,6 +73,7 @@ export function TaskDetail({ task, createKey, createDue, readOnly, onCreate, onU
       <div className="tasks-detail__body">
         {created && <dl className="tasks-meta"><dt>생성일</dt><dd>{created}</dd></dl>}
         <TaskForm key={task.id} task={task} defaultDue="" readOnly={readOnly} onSubmit={(values) => onUpdate(task, values)} onDirtyChange={onDirtyChange} />
+        <TaskChecklist key={`check-${task.id}`} task={task} readOnly={readOnly} onChange={(checklist) => onChecklist(task, checklist)} />
         {actionError && <p role="alert" className="tasks-error">{actionError}</p>}
         {!readOnly && (
           <div className="tasks-detail__actions">

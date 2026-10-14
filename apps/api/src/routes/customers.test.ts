@@ -241,3 +241,29 @@ describe('customer gateway search', () => {
     expect(decodeCursor('###')).toBeUndefined();
   });
 });
+
+describe('customer marketing consent (047)', () => {
+  const headers = { authorization: 'Bearer access' };
+  it('accepts marketing_consent on create and patch but never a client-supplied consent timestamp', async () => {
+    const { app } = fixture();
+    const base = `/api/v1/organizations/${organizationId}/customers`;
+    const created = await app.inject({ method: 'POST', url: base, headers, payload: { name: '동의 고객', marketing_consent: true } });
+    expect(created.statusCode).toBe(200);
+    expect(created.json()).toMatchObject({ name: '동의 고객', marketing_consent: true });
+    const patched = await app.inject({ method: 'PATCH', url: `${base}/${customerId}`, headers, payload: { marketing_consent: false } });
+    expect(patched.statusCode).toBe(200);
+    expect(patched.json()).toMatchObject({ marketing_consent: false });
+    for (const payload of [{ name: 'x', marketing_consent_at: '2026-01-01T00:00:00Z' }, { name: 'x', marketing_consent: 'yes' }]) {
+      expect((await app.inject({ method: 'POST', url: base, headers, payload })).statusCode).toBe(422);
+    }
+    expect((await app.inject({ method: 'PATCH', url: `${base}/${customerId}`, headers, payload: { marketing_consent_at: '2026-01-01T00:00:00Z' } })).statusCode).toBe(422);
+    await app.close();
+  });
+
+  it('rejects a full customer row (id, organization, created_at) as a PATCH body', async () => {
+    const { app } = fixture();
+    const result = await app.inject({ method: 'PATCH', url: `/api/v1/organizations/${organizationId}/customers/${customerId}`, headers, payload: { ...customer, created_at: '2026-10-01T00:00:00Z' } });
+    expect(result.statusCode).toBe(422);
+    await app.close();
+  });
+});

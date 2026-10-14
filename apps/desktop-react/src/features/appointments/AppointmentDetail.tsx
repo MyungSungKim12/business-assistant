@@ -1,4 +1,5 @@
 import type { Appointment } from '../../api/schemas';
+import { AppointmentMemo } from './AppointmentMemo';
 import { formatDateLabel, formatKstTime, kstDateKey } from './appointmentTime';
 import { allowedTransitions, canEditAppointment, statusLabel, targetLabels, type NameLookup, type TargetStatus } from './appointmentRules';
 
@@ -13,12 +14,14 @@ export interface AppointmentDetailProps {
   readOnly: boolean;
   busy?: boolean;
   onTransition: (target: TargetStatus) => void;
+  /** 메모를 저장한다. 실패하면 던진다. */
+  onSaveMemo: (memo: string) => Promise<void>;
   onEdit: () => void;
   onClose: () => void;
 }
 
 /** 선택한 예약의 내용과 상태 변경·수정 버튼. */
-export function AppointmentDetail({ appointment, customerName, staffName, resourceName, readOnly, busy = false, onTransition, onEdit, onClose }: AppointmentDetailProps) {
+export function AppointmentDetail({ appointment, customerName, staffName, resourceName, readOnly, busy = false, onTransition, onSaveMemo, onEdit, onClose }: AppointmentDetailProps) {
   const targets = readOnly ? [] : allowedTransitions(appointment.status);
   const editable = !readOnly && canEditAppointment(appointment.status);
   const startDate = kstDateKey(appointment.start_at);
@@ -48,6 +51,7 @@ export function AppointmentDetail({ appointment, customerName, staffName, resour
         <div><dt>등록 경로</dt><dd>{sourceLabels[appointment.source] ?? appointment.source}</dd></div>
         {appointment.cancellation_reason && <div><dt>취소 사유</dt><dd>{appointment.cancellation_reason}</dd></div>}
       </dl>
+      <AppointmentMemo key={appointment.id} value={appointment.memo} readOnly={readOnly} onSave={onSaveMemo} />
       {(targets.length > 0 || editable) && (
         <div className="apt-detail__actions" role="group" aria-label="예약 처리">
           {targets.map((target) => (

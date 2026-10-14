@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { confirm, notify } from '@business-assistant/react-ui';
 import type { ApiClient } from '../../api/client';
-import { emptyCustomer, type Customer } from './types';
+import { customerPayload, emptyCustomer, type Customer } from './types';
 import { CustomerGrid } from './CustomerGrid';
 import { CustomerForm } from './CustomerForm';
 import { InsightsPanel } from './InsightsPanel';
@@ -90,7 +90,8 @@ export function CustomerPage({ api, organizationId, readOnly, focusCustomerId, f
 
   async function save(value: ReturnType<typeof emptyCustomer>) {
     try {
-      const saved = selected ? await api.updateCustomer(organizationId, selected.id, value) : await api.createCustomer(organizationId, value);
+      const payload = customerPayload(value) as typeof value;
+      const saved = selected ? await api.updateCustomer(organizationId, selected.id, payload) : await api.createCustomer(organizationId, payload);
       setRows((old) => (old.some((row) => row.id === saved.id) ? old.map((row) => (row.id === saved.id ? saved : row)) : [saved, ...old]));
       setSelected(saved);
     } catch {

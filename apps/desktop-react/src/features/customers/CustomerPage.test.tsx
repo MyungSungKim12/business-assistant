@@ -64,3 +64,29 @@ describe('CustomerPage', () => {
     expect(await screen.findByText(/등록된 사진이 없습니다/)).toBeInTheDocument();
   });
 });
+
+describe('CustomerPage 마케팅 수신 동의(CRM-13)', () => {
+  it('수신 동의를 체크해 저장하면 편집 필드만 보내고 읽기 전용 필드는 보내지 않는다', async () => {
+    const client = api([{ ...customer, created_at: '2026-10-01T00:00:00Z', marketing_consent: false, marketing_consent_at: null }]);
+    render(<CustomerPage api={client} organizationId={customer.organization_id} readOnly={false} />);
+    fireEvent.click(await grid().findByText('김고객'));
+    await screen.findByDisplayValue('김고객');
+    const consent = screen.getByRole('checkbox', { name: /마케팅 수신 동의/ });
+    expect(consent).not.toBeChecked();
+    fireEvent.click(consent);
+    fireEvent.click(screen.getByRole('button', { name: '저장' }));
+    const update = (client as unknown as { updateCustomer: ReturnType<typeof vi.fn> }).updateCustomer;
+    await vi.waitFor(() => expect(update).toHaveBeenCalled());
+    const sent = update.mock.calls[0][2] as Record<string, unknown>;
+    expect(sent.marketing_consent).toBe(true);
+    for (const key of ['id', 'organization_id', 'created_at', 'marketing_consent_at']) expect(sent).not.toHaveProperty(key);
+  });
+
+  it('조회 전용이면 수신 동의를 바꿀 수 없다', async () => {
+    render(<CustomerPage api={api([{ ...customer, marketing_consent: true, marketing_consent_at: '2026-10-02T00:00:00Z' }])} organizationId={customer.organization_id} readOnly />);
+    fireEvent.click(await grid().findByText('김고객'));
+    await screen.findByDisplayValue('김고객');
+    expect(screen.getByRole('checkbox', { name: /마케팅 수신 동의/ })).toBeDisabled();
+    expect(screen.getByText(/동의 확인 2026-10-02/)).toBeInTheDocument();
+  });
+});

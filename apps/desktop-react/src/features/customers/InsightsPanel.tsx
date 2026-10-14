@@ -86,12 +86,12 @@ export function InsightsPanel({ customers, selectedId, now, scopeNote, onSelect 
           items={upcoming.map((item) => ({ customer: item.customer, detail: `${item.date} · ${dayLabel(item.days)}`, strong: item.days <= 1 }))} />
       </Card>
       <Card title="장기 미방문" count={lapsed.length} hint={`${LAPSED_DAYS}일 이상 · 연락 대상`}
-        action={lapsed.length > 0 ? <ExportButton title="장기 미방문 연락 대상" label="명단 내보내기" columns={lapsedExportColumns} rows={lapsed} description="연락처가 있는 장기 미방문 고객 명단을 저장합니다. 광고성 문자는 수신 동의를 확인한 뒤 보내세요." /> : undefined}>
+        action={lapsed.length > 0 ? <ExportButton title="장기 미방문 연락 대상" label="명단 내보내기" columns={lapsedExportColumns} rows={lapsed} description="연락처가 있는 장기 미방문 고객 명단을 저장합니다. '마케팅 수신' 열이 '동의'인 고객에게만 광고성 문자를 보내세요." /> : undefined}>
         <CustomerList selectedId={selectedId} onSelect={onSelect} empty="연락이 필요한 장기 미방문 고객이 없습니다."
           items={lapsed.map((item) => ({ customer: item.customer, detail: item.days === null ? '방문 기록 없음' : `${item.lastVisit} · ${item.days}일 전` }))} />
       </Card>
       <Card title="이번 달 생일" count={birthdays.length} hint={`${month}월`}
-        action={birthdays.length > 0 ? <ExportButton title="이번 달 생일 고객" label="명단 내보내기" columns={birthdayExportColumns} rows={birthdays} description="이번 달 생일인 고객 명단을 저장합니다. 광고성 문자는 수신 동의를 확인한 뒤 보내세요." /> : undefined}>
+        action={birthdays.length > 0 ? <ExportButton title="이번 달 생일 고객" label="명단 내보내기" columns={birthdayExportColumns} rows={birthdays} description="이번 달 생일인 고객 명단을 저장합니다. '마케팅 수신' 열이 '동의'인 고객에게만 광고성 문자를 보내세요." /> : undefined}>
         <CustomerList selectedId={selectedId} onSelect={onSelect} empty="이번 달 생일인 고객이 없습니다."
           items={birthdays.map((item) => ({ customer: item.customer, detail: `${month}월 ${item.day}일${item.isToday ? ' · 오늘' : ''}`, strong: item.isToday }))} />
       </Card>
