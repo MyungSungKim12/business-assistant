@@ -8,6 +8,8 @@ import { useStable } from './useStable';
 import { ConsultationDialog } from './ConsultationDialog';
 import { EventsDialog } from './EventsDialog';
 import { SaleDraftDialog } from './SaleDraftDialog';
+import { TemplateManagerDialog } from './TemplateManagerDialog';
+import { applyTemplateToForm, templateApi, templateWouldOverwrite, type TreatmentTemplate } from './templates';
 import { TreatmentPhotos } from './TreatmentPhotos';
 import { resourceApi } from '../appointment-resources/api';
 import type { AppointmentServiceRow } from '../appointment-resources/schemas';
@@ -66,8 +68,16 @@ export function TreatmentPage({ api, organizationId, readOnly, initialCustomerId
   const [dialog, setDialog] = useState<Dialog>(null);
   const [consultation, setConsultation] = useState<{ customer: Customer; record: Treatment } | null>(null);
   const [opening, setOpening] = useState(false);
+  const [templates, setTemplates] = useState<TreatmentTemplate[]>([]);
+  const [templatesOpen, setTemplatesOpen] = useState(false);
   const generation = useRef(0);
   const pending = useRef<{ fingerprint: string; operationId: string } | null>(null);
+
+  // 시술 프로토콜 템플릿(TRT-12). 불러오지 못해도 시술 기록 작성은 그대로 쓴다.
+  const loadTemplates = useCallback(() => {
+    Promise.resolve().then(() => templateApi.list(api, organizationId)).then(setTemplates, () => setTemplates([]));
+  }, [api, organizationId]);
+  useEffect(() => { loadTemplates(); }, [loadTemplates]);
 
   const writable = !readOnly;
   const customer = customers.find((item) => item.id === customerId) ?? null;
@@ -280,6 +290,14 @@ export function TreatmentPage({ api, organizationId, readOnly, initialCustomerId
   const status = record?.status ?? 'new';
   const ready = writable && !busy && !conflicted && !correcting;
   const heading = correcting ? '기록 정정 · 원본 이력 보존' : copied ? '복사한 새 기록 · 저장 전' : record ? (writable ? '기록 수정' : '기록 조회 · 읽기 전용') : `${customer ? `${customer.name} · ` : ''}새 기록`;
+  /** 템플릿 값을 폼에 복사한다. 이미 쓴 내용이 달라지면 확인을 받는다. 템플릿은 시술 기록과 연결되지 않는다. */
+  async function applyTemplate(templateId: string) {
+    const template = templates.find((item) => item.id === templateId);
+    if (!template) return;
+    if (templateWouldOverwrite(form, template) && !await confirm({ title: '템플릿 불러오기', message: `입력한 시술명·분류·시술 내용을 '${template.name}' 템플릿의 내용으로 바꿀까요?`, confirmLabel: '바꾸기' })) return;
+    setForm((old) => applyTemplateToForm(old, template));
+    notify.info(`'${template.name}' 템플릿을 불러왔습니다. 저장하기 전에 내용을 확인하세요.`);
+  }
   const setField = (key: keyof FormState) => (value: string | null) => setForm((old) => ({ ...old, [key]: value ?? '' }));
   const stateText = record
     ? `${statusLabel(record.status)} · 버전 ${record.version}${record.started_at ? `  |  시작 ${localTime(record.started_at)}` : ''}${record.ended_at ? `  |  종료 ${localTime(record.ended_at)}` : ''}`
@@ -292,6 +310,7 @@ export function TreatmentPage({ api, organizationId, readOnly, initialCustomerId
         {writable && <div className="row-actions">
           <button type="button" disabled={!ready || !customerId} onClick={() => void newRecord()}>새 기록</button>
           <button type="button" disabled={!ready || !record} onClick={() => void copyRecord()}>선택 기록 복사</button>
+          <button type="button" onClick={() => setTemplatesOpen(true)}>템플릿 관리</button>
         </div>}
       </div>
 
@@ -351,6 +370,7 @@ export function TreatmentPage({ api, organizationId, readOnly, initialCustomerId
         <section className="editor-panel treatment-editor">
           <h2>{heading}</h2>
           <form onSubmit={(event) => { event.preventDefault(); void save(); }}>
+            {writable && !fieldsReadOnly && customerId && templates.length > 0 && <label className="full">템플릿 불러오기<Select aria-label="시술 템플릿" value="" placeholder="템플릿을 골라 시술명·분류·내용 채우기" options={templates.map((item) => ({ value: item.id, label: item.name }))} onChange={(value) => void applyTemplate(value)} /></label>}
             <label>시술일 *<DateField value={form.treatment_date || null} disabled={fieldsReadOnly || !customerId} onChange={setField('treatment_date')} aria-label="시술일" /></label>
             <label>시술명 *<input value={form.treatment_name} maxLength={200} readOnly={fieldsReadOnly} disabled={!customerId} onChange={(event) => setField('treatment_name')(event.target.value)} /></label>
             <label>분류<input value={form.category} maxLength={100} readOnly={fieldsReadOnly} disabled={!customerId} onChange={(event) => setField('category')(event.target.value)} /></label>
@@ -373,9 +393,10 @@ export function TreatmentPage({ api, organizationId, readOnly, initialCustomerId
       {message && <p role={message.tone === 'error' ? 'alert' : 'status'} className={message.tone === 'error' ? 'form-error' : 'muted'}>{message.text}</p>}
 
       {dialog === 'consult' && consultation && (
-        <ConsultationDialog api={api} organizationId={organizationId} customer={consultation.customer} record={consultation.record} readOnly={!writable} onSaved={consultationSaved} onClose={closeDialog} />
+        <ConsultationDialog api={api} organizationId={organizationId} templates={templates} customer={consultation.customer} record={consultation.record} readOnly={!writable} onSaved={consultationSaved} onClose={closeDialog} />
       )}
       {dialog === 'events' && record && customerId && <EventsDialog api={api} organizationId={organizationId} customerId={customerId} treatmentId={record.id} onClose={closeDialog} />}
+      {templatesOpen && <TemplateManagerDialog api={api} organizationId={organizationId} onChanged={loadTemplates} onClose={() => setTemplatesOpen(false)} />}
       {dialog === 'sale' && record && <SaleDraftDialog api={api} organizationId={organizationId} treatment={record} readOnly={!writable} onClose={closeDialog} />}
       {dialog === 'documents' && record && customerId && documentsPanel?.({ organizationId, customerId, treatmentId: record.id, readOnly: !writable, onClose: closeDialog })}
       {dialog === 'cancel' && (

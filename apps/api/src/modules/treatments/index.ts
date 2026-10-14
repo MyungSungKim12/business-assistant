@@ -3,6 +3,7 @@ import type { ServerConfig } from '../../config.js';
 import { createTreatmentGateway } from './gateway.js';
 import { registerSaleDraftRoutes, registerTreatmentRoutes, type OrgAccess } from './routes.js';
 import { createSaleDraftGateway } from './sale-drafts.js';
+import { createTemplateGateway, registerTemplateRoutes } from './templates.js';
 
 export type { OrgAccess } from './routes.js';
 
@@ -10,4 +11,5 @@ export type { OrgAccess } from './routes.js';
 export function registerTreatmentModule(app: FastifyInstance, organizations: OrgAccess | undefined, config: ServerConfig, fetcher?: typeof fetch): void {
   registerTreatmentRoutes(app, organizations, createTreatmentGateway(config, fetcher));
   registerSaleDraftRoutes(app, organizations, createSaleDraftGateway(config, fetcher));
+  registerTemplateRoutes(app, organizations, createTemplateGateway(config, fetcher));
 }

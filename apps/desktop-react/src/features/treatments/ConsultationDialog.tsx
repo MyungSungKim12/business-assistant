@@ -6,12 +6,13 @@ import { treatmentApi } from './api';
 import { cautionSnapshot, cautionsAcknowledged, errorStatus, localTime, newOperationId, sameCautions } from './logic';
 import type { ConsultationValues, Treatment } from './schemas';
 import { useStable } from './useStable';
+import { applyTemplateToConsultation, templateWouldOverwriteConsultation, type TreatmentTemplate } from './templates';
 import './treatments.css';
 
-type Props = { api: ApiClient; organizationId: string; customer: Customer; record: Treatment; readOnly: boolean; onSaved: (record: Treatment) => void; onClose: () => void };
+type Props = { api: ApiClient; organizationId: string; templates?: TreatmentTemplate[]; customer: Customer; record: Treatment; readOnly: boolean; onSaved: (record: Treatment) => void; onClose: () => void };
 
 /** 상담 목표·예정 관리와 고객 주의사항 확인(TRT-001). 준비(draft) 상태에서만 수정한다. */
-export function ConsultationDialog({ api, organizationId, customer, record, readOnly, onSaved, onClose }: Props) {
+export function ConsultationDialog({ api, organizationId, templates = [], customer, record, readOnly, onSaved, onClose }: Props) {
   const editable = !readOnly && record.status === 'draft';
   const acknowledgedNow = cautionsAcknowledged(record) && sameCautions(record.cautions_snapshot, customer);
   const [goal, setGoal] = useState(record.consultation_goal);
@@ -31,6 +32,15 @@ export function ConsultationDialog({ api, organizationId, customer, record, read
   };
 
   const onModalClose = useStable(() => void requestClose());
+
+  /** 템플릿의 상담 목표·예정 관리를 복사한다. 이미 쓴 내용이 달라지면 확인을 받는다. */
+  async function applyTemplate(templateId: string) {
+    const template = templates.find((item) => item.id === templateId);
+    if (!template) return;
+    if (templateWouldOverwriteConsultation(goal, plan, template) && !await confirm({ title: '템플릿 불러오기', message: `입력한 상담 목표·예정 관리 내용을 '${template.name}' 템플릿의 내용으로 바꿀까요?`, confirmLabel: '바꾸기' })) return;
+    const next = applyTemplateToConsultation(goal, plan, template);
+    setGoal(next.goal); setPlan(next.plan);
+  }
 
   async function save() {
     if (!editable || saving || conflicted) return;
@@ -65,6 +75,14 @@ export function ConsultationDialog({ api, organizationId, customer, record, read
           <div>고민: {customer.concerns.join(', ') || '미등록'}</div>
           <div>알레르기·주의사항: {customer.allergies || '미등록 · 상담 시 확인'}</div>
         </div>
+        {editable && templates.some((item) => item.consultation_goal.trim() || item.consultation_plan.trim()) && (
+          <label>템플릿 불러오기
+            <select aria-label="상담 템플릿" value="" disabled={saving} onChange={(event) => void applyTemplate(event.target.value)}>
+              <option value="">템플릿을 골라 상담 목표·예정 관리 채우기</option>
+              {templates.filter((item) => item.consultation_goal.trim() || item.consultation_plan.trim()).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+            </select>
+          </label>
+        )}
         <label>상담 목표 · 시술 시작 전 필수
           <textarea value={goal} readOnly={!editable || saving} maxLength={2000} placeholder="고객 요청, 개선하고 싶은 점, 오늘 관리 목표 (2,000자 이내)" onChange={(event) => setGoal(event.target.value)} />
         </label>

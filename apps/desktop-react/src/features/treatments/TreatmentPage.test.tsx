@@ -448,3 +448,84 @@ describe('TreatmentPage', () => {
     });
   });
 });
+
+describe('TreatmentPage 프로토콜 템플릿(TRT-12)', () => {
+  const tplA = '99999999-9999-4999-8999-999999999991';
+  const tpl = { id: tplA, organization_id: org, name: '기본 페이셜', category: '피부', treatment_name: '수분 페이셜', notes: '1. 클렌징\n2. 팩', consultation_goal: '수분 개선', consultation_plan: '4주 간격', version: 1, updated_at: '2026-10-14T00:00:00Z' };
+  const withTemplates = (): Handler => (entry) => (entry.method === 'GET' && entry.path.endsWith('/treatment-templates') ? [tpl] : undefined);
+
+  it('새 기록 폼에서 템플릿을 고르면 시술명·분류·내용이 복사되고 다른 칸은 그대로다', async () => {
+    const { view } = setup({ records: [], handler: withTemplates() });
+    view();
+    await screen.findByText('아직 시술 기록이 없습니다.');
+    change('담당자', '김담당');
+    fireEvent.change(await screen.findByLabelText('시술 템플릿'), { target: { value: tplA } });
+    await waitFor(() => expect(screen.getByLabelText('시술명 *')).toHaveValue('수분 페이셜'));
+    expect(screen.getByLabelText('분류')).toHaveValue('피부');
+    expect(screen.getByLabelText(/시술 내용/)).toHaveValue('1. 클렌징\n2. 팩');
+    expect(screen.getByLabelText('담당자')).toHaveValue('김담당');
+  });
+
+  it('이미 쓴 내용이 달라지면 확인을 받고 취소하면 그대로 둔다', async () => {
+    const { view } = setup({ records: [], handler: withTemplates() });
+    view();
+    await screen.findByText('아직 시술 기록이 없습니다.');
+    change('시술명 *', '직접 쓴 시술');
+    fireEvent.change(await screen.findByLabelText('시술 템플릿'), { target: { value: tplA } });
+    fireEvent.click(within(await screen.findByRole('dialog', { name: '템플릿 불러오기' })).getByRole('button', { name: '취소' }));
+    expect(screen.getByLabelText('시술명 *')).toHaveValue('직접 쓴 시술');
+    fireEvent.change(screen.getByLabelText('시술 템플릿'), { target: { value: tplA } });
+    fireEvent.click(within(await screen.findByRole('dialog', { name: '템플릿 불러오기' })).getByRole('button', { name: '바꾸기' }));
+    await waitFor(() => expect(screen.getByLabelText('시술명 *')).toHaveValue('수분 페이셜'));
+  });
+
+  it('불러온 값은 저장 전까지 시술 기록에 반영되지 않고 저장 본문에는 템플릿 정보가 없다', async () => {
+    const { view, calls } = setup({ records: [], handler: withTemplates() });
+    view();
+    await screen.findByText('아직 시술 기록이 없습니다.');
+    fireEvent.change(await screen.findByLabelText('시술 템플릿'), { target: { value: tplA } });
+    await waitFor(() => expect(screen.getByLabelText('시술명 *')).toHaveValue('수분 페이셜'));
+    expect(pick(calls, '/treatments')).toHaveLength(0);
+    click('시술 기록 저장');
+    await waitFor(() => expect(pick(calls, '/treatments')).toHaveLength(1));
+    const body = pick(calls, '/treatments')[0].body as Record<string, unknown>;
+    expect(body).toMatchObject({ treatment_name: '수분 페이셜', category: '피부', notes: '1. 클렌징\n2. 팩' });
+    expect(Object.keys(body).some((key) => key.includes('template'))).toBe(false);
+  });
+
+  it('템플릿이 없으면 선택 칸을 보이지 않고, 조회 전용이면 선택도 관리도 없다', async () => {
+    const empty = setup({ records: [] });
+    empty.view();
+    await screen.findByText('아직 시술 기록이 없습니다.');
+    expect(screen.queryByLabelText('시술 템플릿')).not.toBeInTheDocument();
+  });
+
+  it('조회 전용 구성원에게는 템플릿 선택과 관리 버튼이 없다', async () => {
+    const { view } = setup({ handler: withTemplates() });
+    view(true);
+    await screen.findByText('수분 관리');
+    expect(screen.queryByLabelText('시술 템플릿')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '템플릿 관리' })).not.toBeInTheDocument();
+  });
+
+  it('템플릿 관리 버튼으로 관리 창을 열고 닫으면 목록을 다시 읽는다', async () => {
+    const { view, calls } = setup({ handler: withTemplates() });
+    view();
+    await screen.findByText('수분 관리');
+    const before = calls.filter((entry) => entry.method === 'GET' && entry.path.endsWith('/treatment-templates')).length;
+    click('템플릿 관리');
+    expect(await screen.findByRole('dialog', { name: '시술 프로토콜 템플릿' })).toBeInTheDocument();
+    expect(calls.filter((entry) => entry.method === 'GET' && entry.path.endsWith('/treatment-templates')).length).toBeGreaterThan(before);
+  });
+
+  it('상담 창에서 템플릿으로 상담 목표·예정 관리를 채운다', async () => {
+    const { view } = setup({ handler: withTemplates() });
+    view();
+    await openRecord();
+    click('상담 기록');
+    const dialog = await screen.findByRole('dialog', { name: /상담 기록/ });
+    fireEvent.change(await within(dialog).findByLabelText('상담 템플릿'), { target: { value: tplA } });
+    await waitFor(() => expect(within(dialog).getByLabelText(/상담 목표/)).toHaveValue('수분 개선'));
+    expect(within(dialog).getByLabelText(/예정 관리 내용/)).toHaveValue('4주 간격');
+  });
+});

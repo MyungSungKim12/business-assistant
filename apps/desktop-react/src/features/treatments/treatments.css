@@ -209,3 +209,13 @@
     grid-column: 1 / -1;
   }
 }
+
+/* 시술 프로토콜 템플릿 관리 */
+.template-manager { display: grid; grid-template-columns: 220px 1fr; gap: 12px; min-height: 360px; }
+.template-manager__list { display: flex; flex-direction: column; gap: 6px; overflow: auto; max-height: 460px; }
+.template-manager__list ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.template-manager__list li button { width: 100%; text-align: left; display: flex; flex-direction: column; }
+.template-manager__list li button[aria-pressed='true'] { outline: 2px solid var(--accent, #3b6fd4); }
+.template-manager__form { display: flex; flex-direction: column; gap: 6px; }
+.template-manager__form label { display: flex; flex-direction: column; gap: 2px; }
+.template-manager__form textarea { min-height: 80px; resize: vertical; }

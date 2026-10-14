@@ -112,3 +112,11 @@ It checks that services without a mapping stay open to everyone, that a mapping 
 staff/service changes (22023) but not time-only edits or status transitions of existing bookings, replace
 semantics and the empty-array reset, duplicate/unknown-staff/unknown-service validation, manager-only
 writes, member read access, and cross-organization isolation.
+
+## Treatment protocol templates (051)
+
+Run `npm run test:ops-051 --prefix scripts/db-tests` to execute migration 051 (twice) against a fresh
+in-memory PostgreSQL database. It checks owner/admin create-update-delete versus member read-only access,
+the `created_by` default, case/whitespace-insensitive unique names, every length limit, the version bump and
+timestamp trigger, optimistic locking via a `version` predicate (stale updates match no row), immutable
+organization/creator, and cross-organization isolation.
