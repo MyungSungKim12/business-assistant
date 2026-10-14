@@ -15,6 +15,7 @@ export interface TaskDetailProps {
   /** 신규 등록 기한 초기값(datetime-local). */
   createDue: string;
   readOnly: boolean;
+  customers?: Array<{ id: string; name: string }>;
   onCreate: (values: TaskFormValues) => Promise<void>;
   onUpdate: (task: Task, values: TaskFormValues) => Promise<void>;
   onStatus: (task: Task, status: TaskStatus) => Promise<void>;
@@ -28,7 +29,7 @@ function createdAtOf(task: Task): string | null {
   return typeof value === 'string' ? formatDue(value) : null;
 }
 
-export function TaskDetail({ task, createKey, createDue, readOnly, onCreate, onUpdate, onStatus, onChecklist, onDelete, onDirtyChange }: TaskDetailProps) {
+export function TaskDetail({ task, createKey, createDue, readOnly, customers, onCreate, onUpdate, onStatus, onChecklist, onDelete, onDirtyChange }: TaskDetailProps) {
   const [actionError, setActionError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -56,7 +57,7 @@ export function TaskDetail({ task, createKey, createDue, readOnly, onCreate, onU
         <header className="tasks-panel__head"><h2>새 할 일 등록</h2></header>
         <div className="tasks-detail__body">
           {readOnly && <p className="tasks-muted">조회 전용 계정입니다. 목록에서 할 일을 선택해 내용을 확인하세요.</p>}
-          {!readOnly && <TaskForm key={`new-${createKey}`} task={null} defaultDue={createDue} readOnly={false} onSubmit={onCreate} onDirtyChange={onDirtyChange} />}
+          {!readOnly && <TaskForm key={`new-${createKey}`} task={null} defaultDue={createDue} readOnly={false} customers={customers} onSubmit={onCreate} onDirtyChange={onDirtyChange} />}
         </div>
       </aside>
     );
@@ -72,7 +73,7 @@ export function TaskDetail({ task, createKey, createDue, readOnly, onCreate, onU
       </header>
       <div className="tasks-detail__body">
         {created && <dl className="tasks-meta"><dt>생성일</dt><dd>{created}</dd></dl>}
-        <TaskForm key={task.id} task={task} defaultDue="" readOnly={readOnly} onSubmit={(values) => onUpdate(task, values)} onDirtyChange={onDirtyChange} />
+        <TaskForm key={task.id} task={task} defaultDue="" readOnly={readOnly} customers={customers} onSubmit={(values) => onUpdate(task, values)} onDirtyChange={onDirtyChange} />
         <TaskChecklist key={`check-${task.id}`} task={task} readOnly={readOnly} onChange={(checklist) => onChecklist(task, checklist)} />
         {actionError && <p role="alert" className="tasks-error">{actionError}</p>}
         {!readOnly && (

@@ -84,3 +84,12 @@ Run `npm run test:ops-047 --prefix scripts/db-tests` to execute migrations 006, 
 label/checklist limits, that the database stamps the marketing-consent time only when the value
 changes (a client-supplied timestamp is ignored), and the appointment memo RPC: member/owner access,
 outsider and cross-organization rejection, length limits, no version bump, and no direct table update.
+
+## Task recurrence and customer link (048)
+
+Run `npm run test:ops-048 --prefix scripts/db-tests` to execute migrations 006, 024, 034, 047, and 048
+(048 twice) against a fresh in-memory PostgreSQL database. It checks daily/weekly/monthly successor
+creation (KST wall clock, month-end clamp), skipping past due dates, copying fields while resetting the
+checklist, no successor for non-recurring/no-due/non-done transitions, at most one successor per task,
+a manager completing a member's task, cross-organization customer rejection, and that deleting a
+customer only clears the link.

@@ -8,9 +8,10 @@ export const checklistSchema = z.array(checklistItem).max(50);
 const task = z.object({
   id: z.uuid(), organization_id: z.uuid(), created_by: z.uuid(), title: z.string(), description: z.string(), due_at: z.string().nullable(), status: z.string(), priority: z.string(),
   labels: z.array(z.string()).default([]), checklist: checklistSchema.default([]),
+  recurrence: z.enum(['daily', 'weekly', 'monthly']).nullable().default(null), customer_id: z.uuid().nullable().default(null),
 });
 export type TaskRecord = z.infer<typeof task>;
-export type NewTask = Pick<TaskRecord, 'title' | 'description' | 'due_at' | 'priority'> & Partial<Pick<TaskRecord, 'labels' | 'checklist'>>;
+export type NewTask = Pick<TaskRecord, 'title' | 'description' | 'due_at' | 'priority'> & Partial<Pick<TaskRecord, 'labels' | 'checklist' | 'recurrence' | 'customer_id'>>;
 
 export function createTaskGateway(config: ServerConfig, fetcher: typeof fetch = fetch) {
   const headers = (token: string, write = false) => ({ apikey: config.APP_SUPABASE_PUBLISHABLE_KEY, Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...(write ? { Prefer: 'return=representation' } : {}) });
@@ -21,6 +22,8 @@ export function createTaskGateway(config: ServerConfig, fetcher: typeof fetch = 
       const response = await fetcher(url, { method, headers: headers(token, method !== 'GET'), body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(10_000), redirect: 'error' });
       if (response.status === 401) throw new ApiFailure(401, 'Not authenticated');
       if (response.status === 403) throw new ApiFailure(403, 'Access denied');
+      // 다른 조직 고객 연결(외래 키 위반) 등 입력 문제는 서버 오류가 아니라 잘못된 입력으로 알린다.
+      if (response.status === 400 || response.status === 409) throw new ApiFailure(422, 'Invalid task input');
       if (!response.ok) throw new ApiFailure(503, 'Task service unavailable');
       return response.status === 204 ? [] : response.json();
     } catch (error) {
@@ -46,7 +49,7 @@ export function createTaskGateway(config: ServerConfig, fetcher: typeof fetch = 
     if (!parsed.success) throw new ApiFailure(503, 'Task service unavailable');
     return parsed.data;
   };
-  const select = 'id,organization_id,created_by,title,description,due_at,status,priority,labels,checklist';
+  const select = 'id,organization_id,created_by,title,description,due_at,status,priority,labels,checklist,recurrence,customer_id';
   return {
     async list(token: string, organizationId: string) { return rows(await request(token, 'GET', { select, organization_id: `eq.${organizationId}`, order: 'due_at.asc.nullslast,created_at.desc' })); },
     async create(token: string, organizationId: string, input: NewTask) {

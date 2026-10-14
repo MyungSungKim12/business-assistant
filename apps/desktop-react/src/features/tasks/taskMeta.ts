@@ -14,6 +14,10 @@ export function priorityOf(task: Task): TaskPriority {
   return task.priority in PRIORITY_LABELS ? (task.priority as TaskPriority) : 'normal';
 }
 
+export type TaskRecurrence = 'daily' | 'weekly' | 'monthly';
+export const RECURRENCE_LABELS: Record<TaskRecurrence, string> = { daily: '매일', weekly: '매주', monthly: '매월' };
+export const recurrenceOf = (task: Pick<Task, 'recurrence'>): TaskRecurrence | null => task.recurrence ?? null;
+
 export interface StatusAction { label: string; next: TaskStatus }
 
 /** 상태별로 상세 패널에 보여 줄 상태 변경 버튼. */

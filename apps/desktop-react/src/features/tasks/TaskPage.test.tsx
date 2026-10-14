@@ -6,6 +6,7 @@ import { TaskPage } from './TaskPage';
 
 const ORG = '22222222-2222-4222-8222-222222222222';
 const TODAY = '2026-10-15';
+const CUSTOMER = '44444444-4444-4444-8444-444444444444';
 const local = (y: number, m: number, d: number, h = 10, mi = 0) => new Date(y, m - 1, d, h, mi).toISOString();
 
 function makeTask(n: number, patch: Partial<Task> = {}): Task {
@@ -21,6 +22,7 @@ function makeApi(initial: Task[] = seed()) {
   let rows = [...initial];
   return {
     listTasks: vi.fn(async () => rows),
+    listCustomers: vi.fn(async () => [{ id: CUSTOMER, organization_id: ORG, name: '박고객', status: 'active' }]),
     createTask: vi.fn(async (_o: string, input: Pick<Task, 'title' | 'description' | 'due_at'> & { priority: string }) => {
       const created = makeTask(rows.length + 5, { ...input });
       rows = [...rows, created];
@@ -425,5 +427,57 @@ describe('TaskPage 라벨·체크리스트(TASK-02)', () => {
     fireEvent.click(within(grid()).getByText('재고 확인'));
     expect(screen.getByRole('checkbox', { name: '주문서 작성' })).toBeDisabled();
     expect(screen.queryByLabelText('체크리스트 항목')).not.toBeInTheDocument();
+  });
+});
+
+describe('TaskPage 반복·고객 연결(TASK-01)', () => {
+  it('기한이 있는 할 일에 반복과 고객을 지정해 저장한다', async () => {
+    const api = makeApi();
+    renderPage(api);
+    await ready();
+    fireEvent.click(within(grid()).getByText('재고 확인'));
+    fireEvent.change(within(detail()).getByLabelText('반복'), { target: { value: 'weekly' } });
+    fireEvent.change(await within(detail()).findByLabelText('고객'), { target: { value: CUSTOMER } });
+    fireEvent.click(within(detail()).getByRole('button', { name: '저장' }));
+    await waitFor(() => expect(api.updateTask).toHaveBeenCalledWith(ORG, expect.any(String), expect.objectContaining({ recurrence: 'weekly', customer_id: CUSTOMER })));
+    await waitFor(() => expect(within(grid()).getByText(/↻ 매주/)).toBeInTheDocument());
+  });
+
+  it('기한이 없으면 반복을 저장하지 않고 안내한다', async () => {
+    const api = makeApi();
+    renderPage(api);
+    await ready();
+    fireEvent.click(within(grid()).getByText('청소'));
+    fireEvent.change(within(detail()).getByLabelText('반복'), { target: { value: 'daily' } });
+    fireEvent.click(within(detail()).getByRole('button', { name: '저장' }));
+    expect(await within(detail()).findByText('반복하려면 기한을 정해 주세요.')).toBeInTheDocument();
+    expect(api.updateTask).not.toHaveBeenCalled();
+  });
+
+  it('반복 할 일을 완료하면 목록을 다시 읽어 다음 할 일을 보여 준다', async () => {
+    const api = makeApi([makeTask(1, { title: '정기 점검', due_at: local(2026, 10, 15, 10), recurrence: 'weekly' })]);
+    renderPage(api);
+    await screen.findByText('정기 점검', { selector: 'td' });
+    expect(api.listTasks).toHaveBeenCalledTimes(1);
+    fireEvent.click(within(grid()).getByText('정기 점검'));
+    fireEvent.click(within(detail()).getByRole('button', { name: '완료' }));
+    await waitFor(() => expect(api.listTasks).toHaveBeenCalledTimes(2));
+  });
+
+  it('반복이 없는 할 일을 완료해도 목록을 다시 읽지 않는다', async () => {
+    const api = makeApi();
+    renderPage(api);
+    await ready();
+    fireEvent.click(within(grid()).getByText('재고 확인'));
+    fireEvent.click(within(detail()).getByRole('button', { name: '완료' }));
+    await waitFor(() => expect(api.updateTask).toHaveBeenCalled());
+    expect(api.listTasks).toHaveBeenCalledTimes(1);
+  });
+
+  it('조회 전용이면 반복·고객을 바꿀 수 없다', async () => {
+    renderPage(makeApi(), { readOnly: true });
+    await ready();
+    fireEvent.click(within(grid()).getByText('재고 확인'));
+    expect(within(detail()).getByLabelText('반복')).toBeDisabled();
   });
 });

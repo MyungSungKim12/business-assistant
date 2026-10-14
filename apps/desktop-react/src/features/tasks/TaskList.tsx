@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { DataGrid, DateRangeField, Select, type Column } from '@business-assistant/react-ui';
 import type { Task } from '../../api/schemas';
 import { formatDue, rangeForPreset, type DateKey, type RangePreset } from './taskDates';
-import { PRIORITY_LABELS, STATUS_LABELS, priorityOf, statusOf } from './taskMeta';
+import { PRIORITY_LABELS, RECURRENCE_LABELS, STATUS_LABELS, priorityOf, recurrenceOf, statusOf } from './taskMeta';
 import { checklistOf, checklistProgress, labelsOf } from './checklistLogic';
 import type { TaskFilters } from './taskFilters';
 
@@ -38,7 +38,8 @@ const columns: Column<Task>[] = [
     key: 'title', header: '제목', width: 220, minWidth: 100, value: (task) => task.title,
     render: (task) => {
       const { done, total } = checklistProgress(checklistOf(task));
-      return <>{task.title}{total > 0 && <span className="tasks-label" title="체크리스트 진행">{done}/{total}</span>}{labelsOf(task).map((label) => <span key={label} className="tasks-label">{label}</span>)}</>;
+      const recurrence = recurrenceOf(task);
+      return <>{task.title}{recurrence && <span className="tasks-label" title="반복 할 일">↻ {RECURRENCE_LABELS[recurrence]}</span>}{total > 0 && <span className="tasks-label" title="체크리스트 진행">{done}/{total}</span>}{labelsOf(task).map((label) => <span key={label} className="tasks-label">{label}</span>)}</>;
     },
     title: (task) => task.title,
   },

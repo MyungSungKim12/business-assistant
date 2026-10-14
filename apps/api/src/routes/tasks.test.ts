@@ -47,7 +47,7 @@ describe('task routes', () => {
     const { app, calls } = fixture();
     const result = await app.inject({ method: 'POST', url: base, headers, payload: { title: '월말 정리', labels: ['재고', '월말'], checklist: [{ id: 'a', text: '상자', done: false }] } });
     expect(result.statusCode).toBe(200);
-    expect(calls[0].input).toEqual({ title: '월말 정리', description: '', due_at: null, priority: 'normal', labels: ['재고', '월말'], checklist: [{ id: 'a', text: '상자', done: false }] });
+    expect(calls[0].input).toEqual({ title: '월말 정리', description: '', due_at: null, priority: 'normal', labels: ['재고', '월말'], checklist: [{ id: 'a', text: '상자', done: false }], recurrence: null, customer_id: null });
     const bare = await app.inject({ method: 'POST', url: base, headers, payload: { title: '기본' } });
     expect(bare.statusCode).toBe(200);
     expect(calls[1].input).toMatchObject({ labels: [], checklist: [] });
@@ -64,6 +64,36 @@ describe('task routes', () => {
     expect((await post({ title: 'x', checklist: [{ id: 'a', text: '', done: false }] })).statusCode).toBe(422);
     expect((await post({ title: 'x', checklist: [{ id: 'a', text: 't', done: 'yes' }] })).statusCode).toBe(422);
     expect(calls).toEqual([]);
+    await app.close();
+  });
+});
+
+describe('task recurrence and customer link (048)', () => {
+  const customerId = 'c9cc39fd-8e8c-4df8-a623-1f23a3a936bd';
+  it('accepts recurrence with a due date and a customer link on create', async () => {
+    const { app, calls } = fixture();
+    const result = await app.inject({ method: 'POST', url: base, headers, payload: { title: '정기 점검', due_at: '2026-10-20T01:00:00Z', recurrence: 'weekly', customer_id: customerId } });
+    expect(result.statusCode).toBe(200);
+    expect(calls[0].input).toMatchObject({ recurrence: 'weekly', customer_id: customerId, due_at: '2026-10-20T01:00:00Z' });
+    await app.close();
+  });
+
+  it('defaults to no recurrence and no customer, and rejects recurrence without a due date', async () => {
+    const { app, calls } = fixture();
+    await app.inject({ method: 'POST', url: base, headers, payload: { title: '기본' } });
+    expect(calls[0].input).toMatchObject({ recurrence: null, customer_id: null });
+    expect((await app.inject({ method: 'POST', url: base, headers, payload: { title: 'x', recurrence: 'daily' } })).statusCode).toBe(422);
+    expect((await app.inject({ method: 'POST', url: base, headers, payload: { title: 'x', due_at: '2026-10-20T01:00:00Z', recurrence: 'yearly' } })).statusCode).toBe(422);
+    expect((await app.inject({ method: 'POST', url: base, headers, payload: { title: 'x', customer_id: 'not-a-uuid' } })).statusCode).toBe(422);
+    expect(calls).toHaveLength(1);
+    await app.close();
+  });
+
+  it('patches recurrence and customer alone, including clearing them', async () => {
+    const { app, calls } = fixture();
+    await app.inject({ method: 'PATCH', url: `${base}/${taskId}`, headers, payload: { recurrence: 'monthly' } });
+    await app.inject({ method: 'PATCH', url: `${base}/${taskId}`, headers, payload: { recurrence: null, customer_id: null } });
+    expect(calls.map((call) => call.input)).toEqual([{ recurrence: 'monthly' }, { recurrence: null, customer_id: null }]);
     await app.close();
   });
 });

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { confirm, notify } from '@business-assistant/react-ui';
 import type { ApiClient } from '../../api/client';
-import type { Task } from '../../api/schemas';
+import type { Customer, Task } from '../../api/schemas';
 import { TaskCalendar } from './TaskCalendar';
 import { TaskDetail } from './TaskDetail';
 import type { TaskFormValues } from './TaskForm';
@@ -35,6 +35,10 @@ export function TaskPage({ api, organizationId, readOnly = false, todayKey: toda
   const [createKey, setCreateKey] = useState(0);
   const [createDue, setCreateDue] = useState('');
   const [completing, setCompleting] = useState(false);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  // 고객 연결 선택지. 불러오지 못해도 할 일 화면은 그대로 쓴다.
+  useEffect(() => { let live = true; Promise.resolve().then(() => api.listCustomers(organizationId)).then((rows) => { if (live) setCustomers(rows.filter((row) => row.status !== 'archived')); }, () => undefined); return () => { live = false; }; }, [api, organizationId]);
+  const customerOptions = useMemo(() => [...customers].sort((a, b) => a.name.localeCompare(b.name, 'ko')).map((row) => ({ id: row.id, name: row.name })), [customers]);
   const dirtyRef = useRef(false);
   const itemsRef = useRef<Task[]>([]);
   itemsRef.current = items;
@@ -82,18 +86,20 @@ export function TaskPage({ api, organizationId, readOnly = false, todayKey: toda
   };
 
   const createTask = async (values: TaskFormValues) => {
-    const created = await api.createTask(organizationId, { title: values.title, description: values.description, due_at: localInputToIso(values.due), priority: values.priority, labels: parseLabels(values.labels) });
+    const created = await api.createTask(organizationId, { title: values.title, description: values.description, due_at: localInputToIso(values.due), priority: values.priority, labels: parseLabels(values.labels), recurrence: values.recurrence || null, customer_id: values.customerId || null });
     setItems((current) => [...current, created]);
     setCreateDue('');
     setSelectedId(created.id);
   };
   const updateTask = async (task: Task, values: TaskFormValues) => {
-    const saved = await api.updateTask(organizationId, task.id, { title: values.title, description: values.description, due_at: localInputToIso(values.due), priority: values.priority, labels: parseLabels(values.labels) });
+    const saved = await api.updateTask(organizationId, task.id, { title: values.title, description: values.description, due_at: localInputToIso(values.due), priority: values.priority, labels: parseLabels(values.labels), recurrence: values.recurrence || null, customer_id: values.customerId || null });
     setItems((current) => mergeTask(current, saved));
   };
   const changeStatus = async (task: Task, status: TaskStatus) => {
     const saved = await api.updateTask(organizationId, task.id, { status });
     setItems((current) => mergeTask(current, saved));
+    // 반복 할 일을 완료하면 서버가 다음 할 일을 만든다. 목록을 다시 읽어 보여 준다.
+    if (status === 'done' && task.recurrence) { void load(); notify.info('다음 반복 할 일이 만들어졌습니다.'); }
   };
   /** 화면에 보이는(필터 결과) 미완료 할 일을 하나씩 완료 처리한다. 일부가 실패해도 성공한 것은 유지하고 건수를 알린다. */
   const completeVisible = async (tasks: Task[]) => {
@@ -102,12 +108,15 @@ export function TaskPage({ api, organizationId, readOnly = false, todayKey: toda
     if (!ok) return;
     setCompleting(true);
     let failed = 0;
+    let spawned = false;
     for (const task of tasks) {
       try {
         const saved = await api.updateTask(organizationId, task.id, { status: 'done' });
         setItems((current) => mergeTask(current, saved));
+        if (task.recurrence) spawned = true;
       } catch { failed += 1; }
     }
+    if (spawned) void load();
     setCompleting(false);
     if (failed === 0) notify.success(`${tasks.length}건을 완료했습니다.`);
     else notify.error(`${tasks.length - failed}건을 완료했고 ${failed}건은 처리하지 못했습니다. 다시 시도해 주세요.`);
@@ -159,6 +168,7 @@ export function TaskPage({ api, organizationId, readOnly = false, todayKey: toda
         completing={completing}
       />
       <TaskDetail
+        customers={customerOptions}
         task={selected}
         createKey={createKey}
         createDue={createDue}

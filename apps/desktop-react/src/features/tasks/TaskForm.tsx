@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { DateTimeField, Select } from '@business-assistant/react-ui';
 import type { Task } from '../../api/schemas';
 import { isoToLocalInput } from './taskDates';
-import { PRIORITY_LABELS, priorityOf, type TaskPriority } from './taskMeta';
+import { PRIORITY_LABELS, RECURRENCE_LABELS, priorityOf, recurrenceOf, type TaskPriority, type TaskRecurrence } from './taskMeta';
 import { labelsOf, labelsText } from './checklistLogic';
 
 export interface TaskFormValues {
@@ -13,16 +13,21 @@ export interface TaskFormValues {
   priority: TaskPriority;
   /** 쉼표로 구분한 라벨 입력(최대 10개) */
   labels: string;
+  /** 반복 주기. 빈 문자열이면 반복 없음(기한이 있어야 한다). */
+  recurrence: '' | TaskRecurrence;
+  /** 연결한 고객 ID. 빈 문자열이면 연결 없음. */
+  customerId: string;
 }
 
+const RECURRENCE_OPTIONS: Array<{ value: '' | TaskRecurrence; label: string }> = [{ value: '', label: '반복 안 함' }, ...(Object.keys(RECURRENCE_LABELS) as TaskRecurrence[]).map((value) => ({ value, label: RECURRENCE_LABELS[value] }))];
 const PRIORITY_OPTIONS = (Object.keys(PRIORITY_LABELS) as TaskPriority[]).map((value) => ({ value, label: PRIORITY_LABELS[value] }));
 
 export function valuesFromTask(task: Task | null, defaultDue: string): TaskFormValues {
-  if (!task) return { title: '', description: '', due: defaultDue, priority: 'normal', labels: '' };
-  return { title: task.title, description: task.description, due: isoToLocalInput(task.due_at), priority: priorityOf(task), labels: labelsText(labelsOf(task)) };
+  if (!task) return { title: '', description: '', due: defaultDue, priority: 'normal', labels: '', recurrence: '', customerId: '' };
+  return { title: task.title, description: task.description, due: isoToLocalInput(task.due_at), priority: priorityOf(task), labels: labelsText(labelsOf(task)), recurrence: recurrenceOf(task) ?? '', customerId: task.customer_id ?? '' };
 }
 
-const same = (a: TaskFormValues, b: TaskFormValues) => a.title === b.title && a.description === b.description && a.due === b.due && a.priority === b.priority && a.labels === b.labels;
+const same = (a: TaskFormValues, b: TaskFormValues) => a.title === b.title && a.description === b.description && a.due === b.due && a.priority === b.priority && a.labels === b.labels && a.recurrence === b.recurrence && a.customerId === b.customerId;
 
 export interface TaskFormProps {
   /** 편집할 할 일. null이면 신규 등록. */
@@ -30,11 +35,13 @@ export interface TaskFormProps {
   /** 신규 등록 때 기한 초기값(datetime-local). */
   defaultDue: string;
   readOnly: boolean;
+  /** 고객 연결 선택지. 비어 있으면 고객 칸을 숨긴다. */
+  customers?: Array<{ id: string; name: string }>;
   onSubmit: (values: TaskFormValues) => Promise<void>;
   onDirtyChange: (dirty: boolean) => void;
 }
 
-export function TaskForm({ task, defaultDue, readOnly, onSubmit, onDirtyChange }: TaskFormProps) {
+export function TaskForm({ task, defaultDue, readOnly, customers = [], onSubmit, onDirtyChange }: TaskFormProps) {
   const base = valuesFromTask(task, defaultDue);
   const [values, setValues] = useState<TaskFormValues>(base);
   const [saving, setSaving] = useState(false);
@@ -49,7 +56,7 @@ export function TaskForm({ task, defaultDue, readOnly, onSubmit, onDirtyChange }
     if (same(previous, base)) return;
     setValues((current) => (same(current, previous) ? base : current));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [base.title, base.description, base.due, base.priority, base.labels]);
+  }, [base.title, base.description, base.due, base.priority, base.labels, base.recurrence, base.customerId]);
 
   const dirty = !same(values, base);
   useEffect(() => { onDirtyChange(dirty); }, [dirty, onDirtyChange]);
@@ -59,6 +66,7 @@ export function TaskForm({ task, defaultDue, readOnly, onSubmit, onDirtyChange }
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (readOnly || savingRef.current || !values.title.trim()) return;
+    if (values.recurrence && !values.due) { setError('반복하려면 기한을 정해 주세요.'); return; }
     savingRef.current = true;
     setSaving(true);
     try {
@@ -73,6 +81,7 @@ export function TaskForm({ task, defaultDue, readOnly, onSubmit, onDirtyChange }
     }
   };
 
+  const customerOptions = [{ value: '', label: '연결 안 함' }, ...customers.map((customer) => ({ value: customer.id, label: customer.name })), ...(values.customerId && !customers.some((customer) => customer.id === values.customerId) ? [{ value: values.customerId, label: '(목록에 없는 고객)' }] : [])];
   const canSave = !readOnly && !saving && values.title.trim() !== '' && (task === null || dirty);
   return (
     <form className="tasks-form" onSubmit={(event) => void submit(event)} noValidate>
@@ -82,6 +91,8 @@ export function TaskForm({ task, defaultDue, readOnly, onSubmit, onDirtyChange }
         <label>기한<DateTimeField value={values.due || null} disabled={readOnly} onChange={(due) => patch({ due: due ?? '' })} /></label>
         <label>우선순위<Select options={PRIORITY_OPTIONS} value={values.priority} disabled={readOnly} onChange={(priority) => patch({ priority })} /></label>
       </div>
+      <label>반복<Select options={RECURRENCE_OPTIONS} value={values.recurrence} disabled={readOnly} onChange={(recurrence) => patch({ recurrence })} /></label>
+      {customers.length > 0 || values.customerId ? <label>고객<Select options={customerOptions} value={values.customerId} disabled={readOnly} onChange={(customerId) => patch({ customerId })} /></label> : null}
       <label>라벨<input value={values.labels} disabled={readOnly} placeholder="쉼표로 구분(예: 재고, 월말)" onChange={(event) => patch({ labels: event.currentTarget.value })} /></label>
       {error && <p role="alert" className="tasks-error">{error}</p>}
       {!readOnly && (
