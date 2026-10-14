@@ -329,3 +329,44 @@ describe('TaskPage 조회 전용과 상태 화면', () => {
     expect(await within(grid()).findByText('재고 확인')).toBeInTheDocument();
   });
 });
+
+describe('TaskPage 일괄 완료(TASK-02)', () => {
+  it('보이는 미완료 할 일만 확인 후 완료 처리한다', async () => {
+    const api = makeApi();
+    renderPage(api);
+    await ready();
+    fireEvent.click(screen.getByRole('button', { name: '보이는 2건 완료' }));
+    fireEvent.click(await screen.findByRole('button', { name: '모두 완료' }));
+    await waitFor(() => expect(api.updateTask).toHaveBeenCalledTimes(2));
+    expect(api.updateTask).toHaveBeenCalledWith(ORG, expect.any(String), { status: 'done' });
+    expect(api.updateTask.mock.calls.map((call) => call[1]).sort()).toEqual(['00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000003']);
+    await waitFor(() => expect(screen.queryByRole('button', { name: /건 완료$/ })).not.toBeInTheDocument());
+  });
+
+  it('필터를 걸면 보이는 항목만 대상이 되고, 취소하면 아무것도 바꾸지 않는다', async () => {
+    const api = makeApi();
+    renderPage(api);
+    await ready();
+    fireEvent.change(screen.getByLabelText('우선순위 필터'), { target: { value: 'high' } });
+    fireEvent.click(screen.getByRole('button', { name: '보이는 1건 완료' }));
+    fireEvent.click(await screen.findByRole('button', { name: '취소' }));
+    expect(api.updateTask).not.toHaveBeenCalled();
+  });
+
+  it('조회 전용이면 일괄 완료 버튼이 없다', async () => {
+    renderPage(makeApi(), { readOnly: true });
+    await ready();
+    expect(screen.queryByRole('button', { name: /건 완료$/ })).not.toBeInTheDocument();
+  });
+
+  it('일부 실패해도 성공한 건은 유지하고 실패 건수를 알린다', async () => {
+    const api = makeApi();
+    api.updateTask.mockImplementationOnce(async () => { throw new Error('x'); });
+    renderPage(api);
+    await ready();
+    fireEvent.click(screen.getByRole('button', { name: '보이는 2건 완료' }));
+    fireEvent.click(await screen.findByRole('button', { name: '모두 완료' }));
+    await waitFor(() => expect(api.updateTask).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.getByRole('button', { name: '보이는 1건 완료' })).toBeInTheDocument());
+  });
+});

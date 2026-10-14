@@ -1,5 +1,7 @@
 import { useMemo, type ReactNode } from 'react';
 import { birthdayCustomers, lapsedCustomers, LAPSED_DAYS, newThisMonth, recentlyRegistered, summarizeCustomers, UPCOMING_DAYS, upcomingVisits } from './insights';
+import { ExportButton } from '../../lib/io/ExportButton';
+import { birthdayExportColumns, lapsedExportColumns } from './io/outreachExport';
 import { kstToday } from './kst';
 import type { Customer } from './types';
 
@@ -15,13 +17,14 @@ type Props = {
 
 type ListItem = { customer: Customer; detail: string; strong?: boolean };
 
-function Card({ title, count, hint, wide, children }: { title: string; count?: number; hint?: string; wide?: boolean; children: ReactNode }) {
+function Card({ title, count, hint, wide, action, children }: { title: string; count?: number; hint?: string; wide?: boolean; action?: ReactNode; children: ReactNode }) {
   return (
     <section className={wide ? 'cx-insight cx-insight--wide' : 'cx-insight'} aria-label={title}>
       <header>
         <h3>{title}</h3>
         {count !== undefined && <span className="cx-badge">{count}</span>}
         {hint && <span className="muted cx-insight__hint">{hint}</span>}
+        {action}
       </header>
       <div className="cx-insight__body">{children}</div>
     </section>
@@ -82,11 +85,13 @@ export function InsightsPanel({ customers, selectedId, now, scopeNote, onSelect 
         <CustomerList selectedId={selectedId} onSelect={onSelect} empty={`${UPCOMING_DAYS}일 안에 예정된 방문이 없습니다.`}
           items={upcoming.map((item) => ({ customer: item.customer, detail: `${item.date} · ${dayLabel(item.days)}`, strong: item.days <= 1 }))} />
       </Card>
-      <Card title="장기 미방문" count={lapsed.length} hint={`${LAPSED_DAYS}일 이상 · 연락 대상`}>
+      <Card title="장기 미방문" count={lapsed.length} hint={`${LAPSED_DAYS}일 이상 · 연락 대상`}
+        action={lapsed.length > 0 ? <ExportButton title="장기 미방문 연락 대상" label="명단 내보내기" columns={lapsedExportColumns} rows={lapsed} description="연락처가 있는 장기 미방문 고객 명단을 저장합니다. 광고성 문자는 수신 동의를 확인한 뒤 보내세요." /> : undefined}>
         <CustomerList selectedId={selectedId} onSelect={onSelect} empty="연락이 필요한 장기 미방문 고객이 없습니다."
           items={lapsed.map((item) => ({ customer: item.customer, detail: item.days === null ? '방문 기록 없음' : `${item.lastVisit} · ${item.days}일 전` }))} />
       </Card>
-      <Card title="이번 달 생일" count={birthdays.length} hint={`${month}월`}>
+      <Card title="이번 달 생일" count={birthdays.length} hint={`${month}월`}
+        action={birthdays.length > 0 ? <ExportButton title="이번 달 생일 고객" label="명단 내보내기" columns={birthdayExportColumns} rows={birthdays} description="이번 달 생일인 고객 명단을 저장합니다. 광고성 문자는 수신 동의를 확인한 뒤 보내세요." /> : undefined}>
         <CustomerList selectedId={selectedId} onSelect={onSelect} empty="이번 달 생일인 고객이 없습니다."
           items={birthdays.map((item) => ({ customer: item.customer, detail: `${month}월 ${item.day}일${item.isToday ? ' · 오늘' : ''}`, strong: item.isToday }))} />
       </Card>

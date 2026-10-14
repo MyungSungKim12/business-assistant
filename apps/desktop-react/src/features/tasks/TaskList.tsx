@@ -27,6 +27,9 @@ export interface TaskListProps {
   onSelect: (task: Task) => void;
   onNew: () => void;
   onRetry: () => void;
+  /** 목록에 보이는 미완료 할 일을 한꺼번에 완료 처리한다(TASK-02). 조회 전용이면 쓰지 않는다. */
+  onCompleteVisible?: (tasks: Task[]) => void;
+  completing?: boolean;
 }
 
 const columns: Column<Task>[] = [
@@ -36,7 +39,8 @@ const columns: Column<Task>[] = [
   { key: 'status', header: '상태', width: 70, minWidth: 60, value: (task) => STATUS_LABELS[statusOf(task)], render: (task) => <span className={`tasks-status tasks-status--${statusOf(task)}`}>{STATUS_LABELS[statusOf(task)]}</span> },
 ];
 
-export function TaskList({ rows, totalCount, loading, error, filters, todayKey, selectedId, readOnly, onFiltersChange, onSelect, onNew, onRetry }: TaskListProps) {
+export function TaskList({ rows, totalCount, loading, error, filters, todayKey, selectedId, readOnly, onFiltersChange, onSelect, onNew, onRetry, onCompleteVisible, completing = false }: TaskListProps) {
+  const completable = useMemo(() => rows.filter((task) => { const status = statusOf(task); return status === 'open' || status === 'in_progress'; }), [rows]);
   const patch = (next: Partial<TaskFilters>) => onFiltersChange({ ...filters, ...next });
   const filtered = useMemo(() => filters.query !== '' || filters.status !== 'all' || filters.priority !== 'all' || filters.range.from !== null || filters.range.to !== null, [filters]);
   return (
@@ -73,6 +77,7 @@ export function TaskList({ rows, totalCount, loading, error, filters, todayKey, 
         </div>
       </div>
       <footer className="tasks-panel__foot">
+        {!readOnly && onCompleteVisible && completable.length > 0 && <button type="button" disabled={completing} onClick={() => onCompleteVisible(completable)}>{completing ? '처리 중…' : `보이는 ${completable.length}건 완료`}</button>}
         {error ? <span role="alert" className="tasks-error">{error} <button type="button" onClick={onRetry}>다시 시도</button></span> : <span>{filtered ? `${rows.length} / ${totalCount}건` : `${totalCount}건`}</span>}
       </footer>
     </section>

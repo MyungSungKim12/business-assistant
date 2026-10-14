@@ -323,3 +323,39 @@ describe('AppointmentPage 권한', () => {
     expect(within(detail).getByText('보기 전용 권한입니다.')).toBeInTheDocument();
   });
 });
+
+describe('AppointmentPage 담당자 필터(APT-14)', () => {
+  const otherStaff = '66666666-6666-4666-8666-666666666666';
+  const other = { ...appointment, id: '77777777-7777-4777-8777-777777777777', staff_id: otherStaff, customer_id: ids.customer };
+  const twoStaff = () => client({
+    listAppointmentStaff: vi.fn(async () => [
+      { id: ids.staff, organization_id: ids.org, name: '김담당', is_active: true, schedule_version: 1 },
+      { id: otherStaff, organization_id: ids.org, name: '이담당', is_active: true, schedule_version: 1 },
+    ]),
+  }, [appointment, other]);
+
+  it('일 보기에서는 필터를 숨기고, 주 보기에서 담당자를 고르면 그 담당자 예약만 보인다', async () => {
+    renderPage(twoStaff());
+    await screen.findAllByRole('button', { name: /^10:00 김고객/ });
+    expect(screen.queryByRole('combobox', { name: '담당자 필터' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '주' }));
+    const week = screen.getByRole('region', { name: '주 보기 달력' });
+    expect(within(week).getByText('김고객 · 김담')).toBeInTheDocument();
+    expect(within(week).getByText('김고객 · 이담')).toBeInTheDocument();
+    fireEvent.change(screen.getByRole('combobox', { name: '담당자 필터' }), { target: { value: otherStaff } });
+    expect(within(week).queryByText('김고객 · 김담')).not.toBeInTheDocument();
+    expect(within(week).getByText('김고객 · 이담')).toBeInTheDocument();
+    fireEvent.change(screen.getByRole('combobox', { name: '담당자 필터' }), { target: { value: '' } });
+    expect(within(week).getByText('김고객 · 김담')).toBeInTheDocument();
+  });
+
+  it('목록 보기에도 같은 필터가 적용된다', async () => {
+    renderPage(twoStaff());
+    await screen.findAllByRole('button', { name: /^10:00 김고객/ });
+    fireEvent.click(screen.getByRole('button', { name: '목록' }));
+    fireEvent.change(screen.getByRole('combobox', { name: '담당자 필터' }), { target: { value: ids.staff } });
+    expect(screen.getAllByRole('button', { name: /^10:00 김고객 상세/ })).toHaveLength(1);
+    fireEvent.change(screen.getByRole('combobox', { name: '담당자 필터' }), { target: { value: '' } });
+    expect(screen.getAllByRole('button', { name: /^10:00 김고객 상세/ })).toHaveLength(2);
+  });
+});

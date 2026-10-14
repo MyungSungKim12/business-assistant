@@ -37,6 +37,7 @@ interface AppointmentPageProps {
 export function AppointmentPage({ api, organizationId, readOnly, canManageResources = false }: AppointmentPageProps) {
   const [items, setItems] = useState<Appointment[]>([]);
   const [staff, setStaff] = useState<AppointmentStaff[]>([]);
+  const [staffFilter, setStaffFilter] = useState('');
   const [services, setServices] = useState<AppointmentService[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [resources, setResources] = useState<AppointmentResource[]>([]);
@@ -97,7 +98,10 @@ export function AppointmentPage({ api, organizationId, readOnly, canManageResour
   const customerName = useMemo(() => nameLookup(customers, '고객'), [customers]);
   const staffName = useMemo(() => nameLookup(staff, '담당자'), [staff]);
   const resourceName = useCallback((id: string) => resources.find((row) => row.id === id)?.name, [resources]);
-  const listRows = useMemo(() => items.filter((item) => kstDateKey(item.start_at) === day).sort((a, b) => a.start_at.localeCompare(b.start_at)), [items, day]);
+  // 담당자 필터는 주·목록 보기에만 적용한다. 선택한 담당자가 사라졌으면(비활성 등) 전체로 본다.
+  const activeStaffFilter = staff.some((row) => row.id === staffFilter) ? staffFilter : '';
+  const filteredItems = useMemo(() => (activeStaffFilter ? items.filter((item) => item.staff_id === activeStaffFilter) : items), [items, activeStaffFilter]);
+  const listRows = useMemo(() => filteredItems.filter((item) => kstDateKey(item.start_at) === day).sort((a, b) => a.start_at.localeCompare(b.start_at)), [filteredItems, day]);
 
   const selected = panel.kind === 'detail' || panel.kind === 'edit' ? items.find((item) => item.id === panel.id) ?? null : null;
   const selectedId = selected?.id ?? null;
@@ -239,6 +243,7 @@ export function AppointmentPage({ api, organizationId, readOnly, canManageResour
         onPrev={() => shiftDay(-1)}
         onNext={() => shiftDay(1)}
         onToday={() => setDay(todayKstKey())}
+        staffFilter={{ options: staff.map((row) => ({ id: row.id, name: row.name })), value: activeStaffFilter, onChange: setStaffFilter }}
         extra={canManageResources ? <button type="button" onClick={() => setResourceDialog(true)}>공간·장비 관리</button> : undefined}
       />
       {error && <p role="alert" className="form-error apt-error">{error} <button type="button" onClick={() => { setError(''); void load(); }}>다시 불러오기</button></p>}
@@ -260,7 +265,7 @@ export function AppointmentPage({ api, organizationId, readOnly, canManageResour
           {view === 'week' && (
             <WeekGrid
               day={day}
-              items={items}
+              items={filteredItems}
               customerName={customerName}
               staffName={staffName}
               selectedId={selectedId}

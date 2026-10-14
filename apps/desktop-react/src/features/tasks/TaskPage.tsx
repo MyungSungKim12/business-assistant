@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { confirm } from '@business-assistant/react-ui';
+import { confirm, notify } from '@business-assistant/react-ui';
 import type { ApiClient } from '../../api/client';
 import type { Task } from '../../api/schemas';
 import { TaskCalendar } from './TaskCalendar';
@@ -33,6 +33,7 @@ export function TaskPage({ api, organizationId, readOnly = false, todayKey: toda
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [createKey, setCreateKey] = useState(0);
   const [createDue, setCreateDue] = useState('');
+  const [completing, setCompleting] = useState(false);
   const dirtyRef = useRef(false);
   const itemsRef = useRef<Task[]>([]);
   itemsRef.current = items;
@@ -93,6 +94,23 @@ export function TaskPage({ api, organizationId, readOnly = false, todayKey: toda
     const saved = await api.updateTask(organizationId, task.id, { status });
     setItems((current) => mergeTask(current, saved));
   };
+  /** 화면에 보이는(필터 결과) 미완료 할 일을 하나씩 완료 처리한다. 일부가 실패해도 성공한 것은 유지하고 건수를 알린다. */
+  const completeVisible = async (tasks: Task[]) => {
+    if (readOnly || completing || tasks.length === 0) return;
+    const ok = await confirm({ title: '일괄 완료', message: `보이는 할 일 ${tasks.length}건을 모두 완료 처리할까요? 완료한 항목은 상세에서 다시 열 수 있습니다.`, confirmLabel: '모두 완료' });
+    if (!ok) return;
+    setCompleting(true);
+    let failed = 0;
+    for (const task of tasks) {
+      try {
+        const saved = await api.updateTask(organizationId, task.id, { status: 'done' });
+        setItems((current) => mergeTask(current, saved));
+      } catch { failed += 1; }
+    }
+    setCompleting(false);
+    if (failed === 0) notify.success(`${tasks.length}건을 완료했습니다.`);
+    else notify.error(`${tasks.length - failed}건을 완료했고 ${failed}건은 처리하지 못했습니다. 다시 시도해 주세요.`);
+  };
   const deleteTask = async (task: Task) => {
     await api.deleteTask(organizationId, task.id);
     setItems((current) => current.filter((item) => item.id !== task.id));
@@ -132,6 +150,8 @@ export function TaskPage({ api, organizationId, readOnly = false, todayKey: toda
         onSelect={(task) => void selectTask(task)}
         onNew={() => void startNew()}
         onRetry={() => void load()}
+        onCompleteVisible={(tasks) => void completeVisible(tasks)}
+        completing={completing}
       />
       <TaskDetail
         task={selected}
