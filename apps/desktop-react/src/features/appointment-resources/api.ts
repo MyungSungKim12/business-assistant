@@ -2,6 +2,8 @@ import type { ApiClient } from '../../api/client';
 import {
   availabilitySchema, requirementsSavedSchema, requirementsSchema, resourceSchema, resourcesSchema, resourceSetupSchema, serviceListSchema, serviceSchema,
   consumablesSchema,
+  serviceStaffIdsSchema,
+  serviceStaffListSchema,
   staffListSchema, staffSchema, timeOffSchema, workingHoursSavedSchema, type ResourceKind, type ResourceRequirement,
 } from './schemas';
 
@@ -42,6 +44,11 @@ export const resourceApi = {
   listConsumables: (api: CallApi, organizationId: string, serviceId: string) => api.call('GET', `${base(organizationId)}/appointment-services/${serviceId}/consumables`, consumablesSchema),
   saveConsumables: (api: CallApi, organizationId: string, serviceId: string, items: { product_id: string; quantity: number }[]) =>
     api.call('PUT', `${base(organizationId)}/appointment-services/${serviceId}/consumables`, consumablesSchema, { items }),
+
+  listServiceStaff: (api: CallApi, organizationId: string) => api.call('GET', `${base(organizationId)}/appointment-service-staff`, serviceStaffListSchema),
+  getServiceStaff: (api: CallApi, organizationId: string, serviceId: string) => api.call('GET', `${base(organizationId)}/appointment-services/${serviceId}/staff`, serviceStaffIdsSchema),
+  saveServiceStaff: (api: CallApi, organizationId: string, serviceId: string, staffIds: string[]) =>
+    api.call('PUT', `${base(organizationId)}/appointment-services/${serviceId}/staff`, serviceStaffIdsSchema, { staff_ids: staffIds }),
 
   listStaff: (api: CallApi, organizationId: string) => api.call('GET', `${base(organizationId)}/appointment-staff`, staffListSchema),
   createStaff: (api: CallApi, organizationId: string, input: { name: string }) => api.call('POST', `${base(organizationId)}/appointment-staff`, staffSchema, input),

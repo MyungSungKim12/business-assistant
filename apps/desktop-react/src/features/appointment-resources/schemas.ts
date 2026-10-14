@@ -18,6 +18,9 @@ export const resourceSetupSchema = z.object({ service_id: z.string(), resource_v
 export const requirementsSavedSchema = z.object({ service_id: z.string(), resource_version: z.number(), requirements: z.array(z.unknown()) });
 export const consumableSchema = z.object({ product_id: z.string(), quantity: z.number().int().min(1).max(1_000_000) });
 export const consumablesSchema = z.array(consumableSchema);
+/** 서비스별 담당 가능 직원(SVC-11). 지정이 없는 서비스는 항목이 없고, 그 서비스는 모든 직원이 가능하다. */
+export const serviceStaffListSchema = z.array(z.object({ service_id: z.string(), staff_id: z.string() }));
+export const serviceStaffIdsSchema = z.object({ staff_ids: z.array(z.string()) });
 
 export const staffSchema = z.object({ id: z.string(), organization_id: z.string(), name: z.string(), is_active: z.boolean(), schedule_version: z.number().default(1) });
 export const staffListSchema = z.array(staffSchema);

@@ -27,6 +27,9 @@ const requirementsRequest = z.object({
   requirements: z.array(z.object({ kind, quantity: z.number().int().min(1).max(10) }).strict()).max(2),
   expected_version: version, operation_id: operationId,
 }).strict().refine((value) => new Set(value.requirements.map((item) => item.kind)).size === value.requirements.length, 'Resource requirement kinds must be unique');
+const serviceStaffRequest = z.object({
+  staff_ids: z.array(z.uuid()).max(100),
+}).strict().refine((value) => new Set(value.staff_ids).size === value.staff_ids.length, 'Staff must be unique');
 const consumablesRequest = z.object({
   items: z.array(z.object({ product_id: z.uuid(), quantity: z.number().int().min(1).max(1_000_000) }).strict()).max(100),
 }).strict().refine((value) => new Set(value.items.map((item) => item.product_id)).size === value.items.length, 'Consumable products must be unique');
@@ -129,6 +132,22 @@ export function registerAppointmentResourceRoutes(app: FastifyInstance, organiza
     const input = body(requirementsRequest, request);
     await authorize(c.token, c.params.organizationId, true);
     return c.gateway.replaceRequirements(c.token, c.params.organizationId, c.params.serviceId, input);
+  });
+  app.get(`${base}/appointment-service-staff`, async (request) => {
+    const c = context(request);
+    await authorize(c.token, c.params.organizationId, false);
+    return c.gateway.listServiceStaff(c.token, c.params.organizationId);
+  });
+  app.get(`${base}/appointment-services/:serviceId/staff`, async (request) => {
+    const c = context(request, { serviceId: z.uuid() });
+    await authorize(c.token, c.params.organizationId, false);
+    return { staff_ids: await c.gateway.getServiceStaff(c.token, c.params.organizationId, c.params.serviceId) };
+  });
+  app.put(`${base}/appointment-services/:serviceId/staff`, async (request) => {
+    const c = context(request, { serviceId: z.uuid() });
+    const input = body(serviceStaffRequest, request);
+    await authorize(c.token, c.params.organizationId, true);
+    return { staff_ids: await c.gateway.replaceServiceStaff(c.token, c.params.organizationId, c.params.serviceId, input.staff_ids) };
   });
   app.get(`${base}/appointment-services/:serviceId/consumables`, async (request) => {
     const c = context(request, { serviceId: z.uuid() });

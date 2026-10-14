@@ -138,3 +138,5 @@
 .service-page .catalog-form .form-actions {
   flex-wrap: wrap;
 }
+
+.catalog-checklist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; max-height: 260px; overflow: auto; }

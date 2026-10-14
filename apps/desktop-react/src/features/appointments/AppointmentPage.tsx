@@ -11,6 +11,7 @@ import { AppointmentToolbar, type ViewMode } from './AppointmentToolbar';
 import { DayGrid } from './DayGrid';
 import { ReasonModal, type ReasonKind } from './ReasonModal';
 import { WeekGrid } from './WeekGrid';
+import { buildServiceStaffMap, canStaffDoService, type ServiceStaffMap } from './serviceStaff';
 import { canEditAppointment, mergeAppointments, nameLookup, needsReason, type TargetStatus } from './appointmentRules';
 import { addDays, formatKstTime, kstDateKey, kstIso, localInputAt, todayKstKey, toKstLocalInput, weekStartOf } from './appointmentTime';
 import './appointments.css';
@@ -38,6 +39,7 @@ export function AppointmentPage({ api, organizationId, readOnly, canManageResour
   const [items, setItems] = useState<Appointment[]>([]);
   const [staff, setStaff] = useState<AppointmentStaff[]>([]);
   const [staffFilter, setStaffFilter] = useState('');
+  const [serviceStaff, setServiceStaff] = useState<ServiceStaffMap>({});
   const [services, setServices] = useState<AppointmentService[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [resources, setResources] = useState<AppointmentResource[]>([]);
@@ -72,8 +74,11 @@ export function AppointmentPage({ api, organizationId, readOnly, canManageResour
     api.listCustomers(organizationId),
     fetchVisible(),
     resourceApi.listResources(api, organizationId).catch((): AppointmentResource[] => []),
+    // 담당 가능 직원 규칙. 불러오지 못하면 제한 없이 보여 주고, 서버가 저장 시 검사한다.
+    resourceApi.listServiceStaff(api, organizationId).catch(() => []),
   ])
-    .then(([appointments, staffRows, serviceRows, customerRows, rangeRows, resourceRows]) => {
+    .then(([appointments, staffRows, serviceRows, customerRows, rangeRows, resourceRows, serviceStaffRows]) => {
+      setServiceStaff(buildServiceStaffMap(serviceStaffRows));
       setItems((old) => mergeAppointments(old, [...appointments, ...rangeRows]));
       setStaff(staffRows.filter((row) => row.is_active));
       setServices(serviceRows.filter((row) => row.is_active));
@@ -148,6 +153,10 @@ export function AppointmentPage({ api, organizationId, readOnly, canManageResour
     const startLocal = localInputAt(target.date, target.minutes);
     const staffId = target.staffId ?? item.staff_id;
     if (startLocal === toKstLocalInput(item.start_at) && staffId === item.staff_id) return;
+    if (!canStaffDoService(serviceStaff, item.service_id, staffId)) {
+      setError(`${staffName(staffId)} 직원은 '${item.service_name_snapshot}' 서비스를 맡을 수 없어 옮길 수 없습니다.`);
+      return;
+    }
     if (!(await canLeaveForm())) return;
     const label = `${kstDateKey(kstIso(startLocal))} ${formatKstTime(kstIso(startLocal))}${staffId !== item.staff_id ? ` · ${staffName(staffId)}` : ''}`;
     const ok = await confirm({ title: '예약 이동', message: `${customerName(item.customer_id)}님 예약을 ${label}(으)로 옮길까요?`, confirmLabel: '이동' });
@@ -221,6 +230,7 @@ export function AppointmentPage({ api, organizationId, readOnly, canManageResour
           customers={customers}
           staff={staff}
           services={services}
+          serviceStaff={serviceStaff}
           seed={panel.seed}
           customerName={customerName}
           staffName={staffName}
@@ -238,6 +248,7 @@ export function AppointmentPage({ api, organizationId, readOnly, canManageResour
           customers={customers}
           staff={staff}
           services={services}
+          serviceStaff={serviceStaff}
           appointment={selected}
           customerName={customerName}
           staffName={staffName}

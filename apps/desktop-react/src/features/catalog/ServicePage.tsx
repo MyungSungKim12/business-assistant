@@ -3,6 +3,8 @@ import { DataGrid, ErrorState, LoadingState, Select, confirm, notify, type Colum
 import type { ApiClient } from '../../api/client';
 import { ResourceManagerDialog } from '../appointment-resources/ResourceManagerDialog';
 import { ServiceConsumablesDialog } from './ServiceConsumablesDialog';
+import { ServiceStaffDialog } from './ServiceStaffDialog';
+import { buildServiceStaffMap, staffSummary, type ServiceStaffMap } from '../appointments/serviceStaff';
 import { resourceApi } from '../appointment-resources/api';
 import { isDefiniteRejection, useOperationTracker } from '../appointment-resources/operationIds';
 import type { AppointmentServiceRow } from '../appointment-resources/schemas';
@@ -35,9 +37,17 @@ export function ServicePage({ api, organizationId, readOnly }: ServicePageProps)
   const [busy, setBusy] = useState(false);
   const [resourcesOpen, setResourcesOpen] = useState(false);
   const [consumablesOpen, setConsumablesOpen] = useState(false);
+  const [staffOpen, setStaffOpen] = useState(false);
+  const [staffMap, setStaffMap] = useState<ServiceStaffMap>({});
+  const [staffNames, setStaffNames] = useState<Record<string, string>>({});
   const detailOp = useOperationTracker();
   const updateOp = useOperationTracker();
 
+  const gridColumns = useMemo<Column<AppointmentServiceRow>[]>(() => [
+    ...columns.slice(0, 5),
+    { key: 'staff', header: '담당 직원', width: 130, value: (row) => staffSummary(staffMap, row.id, (id) => staffNames[id] ?? '(알 수 없음)') },
+    columns[5],
+  ], [staffMap, staffNames]);
   const selected = rows.find((row) => row.id === selectedId) ?? null;
   const dirty = JSON.stringify(form) !== baseline;
   const editable = !readOnly && !busy;
@@ -47,7 +57,13 @@ export function ServicePage({ api, organizationId, readOnly }: ServicePageProps)
   const load = useCallback(async (initial = false) => {
     if (initial) setLoading(true);
     setLoadError('');
-    try { setRows(await resourceApi.listServiceDetails(api, organizationId)); }
+    try {
+      setRows(await resourceApi.listServiceDetails(api, organizationId));
+      // 담당 가능 직원 요약. 불러오지 못해도 서비스 화면은 그대로 쓴다.
+      const [mapping, staffRows] = await Promise.all([resourceApi.listServiceStaff(api, organizationId).catch(() => []), resourceApi.listStaff(api, organizationId).catch(() => [])]);
+      setStaffMap(buildServiceStaffMap(mapping));
+      setStaffNames(Object.fromEntries(staffRows.map((row) => [row.id, row.name])));
+    }
     catch { setLoadError('서비스 목록을 불러오지 못했습니다.'); }
     finally { setLoading(false); }
   }, [api, organizationId]);
@@ -129,7 +145,7 @@ export function ServicePage({ api, organizationId, readOnly }: ServicePageProps)
               <input aria-label="서비스 검색" placeholder="서비스, 카테고리 검색" value={query} onChange={(event) => setQuery(event.currentTarget.value)} />
               <Select<ServiceStatusFilter> aria-label="서비스 상태 필터" value={status} onChange={setStatus} options={[{ value: 'all', label: '전체' }, { value: 'active', label: '사용' }, { value: 'inactive', label: '중지' }]} />
             </div>
-            <DataGrid rows={visible} columns={columns} rowKey={(row) => row.id} selectedKey={selectedId} onSelect={select} ariaLabel="서비스 목록" storageKey="service-grid" emptyText="등록된 서비스가 없습니다." />
+            <DataGrid rows={visible} columns={gridColumns} rowKey={(row) => row.id} selectedKey={selectedId} onSelect={select} ariaLabel="서비스 목록" storageKey="service-grid" emptyText="등록된 서비스가 없습니다." />
           </section>
           <aside className="catalog-detail editor-panel">
             <h2>{selected ? '서비스 수정' : '서비스 추가'}</h2>
@@ -143,7 +159,7 @@ export function ServicePage({ api, organizationId, readOnly }: ServicePageProps)
               <datalist id="service-categories">{categories.map((category) => <option key={category} value={category} />)}</datalist>
               <div className="form-actions">
                 {!readOnly && <button type="button" className="primary-button" disabled={busy} onClick={() => void save()}>{selected ? '변경 저장' : '서비스 추가'}</button>}
-                {selected && <><button type="button" disabled={busy} onClick={() => setResourcesOpen(true)}>필수 자원 기준</button><button type="button" disabled={busy} onClick={() => setConsumablesOpen(true)}>시술 소모품 기준</button></>}
+                {selected && <><button type="button" disabled={busy} onClick={() => setResourcesOpen(true)}>필수 자원 기준</button><button type="button" disabled={busy} onClick={() => setConsumablesOpen(true)}>시술 소모품 기준</button><button type="button" disabled={busy} onClick={() => setStaffOpen(true)}>담당 가능 직원</button></>}
               </div>
             </div>
             {error && <p role="alert" className="form-error">{error}</p>}
@@ -151,6 +167,7 @@ export function ServicePage({ api, organizationId, readOnly }: ServicePageProps)
         </div>
       )}
       {resourcesOpen && <ResourceManagerDialog api={api} organizationId={organizationId} readOnly={readOnly} onClose={() => { setResourcesOpen(false); void load(); }} />}
+      {staffOpen && selected && <ServiceStaffDialog api={api} organizationId={organizationId} serviceId={selected.id} serviceName={selected.name} readOnly={readOnly} onSaved={() => void load()} onClose={() => setStaffOpen(false)} />}
       {consumablesOpen && selected && <ServiceConsumablesDialog api={api} organizationId={organizationId} serviceId={selected.id} readOnly={readOnly} onClose={() => setConsumablesOpen(false)} />}
     </section>
   );

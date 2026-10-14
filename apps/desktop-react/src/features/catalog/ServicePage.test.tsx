@@ -200,3 +200,87 @@ describe('SVC-10 서비스 추가(가격·카테고리)', () => {
     expect(grid().getByText('레이저')).toBeInTheDocument();
   });
 });
+
+describe('SVC-11 담당 가능 직원', () => {
+  const staffRow = (id: string, name: string, over: Record<string, unknown> = {}) => ({ id, organization_id: ORG, name, is_active: true, schedule_version: 1, ...over });
+  const staffA = '33333333-3333-4333-8333-333333333333';
+  const staffB = '55555555-5555-4555-8555-555555555555';
+  const base: Handlers = {
+    [details]: () => [service()],
+    'GET /appointment-staff': () => [staffRow(staffA, '김원장'), staffRow(staffB, '이실장')],
+  };
+
+  it('표에 담당 직원 요약이 보이고 지정이 없으면 모든 직원이다', async () => {
+    renderPage({ ...base, 'GET /appointment-service-staff': () => [{ service_id: 's1', staff_id: staffA }] });
+    expect(await screen.findByText('관리')).toBeInTheDocument();
+    expect(await grid().findByText('김원장')).toBeInTheDocument();
+  });
+
+  it('지정이 없는 서비스는 모든 직원으로 보인다', async () => {
+    renderPage({ ...base, 'GET /appointment-service-staff': () => [] });
+    await screen.findByText('관리');
+    expect(await grid().findByText('모든 직원')).toBeInTheDocument();
+  });
+
+  it('다이얼로그에서 직원을 골라 저장하면 정렬된 ID 배열을 PUT하고 목록을 다시 읽는다', async () => {
+    let mapping: Array<{ service_id: string; staff_id: string }> = [];
+    const kit = renderPage({
+      ...base,
+      'GET /appointment-service-staff': () => mapping,
+      'GET /appointment-services/s1/staff': () => ({ staff_ids: [] }),
+      'PUT /appointment-services/s1/staff': (call) => { const ids = (call.body as { staff_ids: string[] }).staff_ids; mapping = ids.map((id) => ({ service_id: 's1', staff_id: id })); return { staff_ids: ids }; },
+    });
+    fireEvent.click(await screen.findByText('관리'));
+    fireEvent.click(screen.getByRole('button', { name: '담당 가능 직원' }));
+    const dialog = await screen.findByRole('dialog', { name: /담당 가능 직원/ });
+    expect(await within(dialog).findByText('현재: 모든 직원이 가능합니다.')).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: '저장' })).toBeDisabled();
+    fireEvent.click(within(dialog).getByRole('checkbox', { name: /이실장/ }));
+    fireEvent.click(within(dialog).getByRole('checkbox', { name: /김원장/ }));
+    expect(within(dialog).getByText('현재: 2명만 가능합니다.')).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: '저장' }));
+    await waitFor(() => expect(bodies(kit.calls, 'PUT /appointment-services/s1/staff')).toEqual([{ staff_ids: [staffA, staffB].sort() }]));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: /담당 가능 직원/ })).not.toBeInTheDocument());
+    expect(await grid().findByText('김원장, 이실장')).toBeInTheDocument();
+  });
+
+  it('모두 해제하고 저장하면 빈 배열로 제한을 푼다', async () => {
+    const kit = renderPage({
+      ...base,
+      'GET /appointment-service-staff': () => [{ service_id: 's1', staff_id: staffA }],
+      'GET /appointment-services/s1/staff': () => ({ staff_ids: [staffA] }),
+      'PUT /appointment-services/s1/staff': () => ({ staff_ids: [] }),
+    });
+    fireEvent.click(await screen.findByText('관리'));
+    fireEvent.click(screen.getByRole('button', { name: '담당 가능 직원' }));
+    const dialog = await screen.findByRole('dialog', { name: /담당 가능 직원/ });
+    fireEvent.click(await within(dialog).findByRole('checkbox', { name: /김원장/ }));
+    fireEvent.click(within(dialog).getByRole('button', { name: '저장' }));
+    await waitFor(() => expect(bodies(kit.calls, 'PUT /appointment-services/s1/staff')).toEqual([{ staff_ids: [] }]));
+  });
+
+  it('저장에 실패하면 선택을 유지하고 오류를 알린다', async () => {
+    renderPage({
+      ...base,
+      'GET /appointment-service-staff': () => [],
+      'GET /appointment-services/s1/staff': () => ({ staff_ids: [] }),
+      'PUT /appointment-services/s1/staff': () => { throw apiFailure(503); },
+    });
+    fireEvent.click(await screen.findByText('관리'));
+    fireEvent.click(screen.getByRole('button', { name: '담당 가능 직원' }));
+    const dialog = await screen.findByRole('dialog', { name: /담당 가능 직원/ });
+    fireEvent.click(await within(dialog).findByRole('checkbox', { name: /김원장/ }));
+    fireEvent.click(within(dialog).getByRole('button', { name: '저장' }));
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('저장하지 못했습니다');
+    expect(within(dialog).getByRole('checkbox', { name: /김원장/ })).toBeChecked();
+  });
+
+  it('조회 전용이면 체크박스를 바꿀 수 없고 저장 버튼이 없다', async () => {
+    renderPage({ ...base, 'GET /appointment-service-staff': () => [], 'GET /appointment-services/s1/staff': () => ({ staff_ids: [staffA] }) }, true);
+    fireEvent.click(await screen.findByText('관리'));
+    fireEvent.click(screen.getByRole('button', { name: '담당 가능 직원' }));
+    const dialog = await screen.findByRole('dialog', { name: /담당 가능 직원/ });
+    expect(await within(dialog).findByRole('checkbox', { name: /김원장/ })).toBeDisabled();
+    expect(within(dialog).queryByRole('button', { name: '저장' })).not.toBeInTheDocument();
+  });
+});

@@ -103,3 +103,12 @@ another member cannot touch the task, that the database stamps the real caller a
 name snapshot (forged values ignored, cleared on reopen), the email-prefix fallback name, that the name
 list exposes no email, that the completer record survives membership removal, and that recurring
 successors keep the assignee unless the assignee has left.
+
+## Service staff eligibility (050)
+
+Run `npm run test:ops-050 --prefix scripts/db-tests` to execute migrations 024, 034, 037, 038, and 050
+(050 twice) against a fresh in-memory PostgreSQL database and drive the real `save_appointment` RPC.
+It checks that services without a mapping stay open to everyone, that a mapping restricts new bookings and
+staff/service changes (22023) but not time-only edits or status transitions of existing bookings, replace
+semantics and the empty-array reset, duplicate/unknown-staff/unknown-service validation, manager-only
+writes, member read access, and cross-organization isolation.

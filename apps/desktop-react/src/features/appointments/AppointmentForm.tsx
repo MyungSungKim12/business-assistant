@@ -4,6 +4,7 @@ import { appointmentSchema, type Appointment, type AppointmentService, type Appo
 import { ResourcePicker, describeRequirements, isDefiniteRejection, missingRequirements, useOperationTracker } from '../appointment-resources';
 import type { AppointmentResource, ResourceRequirement } from '../appointment-resources';
 import { kstIso, todayKstKey, toKstLocalInput } from './appointmentTime';
+import { canStaffDoService, type ServiceStaffMap } from './serviceStaff';
 import { AvailabilityChips } from './AvailabilityChips';
 import { dateOfLocalInput, type AvailabilityQuery } from './availability';
 
@@ -24,6 +25,8 @@ export interface AppointmentFormProps {
   customers: Customer[];
   staff: AppointmentStaff[];
   services: AppointmentService[];
+  /** 서비스별 담당 가능 직원(SVC-11). 항목이 없는 서비스는 모든 직원이 가능하다. */
+  serviceStaff?: ServiceStaffMap;
   /** 있으면 수정 폼, 없으면 새 예약 폼. */
   appointment?: Appointment;
   /** 새 예약 폼의 처음 값(빈 칸을 눌러 들어온 담당자·시각 등). */
@@ -44,7 +47,7 @@ const sortedIds = (ids: string[]) => [...ids].sort();
 const sameValues = (a: FormValues, b: FormValues) => a.customer_id === b.customer_id && a.staff_id === b.staff_id && a.service_id === b.service_id && a.start_at === b.start_at && sortedIds(a.resource_ids).join() === sortedIds(b.resource_ids).join();
 
 /** 새 예약·예약 수정 공용 폼. 저장에 실패해도 입력은 그대로 둔다. */
-export function AppointmentForm({ api, organizationId, customers, staff, services, appointment, seed, customerName, staffName, onSaved, onDirtyChange, onCancel, onReload }: AppointmentFormProps) {
+export function AppointmentForm({ api, organizationId, customers, staff, services, serviceStaff = {}, appointment, seed, customerName, staffName, onSaved, onDirtyChange, onCancel, onReload }: AppointmentFormProps) {
   const editing = appointment !== undefined;
   const initial = useMemo<FormValues>(() => (appointment
     ? { customer_id: appointment.customer_id, staff_id: appointment.staff_id, service_id: appointment.service_id, start_at: toKstLocalInput(appointment.start_at), resource_ids: appointment.resource_ids }
@@ -67,7 +70,13 @@ export function AppointmentForm({ api, organizationId, customers, staff, service
   const serviceChanged = editing && values.service_id !== appointment.service_id;
 
   const customerOptions = editing && !customers.some((row) => row.id === appointment.customer_id) ? [{ id: appointment.customer_id, name: customerName(appointment.customer_id) }, ...customers] : customers;
-  const staffOptions = editing && !staff.some((row) => row.id === appointment.staff_id) ? [{ id: appointment.staff_id, name: staffName(appointment.staff_id) }, ...staff] : staff;
+  // 서비스를 고르면 그 서비스를 맡을 수 있는 직원만 보인다. 수정 중인 예약의 기존 담당자는 서비스·담당자를 안 바꾸는 동안 그대로 둔다.
+  const keepsOriginalStaff = (staffId: string) => editing && staffId === appointment.staff_id && values.service_id === appointment.service_id;
+  const eligible = (staffId: string) => canStaffDoService(serviceStaff, values.service_id, staffId) || keepsOriginalStaff(staffId);
+  const allStaff = editing && !staff.some((row) => row.id === appointment.staff_id) ? [{ id: appointment.staff_id, name: staffName(appointment.staff_id) }, ...staff] : staff;
+  const staffOptions = allStaff.filter((row) => eligible(row.id));
+  const staffNotAllowed = values.staff_id !== '' && !eligible(values.staff_id);
+  const restricted = values.service_id !== '' && (serviceStaff[values.service_id]?.length ?? 0) > 0;
   const serviceOptions = editing && !services.some((row) => row.id === appointment.service_id)
     ? [{ id: appointment.service_id, name: appointment.service_name_snapshot, duration_minutes: appointment.duration_minutes }, ...services]
     : services;
@@ -78,7 +87,7 @@ export function AppointmentForm({ api, organizationId, customers, staff, service
     : null;
   /** 칩을 누르면 그 날짜·시각을 채우고, 담당자를 아직 안 골랐다면 그 시각에 가능한 첫 담당자로 채운다. */
   function pickTime(time: string, availableStaffIds: string[]) {
-    const staffId = values.staff_id || availableStaffIds[0] || '';
+    const staffId = values.staff_id || availableStaffIds.find((id) => eligible(id)) || '';
     set({ start_at: `${availabilityDate}T${time}`, staff_id: staffId });
   }
 
@@ -92,6 +101,7 @@ export function AppointmentForm({ api, organizationId, customers, staff, service
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    if (staffNotAllowed) { setError('선택한 담당자는 이 서비스를 맡을 수 없습니다. 담당자나 서비스를 바꿔 주세요.'); return; }
     if (missing.length > 0) { setError(`필수 자원이 부족합니다. 필요한 기준: ${describeRequirements(requirements.needs)}`); return; }
     const input = {
       customer_id: values.customer_id,
@@ -144,6 +154,8 @@ export function AppointmentForm({ api, organizationId, customers, staff, service
           {staffOptions.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
         </select>
       </label>
+      {restricted && <p className="muted apt-form__hint" data-testid="service-staff-hint">이 서비스는 지정된 직원만 맡을 수 있어 담당자 목록이 제한됩니다.</p>}
+      {staffNotAllowed && <p role="alert" className="form-error">선택한 담당자는 이 서비스를 맡을 수 없습니다. 담당자나 서비스를 바꿔 주세요.</p>}
       <label>서비스
         <select required value={values.service_id} onChange={(e) => changeService(e.target.value)}>
           <option value="">선택</option>

@@ -503,3 +503,42 @@ describe('AppointmentPage 끌어서 옮기기(APT-14)', () => {
     expect(await screen.findByRole('button', { name: /^10:00 김고객/ })).toHaveAttribute('draggable', 'false');
   });
 });
+
+describe('AppointmentPage 담당 가능 직원 규칙(SVC-11)', () => {
+  const otherStaff = '66666666-6666-4666-8666-666666666666';
+  const staffList = [
+    { id: ids.staff, organization_id: ids.org, name: '김담당', is_active: true, schedule_version: 1 },
+    { id: otherStaff, organization_id: ids.org, name: '이담당', is_active: true, schedule_version: 1 },
+  ];
+  const withRules = () => client({ listAppointmentStaff: vi.fn(async () => staffList) }, [appointment], async (method, path) => {
+    if (method === 'GET' && path.endsWith('/appointment-service-staff')) return [{ service_id: ids.service, staff_id: ids.staff }];
+    return method === 'PUT' ? appointment : [];
+  });
+
+  it('지정되지 않은 직원 열로 끌어 놓으면 서버에 보내지 않고 이유를 알린다', async () => {
+    const api = withRules();
+    renderPage(api);
+    await block();
+    const day = screen.getByRole('region', { name: '일 보기 달력' });
+    const event = createEvent.dragStart(within(day).getByRole('button', { name: /^10:00 김고객/ }));
+    Object.defineProperty(event, 'clientY', { value: 0 });
+    fireEvent(within(day).getByRole('button', { name: /^10:00 김고객/ }), event);
+    const drop = createEvent.drop(within(day).getByRole('group', { name: '이담당 일정' }));
+    Object.defineProperty(drop, 'clientY', { value: 56 });
+    fireEvent(within(day).getByRole('group', { name: '이담당 일정' }), drop);
+    expect(await screen.findByRole('alert')).toHaveTextContent("이담당 직원은 '피부관리' 서비스를 맡을 수 없어 옮길 수 없습니다.");
+    expect(screen.queryByRole('button', { name: '이동' })).not.toBeInTheDocument();
+    expect(putCalls(api)).toHaveLength(0);
+  });
+
+  it('새 예약 폼의 담당자 목록이 서비스 규칙을 따른다', async () => {
+    renderPage(withRules());
+    await block();
+    fireEvent.click(screen.getByRole('button', { name: '김담당 14:30 빈 시간' }));
+    // 빈 칸을 누르면 폼이 새 값으로 다시 만들어지므로 채워진 뒤에 서비스를 고른다.
+    await waitFor(() => expect(screen.getByLabelText('시작 시각')).toHaveValue(`${today}T14:30`));
+    fireEvent.change(screen.getByLabelText('서비스'), { target: { value: ids.service } });
+    const options = within(screen.getByLabelText('담당자')).getAllByRole('option').map((option) => option.textContent);
+    expect(options).toEqual(['선택', '김담당']);
+  });
+});
