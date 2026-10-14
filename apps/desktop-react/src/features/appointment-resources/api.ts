@@ -1,6 +1,7 @@
 import type { ApiClient } from '../../api/client';
 import {
   availabilitySchema, requirementsSavedSchema, requirementsSchema, resourceSchema, resourcesSchema, resourceSetupSchema, serviceListSchema, serviceSchema,
+  consumablesSchema,
   staffListSchema, staffSchema, timeOffSchema, workingHoursSavedSchema, type ResourceKind, type ResourceRequirement,
 } from './schemas';
 
@@ -38,6 +39,9 @@ export const resourceApi = {
     api.call('GET', `${base(organizationId)}/appointment-services/${serviceId}/resource-setup`, resourceSetupSchema),
   saveRequirements: (api: CallApi, organizationId: string, serviceId: string, input: { requirements: ResourceRequirement[]; expected_version: number; operation_id: string }) =>
     api.call('PUT', `${base(organizationId)}/appointment-services/${serviceId}/resource-requirements`, requirementsSavedSchema, input),
+  listConsumables: (api: CallApi, organizationId: string, serviceId: string) => api.call('GET', `${base(organizationId)}/appointment-services/${serviceId}/consumables`, consumablesSchema),
+  saveConsumables: (api: CallApi, organizationId: string, serviceId: string, items: { product_id: string; quantity: number }[]) =>
+    api.call('PUT', `${base(organizationId)}/appointment-services/${serviceId}/consumables`, consumablesSchema, { items }),
 
   listStaff: (api: CallApi, organizationId: string) => api.call('GET', `${base(organizationId)}/appointment-staff`, staffListSchema),
   createStaff: (api: CallApi, organizationId: string, input: { name: string }) => api.call('POST', `${base(organizationId)}/appointment-staff`, staffSchema, input),

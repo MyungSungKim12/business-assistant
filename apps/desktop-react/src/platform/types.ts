@@ -38,6 +38,8 @@ export interface Platform {
   installUpdate?: () => Promise<void>;
   /** 업데이트 다운로드 진행률을 받는다. 해제 함수를 돌려준다. */
   onUpdateProgress?: (handler: (progress: UpdateProgress) => void) => Promise<() => void>;
+  /** 앱이 시작 후 자동으로 확인한 새 업데이트를 받는다(데스크톱 전용). 해제 함수를 돌려준다. */
+  onUpdateAvailable?: (handler: (info: { version: string }) => void) => Promise<() => void>;
   notifyReady?: () => Promise<void>;
   exitApp?: () => Promise<void>;
   /** 트레이 메뉴의 로그아웃·종료 요청을 받는다(데스크톱 전용). 해제 함수를 돌려준다. */

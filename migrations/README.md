@@ -1,5 +1,7 @@
 # 인증·조직·구독 마이그레이션
 
+현재 저장소의 최신 순번은 **046**입니다. 사용자는 2026-10-14 기준 039~046까지 Supabase SQL Editor에서 실행했다고 보고했습니다. 이 안내서와 저장소는 해당 원격 DB를 직접 조회하지 않았으므로 RPC 권한·실제 업무 왕복은 아직 확인하지 않았습니다. 고객 병합(044)은 되돌릴 수 없으므로 테스트 데이터로 먼저 검증하세요.
+
 이 디렉터리의 SQL은 Supabase PostgreSQL에 인증, 조직 멤버십, 상품, 구독 권한의
 기본 구조를 추가합니다. 적용 순서는 다음과 같습니다.
 
@@ -138,3 +140,9 @@
 
 - `045_organization_members.sql`: 구성원 관리 RPC 4종(`list_organization_members`, `add_organization_member_by_email`, `set_organization_member_role`, `remove_organization_member`)을 추가한다. 테이블·정책 변경은 없다. `auth.users`를 읽는 보안 정의 함수이므로 적용 후 `authenticated`만 실행할 수 있는지(`anon`·`public` 권한 없음) 확인한다.
 - 적용 전에는 구성원 화면이 목록을 불러오지 못하므로 API(구성원 라우트)를 배포하기 전에 먼저 적용한다. 구성원 추가는 **이미 가입한 사용자의 이메일만** 지원한다(이메일 초대 발송 없음). 감사 로그(`member.*`)는 040이 필요하다.
+
+### 046 시술 소모품 재고 차감
+
+- `046_treatment_consumables.sql`: 예약 서비스에 조직별 실물 상품 소모량 기준을 저장하고, 시술 기록에 적용 서비스를 연결한다. 연결된 시술을 완료할 때 서비스 기준량을 재고에서 차감하고 `catalog_stock_ledger`에 `treatment_use` 원장을 같은 트랜잭션으로 기록한다. 재고가 부족하거나 서비스/상품 조직이 다르면 완료 요청 전체가 롤백된다. 기존 시술은 연결하지 않으며 소급 차감하지 않는다.
+- 기존 재고 원장의 `customer_return`·`adjustment` 이동 종류와 시술 이벤트의 `consult` 액션을 보존한다. 고객 반품이나 과거 조정 원장이 있어도 제약조건 재생성에 실패하지 않는다.
+- **045 다음에 적용한다.** 격리 PostgreSQL 검증은 `npm run test:treatment-consumables --prefix scripts/db-tests`로 실행한다. 이 검증은 운영 Supabase 적용이나 실제 동시 세션 검증을 대신하지 않는다. 로컬 코드에는 서비스별 레시피 관리, 시술 서비스 연결과 매출 화면의 기존 회원권 사용 진입점이 포함돼 있다. DB 적용과 실제 권한 왕복 검증은 별도 인수 항목이다.

@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { ConfirmDialog, NoticeHost } from '@business-assistant/react-ui';
 import { apiFailure } from '../appointment-resources/testApi';
 import { ServicePage } from './index';
-import { ORG, bodies, server, type Handlers } from './testServer';
+import { ORG, bodies, product, server, type Handlers } from './testServer';
 
 const service = (over: Record<string, unknown> = {}) => ({
   id: 's1', organization_id: ORG, name: '관리', duration_minutes: 60, buffer_minutes: 10, is_active: true, resource_version: 1, price_krw: 50000, category: '피부', service_version: 2, ...over,
@@ -141,6 +141,32 @@ describe('SVC-10 서비스 수정·비활성', () => {
     expect(screen.queryByRole('button', { name: '변경 저장' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '새 서비스' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '필수 자원 기준' })).toBeEnabled();
+  });
+});
+
+describe('TRT-11 서비스 소모품 기준', () => {
+  it('선택한 서비스의 소모량을 불러와 저장하고 실패해도 입력을 보존한다', async () => {
+    let rejectSave = true;
+    const kit = renderPage({
+      [details]: () => [service()],
+      'GET /catalog-products': () => [product()],
+      'GET /appointment-services/s1/consumables': () => [],
+      'PUT /appointment-services/s1/consumables': (call) => {
+        if (rejectSave) throw apiFailure(503);
+        return (call.body as { items: unknown[] }).items;
+      },
+    });
+    fireEvent.click(await screen.findByText('관리'));
+    fireEvent.click(screen.getByRole('button', { name: '시술 소모품 기준' }));
+    const dialog = await screen.findByRole('dialog', { name: '시술 소모품 기준' });
+    fireEvent.change(within(dialog).getByLabelText('보습 크림 시술 소모량'), { target: { value: '2' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: '기준 저장' }));
+    expect(await within(dialog).findByText('저장하지 못했습니다. 입력은 유지되며 다시 시도할 수 있습니다.')).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('보습 크림 시술 소모량')).toHaveValue(2);
+    rejectSave = false;
+    fireEvent.click(within(dialog).getByRole('button', { name: '기준 저장' }));
+    await waitFor(() => expect(bodies(kit.calls, 'PUT /appointment-services/s1/consumables')).toHaveLength(2));
+    expect(bodies(kit.calls, 'PUT /appointment-services/s1/consumables')[1]).toEqual({ items: [{ product_id: 'p1', quantity: 2 }] });
   });
 });
 

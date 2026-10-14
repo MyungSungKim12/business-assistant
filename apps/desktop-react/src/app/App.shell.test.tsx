@@ -135,3 +135,35 @@ describe('앱 셸: 유휴 자동 잠금(SEC-08)', () => {
     expect(screen.queryByRole('dialog', { name: '화면이 잠겼습니다' })).not.toBeInTheDocument();
   });
 });
+
+describe('앱 셸: 사용성 설정(UX-05)·새 버전 알림(OPS-04)', () => {
+  const prefsKey = 'business-assistant.prefs.11111111-1111-4111-8111-111111111111';
+
+  it('저장된 시작 화면으로 로그인 직후 이동하고, 알림 센터를 끄면 숨긴다', async () => {
+    localStorage.setItem(prefsKey, JSON.stringify({ startMenu: 'customers', notificationsEnabled: false, fontScale: 1.1 }));
+    render(<App services={services()} />); await login();
+    await waitFor(() => expect(screen.getByRole('button', { name: '고객관리' })).toHaveAttribute('aria-current', 'page'));
+    expect(screen.queryByRole('button', { name: /알림/ })).not.toBeInTheDocument();
+    expect(document.documentElement.style.zoom).toBe('1.1');
+  });
+
+  it('자동 확인된 새 버전을 알리고, 알림을 끄면 구독하지 않는다', async () => {
+    let handler: ((info: { version: string }) => void) | undefined;
+    const svc = services();
+    (svc.platform as unknown as Record<string, unknown>).onUpdateAvailable = vi.fn(async (fn: (info: { version: string }) => void) => { handler = fn; return () => undefined; });
+    render(<App services={svc} />); await login();
+    await waitFor(() => expect(handler).toBeDefined());
+    act(() => handler!({ version: '0.3.0' }));
+    expect(await screen.findByText(/새 버전 0\.3\.0/)).toBeInTheDocument();
+  });
+
+  it('새 버전 알림 설정이 꺼져 있으면 이벤트를 구독하지 않는다', async () => {
+    localStorage.setItem(prefsKey, JSON.stringify({ updateNotice: false }));
+    const svc = services();
+    const subscribe = vi.fn(async () => () => undefined);
+    (svc.platform as unknown as Record<string, unknown>).onUpdateAvailable = subscribe;
+    render(<App services={svc} />); await login();
+    await screen.findAllByText('베이지 살롱');
+    expect(subscribe).not.toHaveBeenCalled();
+  });
+});

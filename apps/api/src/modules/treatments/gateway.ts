@@ -11,7 +11,7 @@ export const treatmentMessages = {
 } as const;
 const unavailable = treatmentMessages[503];
 
-const treatmentSelect = 'id,organization_id,customer_id,treatment_date,treatment_name,category,practitioner,notes,amount,next_visit_date,status,version,started_at,ended_at,consultation_goal,consultation_plan,cautions_snapshot,cautions_acknowledged_by,cautions_acknowledged_at';
+const treatmentSelect = 'id,organization_id,customer_id,treatment_date,treatment_name,category,practitioner,notes,amount,next_visit_date,status,version,started_at,ended_at,consultation_goal,consultation_plan,cautions_snapshot,cautions_acknowledged_by,cautions_acknowledged_at,appointment_service_id';
 const photoSelect = 'id,organization_id,customer_id,treatment_id,storage_path,thumbnail_path,phase,content_type,caption,sort_order,taken_at';
 const eventSelect = 'id,actor_id,action,reason,occurred_at,before_data,after_data';
 
@@ -39,6 +39,16 @@ export function createTreatmentGateway(config: ServerConfig, fetcher: typeof fet
         p_organization_id: organizationId, p_customer_id: customerId, p_treatment_id: treatmentId,
         p_action: mutation.action, p_expected_version: mutation.expected_version, p_operation_id: mutation.operation_id,
         p_reason: mutation.reason, p_values: mutation.values ?? {},
+      }, z.array(treatmentRow));
+      assertOrganization(rows, organizationId, unavailable);
+      if (!rows[0]) throw new ApiFailure(404, treatmentMessages[404]);
+      return rows[0];
+    }),
+
+    setService: (token: string, organizationId: string, customerId: string, treatmentId: string, serviceId: string | null, expectedVersion: number, operationId: string): Promise<TreatmentRow> => guard(async () => {
+      const rows = await rest.rpc(token, 'set_treatment_service', {
+        p_organization_id: organizationId, p_customer_id: customerId, p_treatment_id: treatmentId,
+        p_service_id: serviceId, p_expected_version: expectedVersion, p_operation_id: operationId,
       }, z.array(treatmentRow));
       assertOrganization(rows, organizationId, unavailable);
       if (!rows[0]) throw new ApiFailure(404, treatmentMessages[404]);

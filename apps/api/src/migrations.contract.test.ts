@@ -396,4 +396,26 @@ describe('migrations contract', () => {
     has(m, 'new.organization_id is distinct from old.organization_id');
     has(m, 'new.created_by is distinct from old.created_by');
   });
+  it('TRT-11 treatment consumables are tenant-scoped and atomically deducted', () => {
+    const m = readLower('046_treatment_consumables.sql');
+    const catalog = readLower('027_catalog_sales.sql');
+    for (const token of [
+      'create table if not exists public.appointment_service_consumables',
+      'foreign key (organization_id, service_id)',
+      'foreign key (organization_id, product_id)',
+      "kind='product' and is_active",
+      'create or replace function public.set_treatment_service',
+      'create trigger treatment_consumables_on_complete',
+      "movement_kind='treatment_use'",
+      "movement_kind='customer_return'",
+      "movement_kind in ('adjustment','supplier_return','disposal','stocktake')",
+      'for update',
+      'insufficient product stock',
+    ]) has(m, token);
+    has(m, "array['owner','admin']::text[]");
+    has(m, 'revoke all on function public.set_treatment_service(uuid,uuid,uuid,uuid,integer,uuid)');
+    has(m, "'consult'");
+    has(m, "'service_link'");
+    has(catalog, 'create trigger immutable before update or delete on public.catalog_stock_ledger');
+  });
 });

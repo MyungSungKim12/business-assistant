@@ -9,6 +9,8 @@ import { ConsultationDialog } from './ConsultationDialog';
 import { EventsDialog } from './EventsDialog';
 import { SaleDraftDialog } from './SaleDraftDialog';
 import { TreatmentPhotos } from './TreatmentPhotos';
+import { resourceApi } from '../appointment-resources/api';
+import type { AppointmentServiceRow } from '../appointment-resources/schemas';
 import {
   ALL_CATEGORIES, consultationReady, emptyForm, errorStatus, filterCustomers, filterRecords, formDirty, formFromRecord, isLocked, localTime, newOperationId,
   sortRecords, statusLabel, todayIso, validateForm, type FormState, type RecordFilters,
@@ -48,6 +50,7 @@ export function TreatmentPage({ api, organizationId, readOnly, initialCustomerId
   const [customerQuery, setCustomerQuery] = useState('');
   const [customerId, setCustomerId] = useState<string | null>(null);
   const [records, setRecords] = useState<Treatment[]>([]);
+  const [services, setServices] = useState<AppointmentServiceRow[]>([]);
   const [recordsState, setRecordsState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [recordId, setRecordId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(() => emptyForm());
@@ -122,6 +125,7 @@ export function TreatmentPage({ api, organizationId, readOnly, initialCustomerId
     } catch { setCustomersState('error'); }
   }, [api, organizationId, initialCustomerId, selectCustomer]);
   useEffect(() => { void loadCustomers(); return () => { generation.current += 1; }; }, [loadCustomers]);
+  useEffect(() => { void resourceApi.listServiceDetails(api, organizationId).then(setServices).catch(() => setServices([])); }, [api, organizationId]);
 
   const openCustomer = async (id: string) => {
     if (id === customerId || saving) return;
@@ -221,6 +225,18 @@ export function TreatmentPage({ api, organizationId, readOnly, initialCustomerId
     if (action === 'cancel') { setDialog('cancel'); return; }
     await mutate(action, null, '', action === 'start' ? '시술을 시작했습니다.' : '시술을 완료했습니다.');
   }
+
+  async function linkService(serviceId: string) {
+    if (!record || !customerId || !ready || dirty || !['draft', 'in_progress'].includes(record.status)) return;
+    setSaving(true);
+    try {
+      const saved = await treatmentApi.setService(api, organizationId, customerId, record.id, serviceId || null, record.version, newOperationId());
+      setRecords((current) => current.map((item) => item.id === saved.id ? saved : item));
+      setMessage({ tone: 'info', text: serviceId ? '서비스를 연결했습니다. 시술 완료 시 설정된 소모품이 차감됩니다.' : '서비스 연결을 해제했습니다.' });
+    } catch (error) {
+      setMessage({ tone: 'error', text: (error as { status?: number }).status === 409 ? '시술 기록이 변경되었습니다. 새로고침 후 다시 연결하세요.' : '서비스 연결을 저장하지 못했습니다.' });
+    } finally { setSaving(false); }
+  }
   async function submitCancel() {
     const trimmed = cancelReason.trim();
     if (!trimmed || trimmed.length > 2000) { setMessage({ tone: 'error', text: '중단 사유는 1~2,000자로 입력하세요.' }); return; }
@@ -282,6 +298,7 @@ export function TreatmentPage({ api, organizationId, readOnly, initialCustomerId
       <div className="treatment-lifecycle" aria-label="시술 상태">
         <span className="treatment-lifecycle__state">{stateText}</span>
         <div className="row-actions">
+          {record && <label>적용 서비스 <Select aria-label="시술 적용 서비스" value={record.appointment_service_id ?? ''} disabled={!ready || dirty || !['draft', 'in_progress'].includes(status)} onChange={(value) => void linkService(value)} options={[{ value: '', label: '연결 안 함' }, ...services.filter((service) => service.is_active).map((service) => ({ value: service.id, label: service.name }))]} /></label>}
           <button type="button" disabled={!record || busy} onClick={() => void openConsultation()}>상담 기록</button>
           {documentsPanel && <button type="button" disabled={!record || busy || dirty} onClick={() => !blockedByDraft('문서를 열어주세요.') && setDialog('documents')}>문서 발행·이력</button>}
           <button type="button" disabled={!record || busy || !locked || correcting || dirty} onClick={() => setDialog('sale')}>결제 초안</button>

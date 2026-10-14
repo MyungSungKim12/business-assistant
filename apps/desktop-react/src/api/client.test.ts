@@ -52,6 +52,25 @@ describe('ApiClient', () => {
     expect(JSON.parse(requests[0].body ?? '{}')).toEqual({ email: 'owner@example.com', password: 'password' });
   });
 
+  it('lists audit events with filters and validates the cursor page response', async () => {
+    const requests: HttpRequest[] = [];
+    const api = new ApiClient(platform(async (request) => {
+      requests.push(request);
+      if (request.path === '/auth/login') return json(200, session());
+      return json(200, { items: [{ id: '33333333-3333-4333-8333-333333333333', organization_id: ORG_ID,
+        actor_id: USER_ID, action: 'customer.delete', target_type: 'customer', target_id: '44444444-4444-4444-8444-444444444444',
+        metadata: { archived: true }, request_id: 'request-1', ip: null, source: 'api_user', created_at: '2026-10-14T01:00:00Z' }], next_cursor: null });
+    }));
+    await api.login('owner@example.com', 'password');
+
+    const result = await api.listAuditEvents(ORG_ID, { from: '2026-10-01T00:00:00+09:00', action: 'customer.delete', limit: 25 });
+
+    expect(result.items).toHaveLength(1);
+    expect(requests[1].path).toContain(`/organizations/${ORG_ID}/audit-events?`);
+    expect(new URLSearchParams(requests[1].path.split('?')[1])).toEqual(new URLSearchParams({ from: '2026-10-01T00:00:00+09:00', action: 'customer.delete', limit: '25' }));
+    expect(requests[1].headers.Authorization).toBe('Bearer access-1');
+  });
+
   it('refreshes concurrent unauthorized requests once and retries with the new bearer token', async () => {
     let refreshes = 0;
     let protectedCalls = 0;

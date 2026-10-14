@@ -9,7 +9,7 @@ beforeEach(() => {
 describe('preferences', () => {
   it('기본값은 모두 끔이다', () => {
     expect(readPreferences('u1')).toEqual(DEFAULT_PREFERENCES);
-    expect(DEFAULT_PREFERENCES).toEqual({ maskPhone: false, idleLockMinutes: 0 });
+    expect(DEFAULT_PREFERENCES).toEqual({ maskPhone: false, idleLockMinutes: 0, fontScale: 1, startMenu: 'dashboard', notificationsEnabled: true, updateNotice: true });
   });
 
   it('사용자별로 저장하고 다시 불러온다', () => {
@@ -17,7 +17,7 @@ describe('preferences', () => {
     store.load('u1');
     usePreferences.getState().setMaskPhone(true);
     usePreferences.getState().setIdleLockMinutes(10);
-    expect(JSON.parse(localStorage.getItem(preferencesKey('u1'))!)).toEqual({ maskPhone: true, idleLockMinutes: 10 });
+    expect(JSON.parse(localStorage.getItem(preferencesKey('u1'))!)).toMatchObject({ maskPhone: true, idleLockMinutes: 10 });
     usePreferences.getState().load('u2');
     expect(usePreferences.getState()).toMatchObject({ maskPhone: false, idleLockMinutes: 0 });
     usePreferences.getState().load('u1');
@@ -35,6 +35,18 @@ describe('preferences', () => {
     expect(sanitizePreferences(null)).toEqual(DEFAULT_PREFERENCES);
     localStorage.setItem(preferencesKey('u1'), '{broken');
     expect(readPreferences('u1')).toEqual(DEFAULT_PREFERENCES);
+  });
+
+  it('화면·알림 설정도 사용자별로 저장하고 잘못된 값은 기본값으로 바로잡는다', () => {
+    usePreferences.getState().load('u1');
+    usePreferences.getState().setFontScale(1.25);
+    usePreferences.getState().setStartMenu('sales');
+    usePreferences.getState().setNotificationsEnabled(false);
+    usePreferences.getState().setUpdateNotice(false);
+    expect(JSON.parse(localStorage.getItem(preferencesKey('u1'))!)).toEqual({ maskPhone: false, idleLockMinutes: 0, fontScale: 1.25, startMenu: 'sales', notificationsEnabled: false, updateNotice: false });
+    usePreferences.getState().load('u2');
+    expect(usePreferences.getState()).toMatchObject({ fontScale: 1, startMenu: 'dashboard', notificationsEnabled: true });
+    expect(sanitizePreferences({ fontScale: 3, startMenu: 'admin' })).toEqual(DEFAULT_PREFERENCES);
   });
 
   it('저장소가 막혀 있어도 오류 없이 동작한다', () => {

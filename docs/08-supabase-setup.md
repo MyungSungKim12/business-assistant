@@ -53,25 +53,9 @@ curl.exe -X POST "http://127.0.0.1:8000/api/v1/admin/organizations/<organization
 
 ## 3 마이그레이션 적용
 
-Supabase Dashboard의 SQL Editor 또는 팀에서 사용하는 Supabase CLI 마이그레이션 절차로
-다음 SQL 파일을 순서대로 적용합니다.
+Supabase Dashboard의 SQL Editor에서 저장소 `migrations/`의 파일을 번호 순서대로 적용합니다. 현재 SQL은 **001~045**입니다. `015_seed_customer_demo.sql`은 명시적인 데모 DB 전용이므로 실고객/운영 DB에는 실행하지 않습니다.
 
-1. `migrations/001_auth_entitlements.sql`
-2. `migrations/002_seed_entitlements.sql`
-3. `migrations/003_subscription_and_organization_hardening.sql`
-4. `migrations/004_admin_subscription_rpc.sql`
-5. `migrations/005_crm_customers.sql`
-6. `migrations/006_tasks.sql`
-7. `migrations/007_documents.sql`
-8. `migrations/008_finance_transactions.sql`
-9. `migrations/009_file_assets.sql`
-10. `migrations/010_authenticated_grants.sql`
-11. `migrations/011_organization_insert_policy.sql`
-12. `migrations/012_create_organization_rpc.sql`
-
-적용 대상이 개발 프로젝트인지 먼저 확인합니다. SQL은 `profiles`, `organizations`,
-`memberships`, 상품·기능·구독 테이블과 기본 BASIC, STANDARD, PRO 권한 데이터를
-만듭니다. 상세 내용은 [마이그레이션 안내](https://github.com/MyungSungKim12/business-assistant/blob/main/migrations/README.md)를 확인하세요.
+각 파일의 선행 조건, 기존 DB 업그레이드 경로, 039~045 기능 설명과 비가역 작업 주의는 [마이그레이션 적용 기준](../migrations/README.md)을 단일 출처로 사용하세요. 적용 대상 프로젝트를 확인하고, 이미 적용한 파일을 반복 실행하거나 중간 번호를 건너뛰지 않습니다. 현재 사용자는 039~045 적용을 보고했지만 이 저장소에서는 운영 DB에 직접 연결해 독립 확인하지 않았습니다.
 
 모든 `public` 애플리케이션 테이블에는 RLS를 활성화합니다. RLS는 publishable key를
 사용하는 클라이언트의 조직 간 데이터 접근을 제한하는 최후의 경계입니다. RLS를 끄거나
@@ -98,11 +82,10 @@ corepack pnpm --filter @business-assistant/api exec vitest run src/config.test.t
 powershell -ExecutionPolicy Bypass -File scripts/check.ps1
 ```
 
-서버와 데스크톱 앱을 별도 PowerShell 창에서 실행합니다.
+서버와 Native 데스크톱 앱은 저장소 루트에서 한 명령으로 실행합니다.
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts/run-server.ps1
-powershell -ExecutionPolicy Bypass -File scripts/run-react-web.ps1
+powershell -ExecutionPolicy Bypass -File scripts/run-app.ps1
 ```
 
 `APP_SUPABASE_URL` 또는 `APP_SUPABASE_PUBLISHABLE_KEY`가 비어 있으면 인증 API는
@@ -126,4 +109,4 @@ powershell -ExecutionPolicy Bypass -File scripts/run-react-web.ps1
 Supabase Dashboard의 Auth Providers에서 Confirm email 설정과 `SITE_URL` 및 허용된 redirect URL을
 개발·운영 환경별로 확인하세요. 확인 메일 발송에는 SMTP 구성이 필요하며, 운영 환경에는 신뢰할 수
 있는 SMTP 공급자를 사용합니다. 확인 링크·토큰·서비스 키를 로그나 오류 화면에 표시하지 마세요.
-`migrations/009_file_assets.sql`은 비공개 `business-files` Storage 버킷과 조직 경계 RLS 정책을 추가합니다. 파일 기능을 사용하려면 반드시 009까지 실행하세요. 버킷은 public으로 변경하지 말고, desktop 앱에 service-role 키를 넣지 마세요.
+`migrations/009_file_assets.sql`은 비공개 `business-files` Storage 버킷과 조직 경계 RLS 정책을 추가합니다. 파일 기능을 사용하려면 반드시 009까지 실행하세요. 버킷은 public으로 변경하지 말고, 로그인 사용자 토큰과 RLS 정책을 사용하세요. 서비스 키는 플랫폼 관리자 API만 사용하며 데스크톱에 넣지 않습니다.

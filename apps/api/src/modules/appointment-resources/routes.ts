@@ -27,6 +27,9 @@ const requirementsRequest = z.object({
   requirements: z.array(z.object({ kind, quantity: z.number().int().min(1).max(10) }).strict()).max(2),
   expected_version: version, operation_id: operationId,
 }).strict().refine((value) => new Set(value.requirements.map((item) => item.kind)).size === value.requirements.length, 'Resource requirement kinds must be unique');
+const consumablesRequest = z.object({
+  items: z.array(z.object({ product_id: z.uuid(), quantity: z.number().int().min(1).max(1_000_000) }).strict()).max(100),
+}).strict().refine((value) => new Set(value.items.map((item) => item.product_id)).size === value.items.length, 'Consumable products must be unique');
 
 /** "HH:MM" 또는 "HH:MM:SS"를 "HH:MM:SS"로 통일한다(Python time → JSON 직렬화와 같다). */
 const clock = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/).transform((value) => (value.length === 5 ? `${value}:00` : value));
@@ -126,6 +129,17 @@ export function registerAppointmentResourceRoutes(app: FastifyInstance, organiza
     const input = body(requirementsRequest, request);
     await authorize(c.token, c.params.organizationId, true);
     return c.gateway.replaceRequirements(c.token, c.params.organizationId, c.params.serviceId, input);
+  });
+  app.get(`${base}/appointment-services/:serviceId/consumables`, async (request) => {
+    const c = context(request, { serviceId: z.uuid() });
+    await authorize(c.token, c.params.organizationId, false);
+    return c.gateway.listConsumables(c.token, c.params.organizationId, c.params.serviceId);
+  });
+  app.put(`${base}/appointment-services/:serviceId/consumables`, async (request) => {
+    const c = context(request, { serviceId: z.uuid() });
+    const input = body(consumablesRequest, request);
+    await authorize(c.token, c.params.organizationId, true);
+    return c.gateway.replaceConsumables(c.token, c.params.organizationId, c.params.serviceId, input.items);
   });
 
   app.get(`${base}/appointment-resources`, async (request) => {

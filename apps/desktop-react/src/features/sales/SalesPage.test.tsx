@@ -27,6 +27,7 @@ function cartServer(options: { visits?: unknown[]; failFirst?: { path: RegExp; e
   const handlers = {
     'GET /visits': () => state.visits,
     'GET /sale-cart-drafts': () => [draft()],
+    'GET /customers/:id/wallets': () => [],
     'POST /customers/:id/visits': (_b: unknown, call: Call) => guarded(call, () => { state.visits = [visit()]; return current(); }),
     'GET /visits/:id/sale-cart': () => current(),
     'POST /visits/:id/sale-cart/lines/treatment-draft': (_b: unknown, call: Call) => guarded(call, () => { state.lines.push(cartLine()); return bump(); }),
@@ -54,6 +55,18 @@ const ready = async () => { await screen.findByText('김고객'); };
 
 describe('SalesPage 방문 장바구니', () => {
   beforeEach(() => window.localStorage.clear());
+
+  it('활성 시술 항목이 있는 방문에서 회원권 사용 창을 연다', async () => {
+    const { user } = setup();
+    await ready();
+    await user.click(screen.getByRole('button', { name: /김고객/ }));
+    await user.click(screen.getByRole('button', { name: '새 방문 시작' }));
+    await screen.findByText(/장바구니를 저장했습니다/);
+    await user.click(screen.getByRole('button', { name: '시술 초안 담기 보톡스 시술' }));
+    await user.click(screen.getByRole('button', { name: '회원권 사용' }));
+    expect(await screen.findByRole('dialog', { name: '방문 시술에 회원권 사용' })).toBeInTheDocument();
+    expect(await screen.findAllByText('사용 가능한 회원권이 없습니다.')).toHaveLength(2);
+  });
 
   it('방문 시작 → 초안·상품 담기 → 수정 → 할인 → 검토 완료까지 구성한다', async () => {
     const { user, calls } = setup();

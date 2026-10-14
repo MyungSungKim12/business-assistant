@@ -8,7 +8,7 @@
 powershell -ExecutionPolicy Bypass -File .\scripts\check.ps1
 ```
 
-Qt 데스크톱 테스트와 서버·공통 테스트는 환경 문제를 분리하기 위해 별도 프로세스로 실행할 수 있습니다. DB 변경은 `scripts/db-tests`의 격리 시나리오와 다른 조직 접근 거절을 함께 확인합니다.
+API·React UI와 Rust 테스트는 `scripts/check.ps1`에서 실행합니다. DB 변경은 `scripts/db-tests`의 격리 시나리오와 다른 조직 접근 거절을 함께 확인합니다. 로컬 테스트는 실 Supabase 인수를 대체하지 않습니다.
 
 ## 문서 로컬 실행
 

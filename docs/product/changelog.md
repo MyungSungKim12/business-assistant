@@ -1,3 +1,34 @@
+## 2026-10-14 — 앱 사용성 묶음: UX-05 설정 확장, OPS-04 새 버전 알림, UX-04 영수증 PDF
+
+- 설정에 글자 크기(기본·1.1배·1.25배, 문서 전체 배율), 시작 화면(상단 주 메뉴 중 선택), 알림 센터 on/off, 새 버전 알림 on/off를 추가했다. 모두 로그인한 사용자별로 이 기기(localStorage)에 저장하며 잘못된 값은 기본값으로 바로잡는다. 시작 화면은 로그인 직후 한 번만 적용한다.
+- 앱이 시작 후 자동으로 확인한 `update:available` 이벤트를 받아 안내 알림을 띄운다(데스크톱 전용, 설정으로 끌 수 있음). 서버 확인 자체를 끄는 옵션(Rust)과 signCommand는 아직이다.
+- 수납 창에 영수증 PDF 저장을 추가했다(청구 항목·할인·수납·환불·미수와 내역 코드). 현금영수증·세금계산서를 대신하지 않는다는 문구를 넣었다. 프린터 직접 출력은 PDF를 열어 인쇄하는 방식이다.
+- 검증: 설정·앱 셸·영수증 스펙 단위 테스트 추가, 매출·앱 관련 React 테스트 190개 통과. 실제 Tauri 창에서의 글자 크기(CSS zoom)와 PDF 저장은 이 PC의 앱 제어 정책으로 앱을 실행하지 못해 화면 확인 전이다.
+
+## 2026-10-14 — TRT-11 시술 소모품·회원권 연결 (진행 중)
+
+- 시술 서비스별 실물 상품 소모량을 설정하고, 시술 기록에 서비스 연결을 관리하는 DB/API/화면 경로를 추가했다. 시술 완료 시 재고와 `treatment_use` 원장을 같은 DB 트랜잭션으로 반영하며 재고 부족이면 완료도 롤백한다.
+- 046의 시술 이벤트 제약조건이 기존 `consult` 기록을 허용하지 않아 적용이 실패하는 문제를 수정했다. 기존 이벤트 종류(`edit`, `correct`, `start`, `complete`, `cancel`, `consult`)를 모두 유지하고 `service_link`를 추가한다. 과거 `consult` 이벤트가 있는 상태로 014→016→017→046을 실행하는 격리 PostgreSQL 회귀 테스트를 추가했다.
+- 재고 원장 제약조건이 031의 `customer_return` 이동을 누락하고 과거 `adjustment`도 보존하지 않아 046 적용 중 실패할 수 있어 두 종류를 모두 허용하도록 수정했다. 기존 반품·조정 원장이 있는 상태에서 migration 적용을 검증하는 회귀 사례를 추가했다.
+- 기존 `WalletUseDialog`를 방문 매출 장바구니에서 열 수 있게 연결했다. 금액권·횟수권 차감은 기존 결제 원장과 멱등성 검사를 사용한다.
+- 격리 PostgreSQL에서 migration 046과 시술 상태 RPC를 실행하는 테스트를 추가했다. 이 과정에서 서비스 소모품 저장 RPC 응답의 모호한 `product_id` 참조를 발견해 테이블 별칭으로 수정했다. 부족 재고 시 완료·재고·원장이 모두 롤백되는 경로, 조직/역할 거부, 멱등 재시도, 미연결 과거 시술 미차감을 검증한다.
+- 기능 검증: API 집중 테스트 7개 파일 264개 통과, 시술·서비스·매출 관련 React 테스트 46개 통과, `npm run test:treatment-consumables --prefix scripts/db-tests` 통과, API TypeScript 빌드와 React/Tauri 프런트 빌드 통과. 전체 테스트는 실행하지 않았다.
+- 사용자가 046을 Supabase에 성공 적용했다고 보고했다. 코드 측에서는 과거 `consult` 이벤트 및 `customer_return`·`adjustment` 원장이 있는 격리 PostgreSQL 검증을 추가했다. 최신 집중 재검증은 API 107개·화면 46개 통과다. 실계정 역할별 완료/재고 원장 흐름은 아직 미검증이므로 `in-progress`다.
+
+## 2026-10-14 — SEC-10 감사 로그 조회 (진행 중)
+
+- 기존 owner/admin 전용 감사 조회 API를 앱의 더보기 → 관리 메뉴에 연결했다. 날짜/action 필터, cursor 페이지 이동, 상세 metadata, 오류 재시도와 조직 전환 시 이전 기록 제거를 추가했다.
+- 감사 행은 읽기 전용이며 수정·삭제 UI는 없다. 기본 보관은 append-only 무기한, 자동 파기 없음으로 문서화했다. 조직별 법률·계약상 보관 기간과 DB 비용 검토는 운영자가 정해야 하며, 확정 전에는 파기 기능을 만들지 않는다.
+- 집중 검증: 감사 화면·라우팅·API client 테스트 36개, API 감사 접근 테스트 22개, React production build와 API TypeScript build 통과. 전체 테스트는 실행하지 않았다. 실계정 역할별 화면·RLS 왕복은 사용자 확인 전이다.
+
+## 2026-10-14 — React/Node 전환 후 문서 정리
+
+- README, 제품 개요·아키텍처, 개발 안내, 메뉴·로드맵·Supabase 안내를 현재 React/Tauri + Node/Fastify 기준으로 갱신했다. 앱 실행 기본 경로를 `run-app.cmd`로 통일했다.
+- 루트에 남아 있던 Python 시대의 5개 모듈 구현 보고서를 `docs/archive/legacy-python-reports/`로 이동했다. 보고서 내용과 상세 설계·계획·변경 이력은 보존하고, 현재 가이드 사이트에서는 과거 보고서를 제외한다.
+- 저장소에서 실행 가능한 Python/PySide6 제품 소스는 이미 제거된 상태를 확인했다. 문서용 Python 의존성(`requirements-docs.txt`)과 과거 검증 기록은 현행 제품 코드가 아니므로 유지했다.
+- Supabase 039~045 적용은 사용자가 2026-10-14 보고한 상태로 기록했다. 원격 DB 접속 검증은 수행하지 않았다.
+- 문서 검증: `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/docs/validate-guide.ps1`, `.venv-docs/Scripts/python.exe -m mkdocs build --strict`, `git diff --check` 통과. 앱 테스트와 실제 Supabase 연결 검증은 실행하지 않았다.
+
 ## 2026-10-13 — 설치본의 서버 주소 설정과 브랜치 정리
 
 - 설치된 앱(릴리스 빌드)이 접속할 서버 주소를 빌드에 박아 넣을 수 있게 했다. 우선순위는 실행 환경변수 `BUSINESS_ASSISTANT_API_BASE` → 빌드 기본값 `BUSINESS_ASSISTANT_API_BASE_DEFAULT` → (개발 빌드만) 로컬 주소이며, 배포 빌드에서 주소가 없으면 안내 오류를 낸다. 이전에는 설치본이 `http://127.0.0.1:8000`을 쓰려다 HTTPS 규칙에 막혀 시작하지 못했다.

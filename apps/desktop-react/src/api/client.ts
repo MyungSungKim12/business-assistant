@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import type { Platform } from '../platform/types';
 import { ApiError, apiError } from './errors';
+import { auditEventsPageSchema } from './schemas';
 import { organizationSchema, signUpResultSchema, appointmentSchema, appointmentsSchema, appointmentStaffListSchema, appointmentServiceListSchema, operationRecordSchema, operationRecordsSchema, customerActivitySchema, customerActivitiesSchema, customerPhotoSchema, customerPhotosSchema, customerSchema, customersSchema, entitlementSchema, organizationsSchema, sessionSchema, signedPhotoSchema, taskSchema, tasksSchema, type Customer, type CustomerActivity, type CustomerPhoto, type Entitlement, type Organization, type Session, type SignedPhoto, type Task, type Appointment, type AppointmentStaff, type AppointmentService, type OperationRecord } from './schemas';
 import type { HttpRequest, HttpResponse } from './transport';
 
@@ -71,6 +72,17 @@ export class ApiClient {
 
   listOrganizations(): Promise<Organization[]> {
     return this.authed({ method: 'GET', path: '/organizations', headers: {} }, organizationsSchema);
+  }
+
+  listAuditEvents(organizationId: string, filters: { from?: string; to?: string; action?: string; limit?: number; cursor?: string } = {}) {
+    const query = new URLSearchParams();
+    for (const key of ['from', 'to', 'action', 'limit', 'cursor'] as const) {
+      const value = filters[key];
+      if (value !== undefined && value !== '') query.set(key, String(value));
+    }
+    const serialized = query.toString();
+    const suffix = serialized ? `?${serialized}` : '';
+    return this.call('GET', `/organizations/${organizationId}/audit-events${suffix}`, auditEventsPageSchema);
   }
 
   getEntitlements(organizationId: string): Promise<Entitlement> {

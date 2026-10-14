@@ -1,6 +1,10 @@
 # 뷰티 매장 운영 제품 계획
 
-기준일: 2026-09-17. HandSOS 유형의 고객·예약·매출 운영 흐름과 ERP의 재고·직원·정산을 연결하는 제품 요구사항이다. 특정 외부 제품의 현재 기능을 조사하거나 동일 구현을 보증하는 문서는 아니다. 기존 범용 Business Assistant를 기반으로 확장하며, 아래 12개 메뉴는 **목표 정보구조**이고 현재 내비게이션과 일치하지 않는다.
+기준일: 2026-10-14. 이 문서는 뷰티 매장의 고객·예약·시술과 ERP의 매출·회원권·재고·직원·정산을 연결하는 제품 요구사항 및 진행 상태의 기준점이다. HandSOS·LCID 등 참고 제품의 현재 기능을 조사하거나 동일 구현을 보증하지 않는다.
+
+현재 코드는 **React 19 + Tauri 2 데스크톱 앱, Node.js/TypeScript + Fastify API, Supabase Auth/PostgreSQL/Storage**를 사용한다. PySide6 클라이언트와 Python FastAPI 업무 서버는 제거됐다. 개발 실행은 `run-app.cmd`가 API와 Tauri 창을 함께 시작한다. 브라우저 미리보기는 UI 개발용이다.
+
+구현된 업무 화면은 대시보드, 할 일, 고객, 예약, 시술, 매출, 회원권, 재고, 서비스, 직원, 정산, 문서, 파일, 경영, 구성원, 플랫폼 구독이다. 구현 여부와 운영 인수 여부는 다르다. 2026-10-13 인수 기록 기준으로 실 Supabase의 주요 쓰기·복구 흐름, Windows 설치·업데이트는 추가 인수가 필요하다. [현재 인수인계](handoff-2026-10-13.md)와 [React/Tauri 기능 대응표](react-tauri-parity.md)를 확인한다.
 
 ## 메뉴별 상세 계획
 
@@ -19,11 +23,21 @@
 | 11 | [고객 이슈·사후관리](menus/11-customer-issues-aftercare.md) | CARE | 담당자·기한 있는 후속 관리 |
 | 12 | [분석·경영 실험실](menus/12-management-lab.md) | LAB | 재현 가능한 지표와 가정 기반 시뮬레이션 |
 
+## 현재 구현·남은 작업
+
+- **현재 진행 기준:** [개선·추가 작업 목록](backlog.md)
+- **실환경 검증과 출시 전 남은 일:** [인수인계](handoff-2026-10-13.md)
+- **기술 전환·화면별 대응:** [React/Tauri 기능 대응표](react-tauri-parity.md)
+- **최근 변경:** [변경 이력](changelog.md)
+- **사용자·관리자·개발자 안내:** [통합 가이드](../index.md)
+
+우선순위는 신규 메뉴 확장보다 테스트 조직에서 고객·예약·상담·시술·수납·재고·환불·마감의 전체 흐름을 인수하고, 배포 API와 서명된 Native 설치본을 검증하는 것이다. P2에는 시술 소모품/회원권 차감(TRT-11)과 감사 로그 조회·보관 정책(SEC-10)이 남아 있다. 자세한 제한은 각 기능 문서와 backlog를 따른다.
+
 ## 공통 지원 모듈
 
-[Node/TypeScript API 전환 설계](../superpowers/specs/2026-10-13-node-api-migration-design.md): Python FastAPI를 Fastify 기반 Node API로 단계적으로 교체하는 API-001 계획. 현재 상태는 `in-progress`이며, Python 제거는 전체 API 동등성 및 Windows 인수 이후에만 수행한다.
+[Node/TypeScript API 전환 설계](../superpowers/specs/2026-10-13-node-api-migration-design.md): 전환 당시의 목표와 결정 기록. 실제 전환은 완료됐으며 현재 동작 기준은 `apps/api`와 [기능 대응표](react-tauri-parity.md)다.
 
-[React/Tauri 데스크톱 전환 설계](../superpowers/specs/2026-10-12-react-tauri-desktop-migration-design.md): 기존 PySide6를 백업으로 유지하고 LCID에서 제품에 맞는 UI·운영 기능을 선별 이식하는 UI-002 계획. 설계 승인 후 [고객관리 수직 기능 구현 계획](../superpowers/plans/2026-10-12-react-tauri-customer-vertical-slice.md)을 작성했으며 실제 구현 전이다.
+[React/Tauri 데스크톱 전환 설계](../superpowers/specs/2026-10-12-react-tauri-desktop-migration-design.md): 전환 당시의 목표·결정 기록. 전환 뒤 PySide6 실행 코드는 제거됐다. 설계 및 구현 계획 문서는 작업 이력으로 보존한다.
 
 [데스크톱 디자인 기준 및 UI-001 진행](design-system.md): 공통 글꼴·컴포넌트 및 고객/시술 화면의 상품성 개선.
 
@@ -51,10 +65,13 @@
 
 기존 [제품 개요](https://github.com/MyungSungKim12/business-assistant/blob/main/docs/01-product-overview.md), [아키텍처](https://github.com/MyungSungKim12/business-assistant/blob/main/docs/02-architecture.md), [메뉴 모듈](https://github.com/MyungSungKim12/business-assistant/blob/main/docs/03-menu-modules.md), [구현 로드맵](https://github.com/MyungSungKim12/business-assistant/blob/main/docs/06-implementation-roadmap.md)은 범용 앱의 배경과 기술 설명이다. 이 디렉터리는 뷰티 매장 제품의 상세 요구사항과 검증 추적을 담당한다. 기존 README의 구현 완료 문구를 상용 업무 완료의 증거로 사용하지 않는다.
 
-2026-09-17 읽기 확인 기록은 이전 PySide6 클라이언트 기준이다. 2026-10-13부터 메뉴 기준은 `apps/desktop-react/src/features/shell/TopBar.tsx`와 `apps/desktop-react/src/app/routes.tsx`이며, 미전환 메뉴는 React 기능 계획에 따라 구현한다.
+현재 상단 메뉴와 화면 연결의 기준은 `apps/desktop-react/src/features/shell/menuCatalog.ts`, `TopBar.tsx`, `apps/desktop-react/src/app/Workspace.tsx`다. 메뉴는 조직 역할과 구독 권한에 따라 달라질 수 있다.
 
+## 과거 진행 기록 — 보존본
 
-## 최신 진행 — 2026-09-18
+아래 날짜별 항목은 당시 작업과 검증 내용을 보존한 기록이다. 현재 상태 판단에는 위의 backlog, 기능 대응표, 최신 인수인계를 우선한다. 당시의 Python/Qt 명령, 미완료 상태, 다음 작업 문구를 현재 안내로 사용하지 않는다.
+
+### 2026-09-18 당시 기록
 
 - 계획·적용 문서 26개: 12개 메뉴, 9개 공통 모듈, 인덱스/로드맵/품질/변경 이력과 시술 적용 안내. 고유 기능 ID 123개.
 - CRM-001~007: 로컬 구현/검증 완료. [검증 근거와 제한](menus/02-customers.md)을 확인한다.

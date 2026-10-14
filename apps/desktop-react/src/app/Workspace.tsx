@@ -1,5 +1,6 @@
 import type { ApiClient } from '../api/client';
 import { AdminSubscriptionPage } from '../features/admin';
+import { AuditPage } from '../features/audit/AuditPage';
 import { AppointmentPage } from '../features/appointments/AppointmentPage';
 import { InventoryPage, ServicePage, StaffPage } from '../features/catalog';
 import { CustomerPage } from '../features/customers/CustomerPage';
@@ -64,7 +65,7 @@ function WorkspacePage({ api, organizationId, active, organizationName, canManag
           documentsPanel={(context) => <TreatmentDocumentModal api={api} {...context} />}
         />
       );
-    case 'sales': return <SalesPage {...props} />;
+    case 'sales': return <SalesPage {...props} organizationName={organizationName} />;
     case 'memberships': return <MembershipPage {...props} />;
     case 'inventory': return <InventoryPage {...props} />;
     case 'services': return <ServicePage {...props} />;
@@ -74,6 +75,7 @@ function WorkspacePage({ api, organizationId, active, organizationName, canManag
     case 'files': return <FilePage {...props} />;
     case 'management': return <ManagementPage {...props} />;
     case 'members': return <MembersPage api={api} organizationId={organizationId} currentUserId={currentUserId} currentRole={currentRole} />;
+    case 'audit': return canManage ? <AuditPage api={api} organizationId={organizationId} /> : <section className="operation-page"><h1>감사 로그</h1><p role="alert">조직 관리자만 조회할 수 있습니다.</p></section>;
     case 'admin': return <AdminSubscriptionPage api={api} organizationId={organizationId} />;
   }
 }

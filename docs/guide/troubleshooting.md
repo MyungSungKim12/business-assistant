@@ -4,20 +4,11 @@
 
 ## 서버가 실행되지 않음
 
-### `_ssl` DLL이 애플리케이션 제어 정책에 차단됨
-
-이 오류는 실행 명령이 틀린 것이 아니라 회사 PC 보안 정책이 `uv`가 설치한 Python의 `_ssl.pyd` 또는 관련 DLL 로드를 막은 경우입니다.
-
-1. `scripts/run-server.ps1`이 실제로 사용하는 Python 경로를 확인합니다.
-2. 회사에서 허용한 Python 배포판 또는 승인된 설치 경로를 사용합니다.
-3. 보안 담당자에게 차단된 파일 경로와 오류 시각을 전달해 허용 정책을 요청합니다.
-4. 임의로 보안 프로그램을 끄거나 DLL을 인터넷에서 내려받아 교체하지 않습니다.
-
-이 문제가 있는 PC에서도 소스 편집은 가능하지만 서버와 앱의 실동작 검증은 허용된 다른 로컬 환경에서 수행해야 합니다.
+앱 실행은 Python 서버를 사용하지 않습니다. Node.js 24·pnpm·Rust MSVC 도구 체인을 확인하고 `run-app.cmd`로 실행합니다. Python은 MkDocs 문서 사이트 빌드에만 선택적으로 필요합니다.
 
 ### `서버 실행에 실패했습니다`
 
-이 문구 바로 위의 최초 Python 오류가 실제 원인입니다. 포트 충돌이면 8000번 포트를 사용 중인 프로세스를 확인하고, 설정 오류면 `.env`의 필수 값을 확인합니다.
+이 메시지 바로 위의 최초 Node/pnpm/Rust 오류를 확인합니다. `pnpm`을 찾을 수 없으면 Node.js 24와 Corepack을 설치한 뒤 `scripts/bootstrap.ps1`을 실행합니다. `cargo`를 찾을 수 없으면 Rust MSVC 도구 체인을 설치합니다. 포트 충돌이면 8000번 포트를 점유한 기존 API를 확인합니다.
 
 ## 로그인 401과 `getaddrinfo failed`
 
@@ -40,9 +31,9 @@ Supabase 프로젝트가 일시 중지되었거나 `APP_SUPABASE_URL`의 호스�
 
 ### upload-url 또는 download-url 503
 
-1. `APP_SUPABASE_URL`, `APP_SUPABASE_SERVICE_KEY`, `APP_FILE_BUCKET`을 확인합니다.
+1. `APP_SUPABASE_URL`, `APP_SUPABASE_PUBLISHABLE_KEY`, `APP_FILE_BUCKET`을 확인합니다.
 2. 022와 023 마이그레이션이 적용됐는지 확인합니다.
-3. Supabase Storage에 설정한 비공개 버킷 이름이 `.env`와 같은지 확인합니다.
+3. Supabase Storage에 비공개 버킷이 있고 이름이 `.env`와 같은지 확인합니다. Storage 접근은 로그인 사용자 토큰과 RLS 정책을 사용하므로 서비스 키를 일반 API에 추가하지 않습니다.
 4. 서버 로그의 `Supabase storage request failed` 바로 뒤 상태와 본문을 확인합니다.
 5. 설정을 바꿨다면 서버를 재시작합니다.
 

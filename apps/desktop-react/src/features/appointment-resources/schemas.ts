@@ -16,6 +16,8 @@ export type ResourceRequirement = z.infer<typeof requirementSchema>;
 /** 서비스별 필수 자원 기준과 낙관적 잠금 버전(Node 보조 경로 resource-setup). */
 export const resourceSetupSchema = z.object({ service_id: z.string(), resource_version: z.number(), requirements: requirementsSchema });
 export const requirementsSavedSchema = z.object({ service_id: z.string(), resource_version: z.number(), requirements: z.array(z.unknown()) });
+export const consumableSchema = z.object({ product_id: z.string(), quantity: z.number().int().min(1).max(1_000_000) });
+export const consumablesSchema = z.array(consumableSchema);
 
 export const staffSchema = z.object({ id: z.string(), organization_id: z.string(), name: z.string(), is_active: z.boolean(), schedule_version: z.number().default(1) });
 export const staffListSchema = z.array(staffSchema);

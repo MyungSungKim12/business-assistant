@@ -22,6 +22,7 @@ function parse<T>(schema: z.ZodType<T>, value: unknown, message: string): T {
 const orgParams = z.object({ organizationId: id });
 const customerParams = orgParams.extend({ customerId: id });
 const treatmentParams = customerParams.extend({ treatmentId: id });
+const serviceLinkRequest = z.strictObject({ service_id: id.nullable(), expected_version: z.number().int().min(1), operation_id: id });
 const photoParams = customerParams.extend({ photoId: id });
 
 /** 시술 기록·상담·상태 전이·변경 이력·사진 메타데이터 라우트(Python api/treatments.py). 쓰기는 owner/admin만. */
@@ -65,6 +66,14 @@ export function registerTreatmentRoutes(app: FastifyInstance, organizations: Org
     const mutation = parse(mutationRequest, request.body, 'Invalid treatment values');
     await org.requireAccess(token, params.organizationId, 'crm.basic', true);
     return gateway.mutate(token, params.organizationId, params.customerId, params.treatmentId, mutation);
+  });
+
+  app.put(`${scoped}/service`, async (request) => {
+    const { token, organizations: org } = access(request);
+    const params = parse(treatmentParams, request.params, 'Invalid treatment request');
+    const body = parse(serviceLinkRequest, request.body, 'Invalid treatment service');
+    await org.requireAccess(token, params.organizationId, 'crm.basic', true);
+    return gateway.setService(token, params.organizationId, params.customerId, params.treatmentId, body.service_id, body.expected_version, body.operation_id);
   });
 
   app.get(`${scoped}/events`, async (request) => {

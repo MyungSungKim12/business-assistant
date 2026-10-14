@@ -71,6 +71,9 @@ export async function createTauriPlatform(invoke: TauriInvoke = tauriInvoke as T
     async onUpdateProgress(handler) {
       return listen<UpdateProgress>('update:progress', (event) => handler(event.payload));
     },
+    async onUpdateAvailable(handler) {
+      return listen<{ version?: string }>('update:available', (event) => handler({ version: String(event.payload?.version ?? '') }));
+    },
     autostart: {
       isEnabled: () => call<boolean>('autostart_is_enabled'),
       setEnabled: (enabled) => call<void>('autostart_set', { enabled }),

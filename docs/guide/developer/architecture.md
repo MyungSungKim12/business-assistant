@@ -6,7 +6,7 @@
 business-assistant/
 ├─ apps/
 │  ├─ desktop-react/ React/Tauri 데스크톱 앱
-│  └─ server/        Node API 서버(Fastify)와 Supabase 게이트웨이
+│  └─ api/           Node API 서버(Fastify)와 Supabase 어댑터
 ├─ packages/         공통 코드, API 계약, 공통 React UI
 ├─ migrations/       번호 순서의 Supabase SQL
 ├─ scripts/          실행, 검증, DB 테스트와 화면 미리보기
@@ -15,7 +15,7 @@ business-assistant/
 │  ├─ product/       기능 ID와 검증 상태의 단일 출처
 │  └─ screenshots/   화면 검증 자료
 ├─ mkdocs.yml        문서 사이트 구성
-└─ pyproject.toml    uv 워크스페이스와 공통 도구 설정
+└─ package.json     pnpm workspace 설정
 ```
 
 ## 요청 흐름
@@ -44,7 +44,7 @@ sequenceDiagram
 
 ## 메뉴와 구현 페이지
 
-메뉴의 기준은 `apps/desktop-react/src/features/shell/TopBar.tsx`와 `apps/desktop-react/src/app/routes.tsx`입니다. 메뉴를 추가할 때는 다음을 함께 변경합니다.
+메뉴의 기준은 `apps/desktop-react/src/features/shell/menuCatalog.ts`, `TopBar.tsx`, `apps/desktop-react/src/app/Workspace.tsx`입니다. 메뉴를 추가할 때는 다음을 함께 변경합니다.
 
 1. 기능 ID와 제품 계획
 2. 공통 API 계약

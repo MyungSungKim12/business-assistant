@@ -9,6 +9,7 @@ import { ExportButton } from '../../lib/io/ExportButton';
 import { visitExportColumns } from '../../lib/io/domainColumns';
 import { PaymentDialog } from './PaymentDialog';
 import { PaymentHistoryPanel } from './PaymentHistoryPanel';
+import { WalletUseDialog } from '../catalog/WalletDialogs';
 import type { CartBundle, CartLine, CatalogItem, SaleDraft, SalePayment, Visit } from './types';
 import './sales.css';
 
@@ -33,7 +34,7 @@ type OpenRequest = { customerId: string; visitId: string; nonce: number };
 type SalesView = 'cart' | 'history';
 
 /** 매출 화면: 장바구니와 매출 내역(수납·환불 검색) 두 탭. 장바구니는 탭을 옮겨도 입력 상태를 유지하려고 숨기기만 한다. */
-export function SalesPage({ api, organizationId, readOnly }: { api: ApiClient; organizationId: string; readOnly: boolean }) {
+export function SalesPage({ api, organizationId, readOnly, organizationName = '' }: { api: ApiClient; organizationId: string; readOnly: boolean; organizationName?: string }) {
   const [view, setView] = useState<SalesView>('cart');
   const [historyOpened, setHistoryOpened] = useState(false);
   const [openRequest, setOpenRequest] = useState<OpenRequest | null>(null);
@@ -45,7 +46,7 @@ export function SalesPage({ api, organizationId, readOnly }: { api: ApiClient; o
       <button type="button" role="tab" aria-selected={view === 'history'} className={view === 'history' ? 'is-active' : ''} onClick={() => choose('history')}>매출 내역</button>
     </div>
     <div className={`sales-shell__pane${view === 'cart' ? '' : ' is-hidden'}`} role="tabpanel" aria-label="장바구니">
-      <CartView api={api} organizationId={organizationId} readOnly={readOnly} openRequest={openRequest} />
+      <CartView api={api} organizationId={organizationId} readOnly={readOnly} openRequest={openRequest} organizationName={organizationName} />
     </div>
     {historyOpened && <div className={`sales-shell__pane${view === 'history' ? '' : ' is-hidden'}`} role="tabpanel" aria-label="매출 내역">
       <section className="sales-page">
@@ -56,7 +57,7 @@ export function SalesPage({ api, organizationId, readOnly }: { api: ApiClient; o
   </div>;
 }
 
-function CartView({ api, organizationId, readOnly, openRequest }: { api: ApiClient; organizationId: string; readOnly: boolean; openRequest: OpenRequest | null }) {
+function CartView({ api, organizationId, readOnly, openRequest, organizationName }: { api: ApiClient; organizationId: string; readOnly: boolean; openRequest: OpenRequest | null; organizationName: string }) {
   const privacy = usePrivacy();
   const canManage = !readOnly;
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -79,6 +80,7 @@ function CartView({ api, organizationId, readOnly, openRequest }: { api: ApiClie
   const [editor, setEditor] = useState<LineForm>(lineForm(undefined));
   const [discount, setDiscount] = useState<DiscountForm>(discountFromCart(null));
   const [payOpen, setPayOpen] = useState(false);
+  const [walletOpen, setWalletOpen] = useState(false);
   const request = useRef(0);
   const pendingOperation = useRef<{ kind: string; id: string } | null>(null);
 
@@ -348,6 +350,7 @@ function CartView({ api, organizationId, readOnly, openRequest }: { api: ApiClie
         </>}
         <div className="sales-actions sales-actions--stack">
           {canManage && <button type="button" className="primary-button" disabled={!editable || activeLines.length === 0} onClick={() => void review()}>검토 완료</button>}
+          {canManage && <button type="button" disabled={!editable || !customerId || activeLines.length === 0} onClick={() => setWalletOpen(true)}>회원권 사용</button>}
           <button type="button" disabled={busy || pending !== null || !cart || !['ready', 'collecting', 'paid', 'void'].includes(cart.status)} onClick={() => void openPayments()}>수납 기록 · 내역</button>
           {canManage && <button type="button" className="danger-button" disabled={!editable || activeLines.length > 0} onClick={() => void cancelVisit()}>빈 방문 취소</button>}
           {pending && <button type="button" disabled={busy} onClick={retryPending}>같은 요청 재시도</button>}
@@ -355,6 +358,7 @@ function CartView({ api, organizationId, readOnly, openRequest }: { api: ApiClie
       </aside>
     </div>
     {status && <p role={statusTone === 'error' ? 'alert' : 'status'} className={statusTone === 'error' ? 'form-error' : 'muted'}>{status}</p>}
-    {payOpen && bundle && <PaymentDialog api={api} organizationId={organizationId} visitId={bundle.visit.id} canManage={canManage} onClose={() => { setPayOpen(false); void loadCart(bundle.visit.id); }} />}
+    {payOpen && bundle && <PaymentDialog api={api} organizationId={organizationId} visitId={bundle.visit.id} canManage={canManage} organizationName={organizationName} customerName={customers.find((item) => item.id === bundle.visit.customer_id)?.name ?? ''} onClose={() => { setPayOpen(false); void loadCart(bundle.visit.id); }} />}
+    {walletOpen && bundle && customerId && <WalletUseDialog api={api} organizationId={organizationId} customerId={customerId} bundle={bundle} readOnly={!canManage} onClose={() => setWalletOpen(false)} onUsed={() => void loadCart(bundle.visit.id)} />}
   </section>;
 }

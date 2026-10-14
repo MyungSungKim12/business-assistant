@@ -50,6 +50,7 @@ export const moreGroups: MenuGroup[] = [
     entries: [
       { id: 'management', label: '경영', description: '운영 수지와 담당별 매출 근거(미리보기)', mark: '경', managerOnly: true },
       { id: 'members', label: '구성원', description: '매장 구성원 추가·역할 변경·제거', mark: '원', managerOnly: true },
+      { id: 'audit', label: '감사 로그', description: '민감 작업 이력과 요청 상세 조회', mark: '감', managerOnly: true },
       { id: 'admin', label: '구독', description: '조직 구독 플랜 교체(플랫폼 관리자 전용)', mark: '구', platformAdminOnly: true },
     ],
   },

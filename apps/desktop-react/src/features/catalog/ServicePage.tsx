@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { DataGrid, ErrorState, LoadingState, Select, confirm, notify, type Column } from '@business-assistant/react-ui';
 import type { ApiClient } from '../../api/client';
 import { ResourceManagerDialog } from '../appointment-resources/ResourceManagerDialog';
+import { ServiceConsumablesDialog } from './ServiceConsumablesDialog';
 import { resourceApi } from '../appointment-resources/api';
 import { isDefiniteRejection, useOperationTracker } from '../appointment-resources/operationIds';
 import type { AppointmentServiceRow } from '../appointment-resources/schemas';
@@ -33,6 +34,7 @@ export function ServicePage({ api, organizationId, readOnly }: ServicePageProps)
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [resourcesOpen, setResourcesOpen] = useState(false);
+  const [consumablesOpen, setConsumablesOpen] = useState(false);
   const detailOp = useOperationTracker();
   const updateOp = useOperationTracker();
 
@@ -141,7 +143,7 @@ export function ServicePage({ api, organizationId, readOnly }: ServicePageProps)
               <datalist id="service-categories">{categories.map((category) => <option key={category} value={category} />)}</datalist>
               <div className="form-actions">
                 {!readOnly && <button type="button" className="primary-button" disabled={busy} onClick={() => void save()}>{selected ? '변경 저장' : '서비스 추가'}</button>}
-                {selected && <button type="button" disabled={busy} onClick={() => setResourcesOpen(true)}>필수 자원 기준</button>}
+                {selected && <><button type="button" disabled={busy} onClick={() => setResourcesOpen(true)}>필수 자원 기준</button><button type="button" disabled={busy} onClick={() => setConsumablesOpen(true)}>시술 소모품 기준</button></>}
               </div>
             </div>
             {error && <p role="alert" className="form-error">{error}</p>}
@@ -149,6 +151,7 @@ export function ServicePage({ api, organizationId, readOnly }: ServicePageProps)
         </div>
       )}
       {resourcesOpen && <ResourceManagerDialog api={api} organizationId={organizationId} readOnly={readOnly} onClose={() => { setResourcesOpen(false); void load(); }} />}
+      {consumablesOpen && selected && <ServiceConsumablesDialog api={api} organizationId={organizationId} serviceId={selected.id} readOnly={readOnly} onClose={() => setConsumablesOpen(false)} />}
     </section>
   );
 }

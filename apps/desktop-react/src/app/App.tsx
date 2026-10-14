@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ConfirmDialog, NoticeHost, confirm } from '@business-assistant/react-ui';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ConfirmDialog, NoticeHost, confirm, notify } from '@business-assistant/react-ui';
 import type { ApiClient } from '../api/client';
 import type { ConnectionState } from '../platform/types';
 import { useSessionStore } from '../store/session';
@@ -52,9 +52,35 @@ export function App({ services }: { services: AppServices }) {
   useEffect(() => () => workspaceCache.clear(), [userId, organizationId]);
 
   const idleLockMinutes = usePreferences((state) => state.idleLockMinutes);
+  const fontScale = usePreferences((state) => state.fontScale);
+  const startMenu = usePreferences((state) => state.startMenu);
+  const notificationsEnabled = usePreferences((state) => state.notificationsEnabled);
+  const updateNotice = usePreferences((state) => state.updateNotice);
+
+  // 글자 크기: 문서 전체 배율. 미지원 환경에서는 무시된다.
+  useEffect(() => {
+    document.documentElement.style.zoom = fontScale === 1 ? '' : String(fontScale);
+    return () => { document.documentElement.style.zoom = ''; };
+  }, [fontScale]);
+  // 시작 화면: 로그인(사용자 전환) 직후 한 번만 적용한다. 이후 메뉴 이동은 건드리지 않는다.
+  const startedFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!ready || startedFor.current === userId) return;
+    startedFor.current = userId;
+    setActive(startMenu);
+  }, [ready, userId, startMenu]);
+  // 새 버전 알림: 앱이 자동으로 확인한 업데이트가 있으면 한 번 안내한다.
+  useEffect(() => {
+    if (!ready || !updateNotice || !services.platform.onUpdateAvailable) return undefined;
+    let off: (() => void) | undefined;
+    let cancelled = false;
+    void services.platform.onUpdateAvailable((info) => notify.info(`새 버전 ${info.version || ''}을(를) 설치할 수 있습니다. 설정의 '업데이트 확인'에서 설치하세요.`))
+      .then((unlisten) => { if (cancelled) unlisten(); else off = unlisten; }).catch(() => undefined);
+    return () => { cancelled = true; off?.(); };
+  }, [ready, updateNotice, services.platform]);
   const idle = useIdleLock(idleLockMinutes, ready);
   const platformAdmin = usePlatformAdmin(api, ready);
-  const notifications = useNotifications({ api, organizationId, userId, enabled: ready && !idle.locked });
+  const notifications = useNotifications({ api, organizationId, userId, enabled: ready && !idle.locked && notificationsEnabled });
   const openSearch = useCallback(() => setSearchOpen(true), []);
   useSearchShortcut(openSearch, ready && !idle.locked);
   const menus = useMemo(() => searchMenus(Boolean(canManage), platformAdmin, customerEnabled), [canManage, platformAdmin, customerEnabled]);
@@ -111,7 +137,7 @@ export function App({ services }: { services: AppServices }) {
           canManage={canManage}
           platformAdmin={platformAdmin}
           onSearch={openSearch}
-          notifications={<NotificationCenter state={notifications} onNavigate={(id) => void navigate(id)} />}
+          notifications={notificationsEnabled ? <NotificationCenter state={notifications} onNavigate={(id) => void navigate(id)} /> : undefined}
           onNavigate={(id) => void navigate(id)}
           onSettings={() => setSettings(true)}
           onLogout={() => void logout()}

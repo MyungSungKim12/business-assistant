@@ -18,7 +18,7 @@ const doc = '77777777-7777-4777-8777-777777777777';
 const customer = (id: string, name: string, extra: object = {}) => ({ id, organization_id: org, name, email: null, phone: '010-1234-5678', notes: '', birth_date: null, skin_type: '건성', concerns: ['건조'], allergies: '향료', last_visit_date: null, next_visit_date: null, tags: [], status: 'active', ...extra });
 const treatment = (id: string, extra: Partial<Treatment> = {}): Treatment => ({
   id, organization_id: org, customer_id: cust, treatment_date: '2026-09-18', treatment_name: '수분 관리', category: '피부', practitioner: '김담당', notes: '보습 위주', amount: '15000.50',
-  next_visit_date: null, status: 'draft', version: 1, started_at: null, ended_at: null, consultation_goal: '', consultation_plan: '', cautions_snapshot: {}, cautions_acknowledged_by: null, cautions_acknowledged_at: null, ...extra,
+  next_visit_date: null, status: 'draft', version: 1, started_at: null, ended_at: null, consultation_goal: '', consultation_plan: '', cautions_snapshot: {}, cautions_acknowledged_by: null, cautions_acknowledged_at: null, appointment_service_id: null, ...extra,
 });
 const cautions = { allergies: '향료', skin_type: '건성', concerns: ['건조'] };
 const readyRecord = (id = t1) => treatment(id, { consultation_goal: '보습', cautions_snapshot: cautions, cautions_acknowledged_by: actor, cautions_acknowledged_at: '2026-09-20T01:00:00Z' });
@@ -85,7 +85,7 @@ describe('TreatmentPage', () => {
     view();
     expect(await screen.findByText('수분 관리')).toBeInTheDocument();
     expect(screen.getByLabelText('고객 주의사항', { selector: 'div.treatment-cautions' })).toHaveTextContent('피부 타입 · 건성');
-    expect(calls[0]).toMatchObject({ method: 'GET', path: `/organizations/${org}/customers/${cust}/treatments` });
+    expect(calls).toContainEqual(expect.objectContaining({ method: 'GET', path: `/organizations/${org}/customers/${cust}/treatments` }));
     await openRecord();
     expect(screen.getByLabelText('예정 금액')).toHaveValue('15000.50');
     expect(screen.getByText(/준비 · 버전 1/)).toBeInTheDocument();

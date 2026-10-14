@@ -11,6 +11,7 @@ export const treatmentSchema = z.object({
   consultation_goal: z.string().default(''), consultation_plan: z.string().default(''),
   cautions_snapshot: z.record(z.string(), z.unknown()).default({}),
   cautions_acknowledged_by: z.string().nullable().default(null), cautions_acknowledged_at: z.string().nullable().default(null),
+  appointment_service_id: z.string().nullable().default(null),
 });
 export const treatmentsSchema = z.array(treatmentSchema);
 export type Treatment = z.infer<typeof treatmentSchema>;

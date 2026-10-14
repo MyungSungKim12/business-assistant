@@ -61,7 +61,7 @@ export const productExportColumns: ExportColumn<CatalogProduct>[] = [
 ];
 
 const movementText: Record<StockMovement['movement_kind'], string> = {
-  receipt: '입고', sale: '판매 출고', refund: '환불 복원', customer_return: '고객 상품 반품', supplier_return: '거래처 반품', disposal: '폐기', stocktake: '실사 조정',
+  receipt: '입고', sale: '판매 출고', refund: '환불 복원', customer_return: '고객 상품 반품', supplier_return: '거래처 반품', disposal: '폐기', stocktake: '실사 조정', treatment_use: '시술 소모',
 };
 
 export const movementExportColumns: ExportColumn<StockMovement>[] = [

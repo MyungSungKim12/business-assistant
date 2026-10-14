@@ -29,6 +29,16 @@ Migration 016 follows this repository's existing numbered 001–015 convention.
 The Supabase CLI/local stack is unavailable in the current environment, so the
 skill's CLI-generated filename/advisor workflow was replaced by an isolated SQL
 execution test. No migration history or live database was modified.
+
+## Treatment consumables (046)
+
+Run `npm run test:treatment-consumables --prefix scripts/db-tests` to execute
+migrations 014, 016, 017, and 046 against a fresh in-memory PostgreSQL database. It
+checks recipe validation, organization and role boundaries, insufficient-stock
+rollback, treatment completion and stock-ledger atomicity, idempotent retry, and
+preservation of historical `consult` events, plus no retroactive deduction for
+unlinked treatments. It does not connect to Supabase or simulate concurrent
+database sessions.
 # Consultation migration 017
 
 `npm test` runs the original migration-016 lifecycle suite and then the separate

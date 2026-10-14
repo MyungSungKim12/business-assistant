@@ -20,6 +20,8 @@ export const serviceSchema = z.object({
 });
 export const resourceSchema = z.object({ ...row, name: z.string(), kind, is_active: z.boolean(), version: z.number().int().min(1) });
 const requirementRowSchema = z.object({ ...row, service_id: z.uuid(), kind, quantity: z.number().int().min(1).max(10) });
+const consumableRowSchema = z.object({ organization_id: z.uuid(), service_id: z.uuid(), product_id: z.uuid(), quantity: z.number().int().min(1).max(1_000_000) });
+const consumablesResultSchema = z.array(z.object({ product_id: z.uuid(), quantity: z.number().int().min(1).max(1_000_000) }));
 export const requirementsResultSchema = z.object({
   service_id: z.uuid(), resource_version: z.number().int().min(1), requirements: z.array(z.record(z.string(), z.unknown())),
 });
@@ -132,6 +134,20 @@ export function createAppointmentResourceGateway(config: ServerConfig, fetcher: 
         p_service_id: serviceId, p_requirements: input.requirements, p_expected_version: input.expected_version, p_operation_id: input.operation_id,
       }, requirementsResultSchema);
       if (result.service_id !== serviceId) throw fail();
+      return result;
+    },
+    async listConsumables(token: string, organizationId: string, serviceId: string) {
+      const services = await listAll(token, 'appointment_services', organizationId, serviceSchema, { id: `eq.${serviceId}` });
+      if (!services.some((service) => service.id === serviceId)) throw new ApiFailure(404, 'Not found');
+      const rows = await rest.select(token, 'appointment_service_consumables', {
+        organization_id: `eq.${organizationId}`, service_id: `eq.${serviceId}`, order: 'product_id.asc', limit: '200',
+      }, consumableRowSchema);
+      if (rows.some((item) => item.organization_id !== organizationId)) throw fail();
+      if (rows.some((item) => item.service_id !== serviceId)) throw fail();
+      return rows.map(({ product_id, quantity }) => ({ product_id, quantity }));
+    },
+    async replaceConsumables(token: string, organizationId: string, serviceId: string, items: Array<{ product_id: string; quantity: number }>) {
+      const result = await rpc(token, 'set_appointment_service_consumables', organizationId, { p_service_id: serviceId, p_items: items }, consumablesResultSchema);
       return result;
     },
 

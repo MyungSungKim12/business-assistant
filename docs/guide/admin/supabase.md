@@ -4,7 +4,7 @@ Business Assistant는 Supabase Auth, PostgreSQL과 비공개 Storage를 사용�
 
 ## 처음 만드는 프로젝트
 
-Supabase Dashboard의 SQL Editor에서 운영 스키마 SQL을 번호 순서대로 실행합니다. **001–014를 적용하고 015는 건너뛴 뒤 016–038을 적용**합니다.
+Supabase Dashboard의 SQL Editor에서 스키마 SQL을 번호 순서대로 적용합니다. 현재 파일 범위는 **001–045**입니다. 기존 DB는 적용 완료한 마지막 번호 다음부터 실행합니다.
 
 !!! danger "015는 데모 전용"
     `015_seed_customer_demo.sql`은 테스트 조직에 가짜 고객·시술·사진 메타데이터를 만드는 선택적 데모 데이터입니다. 개발자가 격리된 데모 DB를 명시적으로 준비할 때만 사용하고, 운영·실고객 환경에는 실행하지 않습니다.
@@ -21,8 +21,11 @@ Supabase Dashboard의 SQL Editor에서 운영 스키마 SQL을 번호 순서대�
 | 034–036 | 예약, 회원권 정지·재개·연장, 운영 수지 근거 |
 | 037 | 예약 담당자 근무시간·휴무와 예약 충돌 차단 |
 | 038 | 예약 공간·장비와 서비스별 필수 자원, 동시간 충돌 차단 |
+| 039–040 | 재무 entitlement 기능 키와 감사 이벤트 |
+| 041–043 | 안전재고·회원권 이력·월 마감·서명 증빙·시술 사진 단계 |
+| 044–045 | 고객 검색·태그·병합, 구성원 관리 |
 
-각 파일이 성공한 뒤 다음 번호를 실행합니다. 015를 건너뛰어도 016부터 정상 적용할 수 있습니다. 중간 오류가 발생하면 다음 파일로 넘어가지 말고 오류를 해결합니다.
+각 파일이 성공한 뒤 다음 번호를 실행합니다. 015를 건너뛰어도 016부터 적용할 수 있습니다. 중간 오류가 발생하면 다음 파일로 넘어가지 말고 먼저 오류를 해결합니다. 상세 SQL 설명은 [저장소의 마이그레이션 README](https://github.com/MyungSungKim12/business-assistant/blob/main/migrations/README.md)를 참고하세요. 현재 사용자는 039~045 적용을 보고했지만 프로젝트 DB에서 독립 확인한 것은 아닙니다.
 
 ## 기존 프로젝트 업그레이드
 
@@ -42,16 +45,17 @@ Supabase Dashboard의 SQL Editor에서 운영 스키마 SQL을 번호 순서대�
 
 | 변수 | 사용 위치 | 설명 |
 | --- | --- | --- |
-| `APP_API_BASE_URL` | 데스크톱 | Node API 서버 주소 |
 | `APP_FILE_BUCKET` | 서버 | 비공개 파일·사진 버킷 이름 |
 | `APP_SUPABASE_URL` | 서버 | 프로젝트 URL |
 | `APP_SUPABASE_PUBLISHABLE_KEY` | 인증 흐름 | 공개 가능한 프로젝트 키 |
-| `APP_SUPABASE_SERVICE_KEY` | 서버 전용 | Storage와 서버 작업용 비밀키 |
+| `APP_SUPABASE_SERVICE_KEY` | 관리자 API 전용 | 플랫폼 구독 관리용 비밀키 |
 | `APP_DATABASE_URL` | 서버·DB 테스트 | 직접 DB 연결이 필요한 경우 |
+
+설치 앱의 API 주소는 실행 환경의 `BUSINESS_ASSISTANT_API_BASE` 또는 빌드 시 `BUSINESS_ASSISTANT_API_BASE_DEFAULT`로 지정합니다. `.env`의 `APP_API_BASE_URL`은 데모 데이터 준비 스크립트에서 사용하는 주소입니다.
 
 ## 사진과 파일 Storage
 
-`023_customer_photo_storage_bucket.sql`은 고객 사진 저장 정책을 보강합니다. 버킷 이름은 기본적으로 `business-files`이며 `.env`의 `APP_FILE_BUCKET`과 일치해야 합니다. 서비스 키는 서버 프로세스에만 제공하고 데스크톱 배포 파일에 포함하지 않습니다.
+`023_customer_photo_storage_bucket.sql`은 고객 사진 저장 정책을 보강합니다. 버킷 이름은 기본적으로 `business-files`이며 `.env`의 `APP_FILE_BUCKET`과 일치해야 합니다. 파일·사진 Storage 요청은 로그인 사용자의 토큰과 RLS 권한을 사용합니다. 서비스 키는 일반 API나 데스크톱에 전달하지 않습니다.
 
 ## 적용 후 확인
 

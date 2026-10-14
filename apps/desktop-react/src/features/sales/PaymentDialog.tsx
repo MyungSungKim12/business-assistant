@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Modal, Select, confirm, notify } from '@business-assistant/react-ui';
 import type { ApiClient } from '../../api/client';
+import { PdfExportButton } from '../documents/PdfExportButton';
+import { exportReceiptPdf } from './receiptPdf';
 import { salesApi, type PaymentPart } from './api';
 import { cents, formatWon, kst, methodLabel, newOperationId, wonInteger } from './format';
 import { useRecoverableOperation, useRecoveryKey } from './recovery';
@@ -224,7 +226,7 @@ function ReturnForm({ api, organizationId, visitId, snapshot, canManage, onChang
   </div>;
 }
 
-export function PaymentDialog({ api, organizationId, visitId, canManage, onClose }: { api: ApiClient; organizationId: string; visitId: string; canManage: boolean; onClose: (changed: boolean) => void }) {
+export function PaymentDialog({ api, organizationId, visitId, canManage, onClose, organizationName = '', customerName = '' }: { api: ApiClient; organizationId: string; visitId: string; canManage: boolean; onClose: (changed: boolean) => void; organizationName?: string; customerName?: string }) {
   const [snapshot, setSnapshot] = useState<VisitPayments | null>(null);
   const [cart, setCart] = useState<CartBundle | null>(null);
   const [error, setError] = useState('');
@@ -280,6 +282,6 @@ export function PaymentDialog({ api, organizationId, visitId, canManage, onClose
       {snapshot.refunds.length > 0 && <div className="data-surface sales-history"><table><caption>환불 내역</caption><thead><tr><th>환불일 (한국시간)</th><th>금액</th><th>사유</th></tr></thead>
         <tbody>{snapshot.refunds.map((refund) => <tr key={refund.id}><td>{kst(refund.created_at)}</td><td>{formatWon(refund.amount)}</td><td>{refund.reason}</td></tr>)}</tbody></table></div>}
     </>}
-    <div className="sales-actions"><button type="button" onClick={() => void load()}>내역 새로고침</button><button type="button" onClick={stableClose}>닫기</button></div>
+    <div className="sales-actions">{snapshot && <PdfExportButton label="영수증 PDF" disabled={snapshot.receipts.length === 0} onExport={() => exportReceiptPdf({ organizationName, customerName, payments: snapshot, cart })} />}<button type="button" onClick={() => void load()}>내역 새로고침</button><button type="button" onClick={stableClose}>닫기</button></div>
   </Modal>;
 }

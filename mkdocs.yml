@@ -11,6 +11,7 @@ strict: true
 exclude_docs: |
   /0*.md
   superpowers/**
+  archive/**
 not_in_nav: |
   screenshots/**
 

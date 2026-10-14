@@ -26,6 +26,8 @@ export const treatmentApi = {
   create: (api: ApiClient, organizationId: string, customerId: string, values: TreatmentValues) => api.call('POST', `${customerBase(organizationId, customerId)}/treatments`, treatmentSchema, values),
   /** 수정·정정·상담·시작·완료·중단 모두 낙관적 잠금(expected_version)과 멱등 키(operation_id)를 쓰는 변이 API. */
   mutate: (api: ApiClient, organizationId: string, customerId: string, treatmentId: string, body: MutationBody) => api.call('POST', `${treatmentBase(organizationId, customerId, treatmentId)}/mutations`, treatmentSchema, body),
+  setService: (api: ApiClient, organizationId: string, customerId: string, treatmentId: string, serviceId: string | null, expected_version: number, operation_id: string) =>
+    api.call('PUT', `${treatmentBase(organizationId, customerId, treatmentId)}/service`, treatmentSchema, { service_id: serviceId, expected_version, operation_id }),
   events: (api: ApiClient, organizationId: string, customerId: string, treatmentId: string) => api.call('GET', `${treatmentBase(organizationId, customerId, treatmentId)}/events`, treatmentEventsSchema),
 
   listPhotos: (api: ApiClient, organizationId: string, customerId: string, treatmentId?: string) => api.call('GET', `${customerBase(organizationId, customerId)}/treatment-photos${treatmentId ? `?treatment_id=${treatmentId}` : ''}`, z.array(treatmentPhotoSchema)),

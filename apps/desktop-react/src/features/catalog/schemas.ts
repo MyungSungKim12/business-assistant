@@ -15,7 +15,7 @@ export type CatalogProduct = z.infer<typeof productSchema>;
 
 export const movementSchema = z.object({
   id: z.string(), organization_id: z.string(), product_id: z.string(),
-  movement_kind: z.enum(['receipt', 'sale', 'refund', 'customer_return', 'supplier_return', 'disposal', 'stocktake']),
+  movement_kind: z.enum(['receipt', 'sale', 'refund', 'customer_return', 'supplier_return', 'disposal', 'stocktake', 'treatment_use']),
   quantity: z.number(), reason: z.string(), created_by: z.string(), created_at: z.string(),
 });
 export const movementsSchema = z.array(movementSchema);
@@ -61,7 +61,7 @@ export type CartBundle = z.infer<typeof cartBundleSchema>;
 export type WalletUseResult = z.infer<typeof walletUseResultSchema>;
 
 export const movementLabel: Record<StockMovement['movement_kind'], string> = {
-  receipt: '입고', sale: '판매 출고', refund: '환불 복원', customer_return: '고객 상품 반품', supplier_return: '거래처 반품', disposal: '폐기', stocktake: '실사 조정',
+  receipt: '입고', sale: '판매 출고', refund: '환불 복원', customer_return: '고객 상품 반품', supplier_return: '거래처 반품', disposal: '폐기', stocktake: '실사 조정', treatment_use: '시술 소모',
 };
 
 export const won = (value: unknown): string => {
