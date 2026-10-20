@@ -11,7 +11,7 @@ export const LOCAL_LIMIT = 1000;
 
 export type CustomerSort = 'name' | 'created_at' | 'last_visit_date';
 export type StatusFilter = 'active' | 'archived' | 'all';
-export const SORT_LABELS: Record<CustomerSort, string> = { name: '이름순', created_at: '최근 등록순', last_visit_date: '최근 방문순' };
+export const SORT_LABELS: Record<CustomerSort, string> = { name: '이름순', created_at: '최근 등록순', last_visit_date: '수기 최근 방문순' };
 
 const searchResponse = z.object({ items: z.array(customerSchema), total: z.number().int(), next_cursor: z.string().nullable() });
 export type CustomerSearchPage = z.infer<typeof searchResponse>;

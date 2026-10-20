@@ -15,6 +15,9 @@ import { formatKstHeading, kstDateKey } from './dashboardMetrics';
 import { sourceData } from './sourceState';
 import { useDashboardData } from './useDashboardData';
 import './dashboard.css';
+import { operationalCustomers,useVisitFacts } from '../customers/visitFacts';
+import type { Source } from './sourceState';
+import type { Customer } from '../../api/schemas';
 
 export interface DashboardPageProps {
   api: DashboardApi;
@@ -42,6 +45,10 @@ export function DashboardPage({ api, organizationId, onNavigate, organizationNam
   const today = kstDateKey(clock) ?? '';
   const { sources, reload } = useDashboardData(api, organizationId, today, refreshKey);
   const customers = sourceData(sources.customers);
+  const visitFacts=useVisitFacts(api,organizationId,(customers??[]).map(row=>row.id),refreshKey);
+  const visitCustomers:Source<Customer[]>=sources.customers.status!=='ready'?sources.customers:visitFacts.status==='ready'?{status:'ready',data:operationalCustomers(customers??[],visitFacts.facts)}:visitFacts.status==='loading'?{status:'loading'}:{status:'error',failure:{kind:'error',message:'방문·예약 원장 조회 실패 · SQL 061 적용·권한·연결을 확인하세요.'}};
+
+  const retryVisitFacts = () => { if(sources.customers.status==='error') reload.customers(); else visitFacts.retry(); };
 
   const refreshAll = () => {
     setClock(now());
@@ -70,13 +77,13 @@ export function DashboardPage({ api, organizationId, onNavigate, organizationNam
         <QuickActions readOnly={readOnly} canManage={canManage} onNavigate={onNavigate} />
         <button type="button" className="dash-refresh" onClick={refreshAll}>새로고침</button>
       </header>
-      <MetricCards sources={sources} today={today} onNavigate={onNavigate} />
+      <MetricCards sources={sources} today={today} onNavigate={onNavigate} visitCustomers={visitCustomers} />
       <div className="dash-grid">
         <AppointmentTimeline state={sources.appointments} customers={customers} today={today} onRetry={reload.appointments} onNavigate={onNavigate} />
         <TaskPanel state={sources.tasks} today={today} onRetry={reload.tasks} onNavigate={onNavigate} canComplete={canComplete} onComplete={completeTask} />
         <FinanceChartPanel state={sources.transactions} today={today} onRetry={reload.transactions} onNavigate={onNavigate} days={chartDays} onDaysChange={(value) => usePreferences.getState().setHomeChartDays(value)} />
-        <UpcomingVisitPanel state={sources.customers} today={today} onRetry={reload.customers} onNavigate={onNavigate} />
-        <RecentVisitorPanel state={sources.customers} onRetry={reload.customers} onNavigate={onNavigate} />
+        <UpcomingVisitPanel state={visitCustomers} today={today} onRetry={retryVisitFacts} onNavigate={onNavigate} />
+        <RecentVisitorPanel state={visitCustomers} onRetry={retryVisitFacts} onNavigate={onNavigate} />
         <LowStockPanel state={sources.products} onRetry={reload.products} onNavigate={onNavigate} />
         <WalletExpiryPanel state={sources.wallets} customers={customers} today={today} onRetry={reload.wallets} onNavigate={onNavigate} />
       </div>

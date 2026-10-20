@@ -62,6 +62,7 @@ function makeApi(overrides: Overrides = {}) {
     listAppointmentServices: async () => [],
     listOperationRecords: () => handlers.wallets(),
     call: async (_method: string, path: string) => {
+      if (path.endsWith('/visit-facts')) return customers.map(c=>({organization_id:id(999),customer_id:c.id,last_actual_visit_date:c.last_visit_date,next_appointment_at:c.next_visit_date+'T01:00:00Z',recommended_return_date:null,as_of:NOW.toISOString()}));
       if (path.includes('/appointments?')) return handlers.appointments();
       if (path.includes('/finance-transactions')) return handlers.transactions();
       if (path.includes('/receivables')) return handlers.receivables();
@@ -77,12 +78,12 @@ const unavailable = () => { throw new ApiError(503, 'UNAVAILABLE', 'no', true); 
 
 function renderPage(api: DashboardApi, extra: Partial<Parameters<typeof DashboardPage>[0]> = {}) {
   const onNavigate = vi.fn();
-  render(<DashboardPage api={api} organizationId="org" organizationName="LCID 매장" now={() => NOW} onNavigate={onNavigate} {...extra} />);
+  render(<DashboardPage api={api} organizationId={id(999)} organizationName="LCID 매장" now={() => NOW} onNavigate={onNavigate} {...extra} />);
   return onNavigate;
 }
 
 const panel = (name: string | RegExp) => screen.getByRole('region', { name });
-const panelNames = [/^오늘 예약$/, /^할 일$/, /수입·지출/, /다음 방문 임박/, /^최근 방문 고객$/, /^재고 부족$/, /회원권 만료/];
+const panelNames = [/^오늘 예약$/, /^할 일$/, /수입·지출/, /다음 예약 임박/, /^최근 방문 고객$/, /^재고 부족$/, /회원권 만료/];
 
 describe('DashboardPage', () => {
   it('매장명과 KST 오늘 날짜를 보여 주고 지표 카드를 계산한다', async () => {
@@ -115,8 +116,8 @@ describe('DashboardPage', () => {
     expect(within(taskPanel).getByText('오늘 업무')).toBeInTheDocument();
     expect(within(taskPanel).getByText('이번 주 업무')).toBeInTheDocument();
     expect(within(taskPanel).queryByText('끝난 업무')).toBeNull();
-    expect(await within(panel(/다음 방문 임박/)).findByText('김하나')).toBeInTheDocument();
-    expect(within(panel(/다음 방문 임박/)).queryByText('이둘')).toBeNull();
+    expect(await within(panel(/다음 예약 임박/)).findByText('김하나')).toBeInTheDocument();
+    expect(within(panel(/다음 예약 임박/)).queryByText('이둘')).toBeNull();
     expect(within(panel(/^최근 방문 고객$/)).getByText('이둘')).toBeInTheDocument();
     expect(await within(panel(/^재고 부족$/)).findByText('앰플')).toBeInTheDocument();
     expect(within(panel(/회원권 만료/)).getByText('10회권')).toBeInTheDocument();
@@ -299,7 +300,7 @@ describe('DashboardPage 홈 확장(HOME-03)', () => {
     const updateTask = vi.fn(async () => ({}));
     renderPage({ ...api, updateTask } as unknown as DashboardApi);
     fireEvent.click(await screen.findByRole('button', { name: '지난 업무 완료' }));
-    await waitFor(() => expect(updateTask).toHaveBeenCalledWith('org', id(11), { status: 'done' }));
+    await waitFor(() => expect(updateTask).toHaveBeenCalledWith(id(999), id(11), { status: 'done' }));
     await waitFor(() => expect(handlers.tasks).toHaveBeenCalledTimes(2));
   });
 

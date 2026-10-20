@@ -18,6 +18,7 @@ import { isMergeArchive, restoreConfirmText } from './restore';
 import { useCustomerList } from './useCustomerList';
 import './customers.css';
 import './crmTools.css';
+import { useVisitFacts } from './visitFacts';
 
 type Props = {
   api: ApiClient;
@@ -40,6 +41,7 @@ export function CustomerPage({ api, organizationId, readOnly, focusCustomerId, f
   const [sort, setSort] = useState<CustomerSort>('name');
   const [actionError, setActionError] = useState('');
   const [dirty, setDirty] = useState(false);
+  const [editingBusy, setEditingBusy] = useState(false);
   const [importing, setImporting] = useState(false);
   const [tagsOpen, setTagsOpen] = useState(false);
   const [mergeOpen, setMergeOpen] = useState(false);
@@ -50,12 +52,15 @@ export function CustomerPage({ api, organizationId, readOnly, focusCustomerId, f
 
   const list = useCustomerList(api, organizationId, { query, status, sort });
   const { rows, setRows, mode } = list;
+  const visitFacts=useVisitFacts(api,organizationId,[...rows.map(row=>row.id),...(selected?[selected.id]:[])],focusNonce);
+  const selectedFacts=selected?visitFacts.facts.get(selected.id):undefined;
   const paged = mode === 'paged';
 
   // 목록이 다시 읽히면 선택한 고객을 새 값으로 바꾼다. 전체 모드에서 사라졌으면 선택을 푼다(일부만 읽는 모드는 유지).
   useEffect(() => {
+    if (dirty || editingBusy) return;
     setSelected((current) => (current ? rows.find((row) => row.id === current.id) ?? (paged ? current : null) : null));
-  }, [rows, paged]);
+  }, [rows, paged, dirty, editingBusy]);
 
   // 검색에서 넘어온 고객을 선택한다. 현재 목록에 없으면(보관 고객 등) 상태 필터를 '전체'로 넓혀 한 번 더 찾는다.
   const [pendingFocus, setPendingFocus] = useState<{ id: string; widened: boolean } | null>(null);
@@ -78,6 +83,7 @@ export function CustomerPage({ api, organizationId, readOnly, focusCustomerId, f
   const error = actionError || list.error;
 
   const changeCustomer = async (next: Customer | null) => {
+    if (editingBusy) { notify.info('저장 중입니다. 결과를 확인한 뒤 고객을 변경하세요.'); return; }
     if (!await confirmDiscard(dirty)) return;
     setSelected(next);
     setDirty(false);
@@ -94,8 +100,11 @@ export function CustomerPage({ api, organizationId, readOnly, focusCustomerId, f
       const saved = selected ? await api.updateCustomer(organizationId, selected.id, payload) : await api.createCustomer(organizationId, payload);
       setRows((old) => (old.some((row) => row.id === saved.id) ? old.map((row) => (row.id === saved.id ? saved : row)) : [saved, ...old]));
       setSelected(saved);
+      setActionError('');
+      return true;
     } catch {
       setActionError('저장하지 못했습니다. 작성 내용은 유지됩니다.');
+      return false;
     }
   }
 
@@ -174,7 +183,7 @@ export function CustomerPage({ api, organizationId, readOnly, focusCustomerId, f
           )}
           {error && <div role="alert" className="form-error cx-error">{error} <button onClick={() => { setActionError(''); void list.reload(); }}>다시 시도</button></div>}
           <div className="cx-grid-slot">
-            <CustomerGrid customers={filtered} selectedId={selected?.id} loading={list.loading} onSelect={changeCustomer} />
+            <CustomerGrid customers={filtered} selectedId={selected?.id} loading={list.loading} onSelect={changeCustomer} visitFacts={visitFacts} />
           </div>
           {paged && (
             <div className="cx-pager">
@@ -187,8 +196,9 @@ export function CustomerPage({ api, organizationId, readOnly, focusCustomerId, f
         <aside className="cx-panel cx-detail" aria-label="고객 상세">
           <h2>{selected ? selected.name : '새 고객 등록'}</h2>
           <div className="cx-detail__scroll">
+            {selected&&<section aria-label="방문·예약 사실"><h3>방문·예약 원장</h3>{selectedFacts?<dl><dt>최근 실제 방문</dt><dd>{selectedFacts.last_actual_visit_date??'기록 없음'}</dd><dt>다음 예약</dt><dd>{selectedFacts.next_appointment_at?new Date(selectedFacts.next_appointment_at).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'}):'예약 없음'}</dd><dt>재방문 권장일</dt><dd>{selectedFacts.recommended_return_date??'없음'} · 실제 예약과 별개</dd></dl>:<p className="muted">{visitFacts.status==='error'?'원장 조회 실패 · SQL 061 적용과 권한을 확인하세요.':'원장을 확인하는 중…'}</p>}<small className="muted">수기 최근 방문: {selected.last_visit_date??'없음'} · 수기 방문 예정: {selected.next_visit_date??'없음'}</small></section>}
             {selected && isMergeArchive(selected) && <p className="muted cx-hint">다른 고객에 병합되어 보관된 고객입니다. 복원하면 중복 고객이 다시 생깁니다.</p>}
-            <CustomerForm value={input} readOnly={readOnly} onDirtyChange={setDirty} onSave={save} onArchive={selected && !readOnly ? archive : undefined} />
+            <CustomerForm value={input} readOnly={readOnly} onDirtyChange={setDirty} onBusyChange={setEditingBusy} onSave={save} onArchive={selected && !readOnly ? archive : undefined} />
             {selected
               ? <ActivityPanel api={api} organizationId={organizationId} customerId={selected.id} readOnly={readOnly} />
               : <p className="muted cx-hint">고객을 저장하면 활동 타임라인과 사진을 기록할 수 있습니다.</p>}
@@ -196,7 +206,7 @@ export function CustomerPage({ api, organizationId, readOnly, focusCustomerId, f
         </aside>
 
         <section className="cx-panel cx-insights-slot" aria-label="고객 인사이트 영역">
-          <InsightsPanel customers={rows} selectedId={selected?.id} scopeNote={scopeNote} onSelect={(customer) => void pickFromInsight(customer)} />
+          <InsightsPanel customers={rows} selectedId={selected?.id} scopeNote={scopeNote} onSelect={(customer) => void pickFromInsight(customer)} visitFacts={visitFacts} />
         </section>
 
         {selected

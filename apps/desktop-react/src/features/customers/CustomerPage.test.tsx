@@ -5,6 +5,7 @@ import { CustomerPage } from './CustomerPage';
 const customer = { id:'11111111-1111-4111-8111-111111111111', organization_id:'22222222-2222-4222-8222-222222222222', name:'김고객', email:null, phone:'010-1234-5678', notes:'', birth_date:null, skin_type:null, concerns:[], allergies:'', last_visit_date:null, next_visit_date:null, tags:['재방문'], status:'active' };
 function api(rows: object[] = [customer]) {
   return {
+    call: vi.fn(async (_method:string,path:string) => { if(!path.endsWith("/visit-facts")) return {items:rows,total:rows.length,next_cursor:null}; return rows.map(raw=>{const c=raw as typeof customer;return {organization_id:customer.organization_id,customer_id:c.id,last_actual_visit_date:c.last_visit_date??null,next_appointment_at:c.next_visit_date?c.next_visit_date+'T01:00:00Z':null,recommended_return_date:null,as_of:new Date().toISOString()};});}),
     listCustomers: vi.fn(async () => rows),
     createCustomer: vi.fn(async (_o: string, input: object) => ({ ...customer, ...input, id: '33333333-3333-4333-8333-333333333333' })),
     updateCustomer: vi.fn(async (_o: string, _id: string, input: object) => ({ ...customer, ...input })),
@@ -40,7 +41,7 @@ describe('CustomerPage', () => {
     expect(grid().getByRole('columnheader', { name: /고객명/ })).toBeInTheDocument();
     expect(screen.getByRole('region', { name: '고객 목록 영역' })).toBeInTheDocument();
     expect(screen.getByRole('region', { name: '고객 인사이트 영역' })).toBeInTheDocument();
-    expect(screen.getByRole('region', { name: '다음 방문 임박' })).toHaveTextContent('예정된 방문이 없습니다');
+    expect(screen.getByRole('region', { name: '다음 예약 임박' })).toHaveTextContent('예정된 예약이 없습니다');
     expect(screen.getByRole('region', { name: '장기 미방문' })).toHaveTextContent('장기 미방문 고객이 없습니다');
     expect(screen.getByRole('region', { name: '이번 달 생일' })).toHaveTextContent('생일인 고객이 없습니다');
     expect(screen.getByRole('region', { name: '고객 사진' })).toHaveTextContent('고객을 선택하면');
@@ -59,7 +60,7 @@ describe('CustomerPage', () => {
     const upcoming = { ...customer, id: '44444444-4444-4444-8444-444444444444', name: '박예정', next_visit_date: today, last_visit_date: '2020-01-01' };
     render(<CustomerPage api={api([upcoming])} organizationId={customer.organization_id} readOnly={false} />);
     await grid().findByText('박예정');
-    fireEvent.click(within(screen.getByRole('region', { name: '다음 방문 임박' })).getByRole('button', { name: /박예정/ }));
+    fireEvent.click(await within(screen.getByRole('region', { name: '다음 예약 임박' })).findByRole('button', { name: /박예정/ }));
     expect(await screen.findByRole('heading', { name: '박예정' })).toBeInTheDocument();
     expect(await screen.findByText(/등록된 사진이 없습니다/)).toBeInTheDocument();
   });

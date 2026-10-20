@@ -1,3 +1,4 @@
+import type { Customer } from '../../../api/schemas';
 import type { MenuId } from '../../shell/TopBar';
 import {
   LOW_STOCK_THRESHOLD, VISIT_WINDOW_DAYS, activeCustomers, bucketTasks, changeLabel, compareWithPreviousMonth, groupDigits, lowStock, receivableSummary,
@@ -20,11 +21,11 @@ function build<T>(source: Source<T>, label: string, menu: MenuId, id: string, ma
 }
 
 /** 핵심 지표 카드 줄. 카드마다 자기 원본의 상태만 보고 독립적으로 표시한다. */
-export function MetricCards({ sources, today, onNavigate }: { sources: DashboardSources; today: string; onNavigate: (menu: MenuId) => void }) {
+export function MetricCards({ sources, today, onNavigate, visitCustomers }: { sources: DashboardSources; today: string; onNavigate: (menu: MenuId) => void; visitCustomers?: Source<Customer[]> }) {
   const cards: Card[] = [
     build(sources.customers, '전체 고객', 'customers', 'customers', (customers) => ({
       value: `${groupDigits(activeCustomers(customers).length)}명`,
-      sub: `${VISIT_WINDOW_DAYS}일 내 방문 예정 ${upcomingVisits(customers, today).length}명`,
+      sub: visitCustomers?.status==='ready'?`${VISIT_WINDOW_DAYS}일 내 예약 ${upcomingVisits(visitCustomers.data, today).length}명`:'예약 원장 미확인',
     })),
     build(sources.appointments, '오늘 예약', 'appointments', 'appointments', ({ appointments }) => {
       const summary = summarizeAppointments(appointmentsOnDay(appointments, today));

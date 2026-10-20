@@ -1,3 +1,4 @@
+import { operationalCustomers, type VisitFactsState } from './visitFacts';
 import { useMemo, type ReactNode } from 'react';
 import { birthdayCustomers, lapsedCustomers, LAPSED_DAYS, newThisMonth, recentlyRegistered, summarizeCustomers, UPCOMING_DAYS, upcomingVisits } from './insights';
 import { ExportButton } from '../../lib/io/ExportButton';
@@ -13,6 +14,7 @@ type Props = {
   /** 전체 고객이 아니라 불러온 일부만으로 계산했을 때의 안내 문구(예: '불러온 200명 기준'). 없으면 표시하지 않는다. */
   scopeNote?: string;
   onSelect: (customer: Customer) => void;
+  visitFacts?:VisitFactsState;
 };
 
 type ListItem = { customer: Customer; detail: string; strong?: boolean };
@@ -50,11 +52,14 @@ function CustomerList({ items, selectedId, empty, onSelect }: { items: ListItem[
 const dayLabel = (days: number) => (days === 0 ? '오늘' : `D-${days}`);
 
 /** 고객 목록 데이터만으로 계산하는 업무 인사이트(현황·다음 방문·장기 미방문·생일). 기준일은 KST. */
-export function InsightsPanel({ customers, selectedId, now, scopeNote, onSelect }: Props) {
+export function InsightsPanel({ customers, selectedId, now, scopeNote, onSelect, visitFacts }: Props) {
   const today = kstToday(now);
   const summary = useMemo(() => summarizeCustomers(customers, today), [customers, today]);
-  const upcoming = useMemo(() => upcomingVisits(customers, today), [customers, today]);
-  const lapsed = useMemo(() => lapsedCustomers(customers, today), [customers, today]);
+  const operational=useMemo(()=>visitFacts?.status==='ready'?operationalCustomers(customers,visitFacts.facts):[],[customers,visitFacts?.status,visitFacts?.facts]);
+  const upcoming=useMemo(()=>upcomingVisits(operational,today),[operational,today]);
+  const lapsed=useMemo(()=>lapsedCustomers(operational,today),[operational,today]);
+  const factsReady=visitFacts?.status==='ready';
+  const selectOriginal=(row:Customer)=>{const original=customers.find(item=>item.id===row.id);if(original)onSelect(original);};
   const birthdays = useMemo(() => birthdayCustomers(customers, today), [customers, today]);
   const newCustomers = useMemo(() => newThisMonth(customers, today), [customers, today]);
   const recent = useMemo(() => recentlyRegistered(customers), [customers]);
@@ -63,6 +68,7 @@ export function InsightsPanel({ customers, selectedId, now, scopeNote, onSelect 
 
   return (
     <div className="cx-insights" aria-label="고객 인사이트">
+      {!factsReady&&<p className="muted" role="status">{visitFacts?.status==='error'?'방문·예약 원장을 확인하지 못했습니다. SQL 061 적용·권한·연결을 확인하세요.':'방문·예약 원장을 확인하는 중…'}{visitFacts?.status==='error'&&<button type="button" onClick={visitFacts.retry}>방문 정보 다시 확인</button>}</p>}
       <Card title="고객 현황" hint={`${today} 기준`}>
         <dl className="cx-stats">
           <div><dt>전체</dt><dd>{summary.total}</dd></div>
@@ -70,7 +76,7 @@ export function InsightsPanel({ customers, selectedId, now, scopeNote, onSelect 
           <div><dt>VIP</dt><dd>{summary.vip}</dd></div>
           <div><dt>보관</dt><dd>{summary.archived}</dd></div>
           {newCustomers.count === null
-            ? <div><dt>이번 달 방문</dt><dd>{summary.visitedThisMonth}</dd></div>
+            ? <div><dt>이번 달 방문</dt><dd>{factsReady?summarizeCustomers(operational,today).visitedThisMonth:'—'}</dd></div>
             : <div><dt>이번 달 신규</dt><dd>{newCustomers.count}</dd></div>}
         </dl>
         {scopeNote && <p className="cx-insight__scope muted">{scopeNote}</p>}
@@ -81,13 +87,13 @@ export function InsightsPanel({ customers, selectedId, now, scopeNote, onSelect 
               <li key={item.tag}><span title={item.tag}>{item.tag}</span><i style={{ width: `${Math.max(6, (item.count / maxTag) * 100)}%` }} /><b>{item.count}</b></li>
             ))}</ul>}
       </Card>
-      <Card title="다음 방문 임박" count={upcoming.length} hint={`${UPCOMING_DAYS}일 이내`}>
-        <CustomerList selectedId={selectedId} onSelect={onSelect} empty={`${UPCOMING_DAYS}일 안에 예정된 방문이 없습니다.`}
+      <Card title="다음 예약 임박" count={factsReady?upcoming.length:undefined} hint={`${UPCOMING_DAYS}일 이내`}>
+        <CustomerList selectedId={selectedId} onSelect={selectOriginal} empty={factsReady?`${UPCOMING_DAYS}일 안에 예정된 예약이 없습니다.`:'예약 원장을 확인한 뒤 표시합니다.'}
           items={upcoming.map((item) => ({ customer: item.customer, detail: `${item.date} · ${dayLabel(item.days)}`, strong: item.days <= 1 }))} />
       </Card>
-      <Card title="장기 미방문" count={lapsed.length} hint={`${LAPSED_DAYS}일 이상 · 연락 대상`}
+      <Card title="장기 미방문" count={factsReady?lapsed.length:undefined} hint={`${LAPSED_DAYS}일 이상 · 연락 대상`}
         action={lapsed.length > 0 ? <ExportButton title="장기 미방문 연락 대상" label="명단 내보내기" columns={lapsedExportColumns} rows={lapsed} description="연락처가 있는 장기 미방문 고객 명단을 저장합니다. '마케팅 수신' 열이 '동의'인 고객에게만 광고성 문자를 보내세요." /> : undefined}>
-        <CustomerList selectedId={selectedId} onSelect={onSelect} empty="연락이 필요한 장기 미방문 고객이 없습니다."
+        <CustomerList selectedId={selectedId} onSelect={selectOriginal} empty={factsReady?'연락이 필요한 장기 미방문 고객이 없습니다.':'방문 원장을 확인한 뒤 표시합니다.'}
           items={lapsed.map((item) => ({ customer: item.customer, detail: item.days === null ? '방문 기록 없음' : `${item.lastVisit} · ${item.days}일 전` }))} />
       </Card>
       <Card title="이번 달 생일" count={birthdays.length} hint={`${month}월`}

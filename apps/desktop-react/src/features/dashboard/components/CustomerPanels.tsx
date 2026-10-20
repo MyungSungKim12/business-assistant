@@ -30,11 +30,11 @@ export function UpcomingVisitPanel({ state, today, onRetry, onNavigate }: Props)
   return (
     <Panel
       area="dash-area-visits"
-      title={`다음 방문 임박 (${VISIT_WINDOW_DAYS}일)`}
+      title={`다음 예약 임박 (${VISIT_WINDOW_DAYS}일)`}
       state={state}
       onRetry={onRetry}
       isEmpty={(customers) => upcomingVisits(customers, today).length === 0}
-      emptyText="7일 안에 방문 예정인 고객이 없습니다."
+      emptyText="7일 안에 예약된 고객이 없습니다."
       headerExtra={(customers) => customers && <span className="dash-count">{upcomingVisits(customers, today).length}명</span>}
     >
       {(customers) => (
@@ -46,7 +46,7 @@ export function UpcomingVisitPanel({ state, today, onRetry, onNavigate }: Props)
   );
 }
 
-/** 고객 API에 등록일이 없어 마지막 방문일이 최근인 5명을 보여 준다. */
+/** 방문·완료 시술 원장 기준 최근 방문 고객 5명을 보여 준다. */
 export function RecentVisitorPanel({ state, onRetry, onNavigate }: Omit<Props, 'today'>) {
   const open = () => onNavigate('customers');
   return (

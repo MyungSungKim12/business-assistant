@@ -12,6 +12,7 @@ const customer = z.object({
   /** 마케팅 수신 동의(047). 동의 시각은 DB가 값이 바뀔 때 찍으므로 입력으로 받지 않는다. */
   marketing_consent: z.boolean().optional(), marketing_consent_at: z.string().nullable().optional(),
 });
+export const customerVisitFactSchema=z.object({organization_id:z.uuid(),customer_id:z.uuid(),last_actual_visit_date:z.iso.date().nullable(),next_appointment_at:z.iso.datetime({offset:true}).nullable(),recommended_return_date:z.iso.date().nullable(),as_of:z.iso.datetime({offset:true})});
 
 export type CustomerInput = z.infer<typeof customer>;
 type EditableCustomer = Omit<CustomerInput, 'id' | 'organization_id'>;
@@ -105,6 +106,12 @@ export function createCustomerGateway(config: ServerConfig, fetcher: typeof fetc
   }
 
   return {
+    async visitFacts(token:string,organizationId:string,customerIds:string[]){
+      const result=await rpc(token,'get_customer_visit_facts',organizationId,{p_customer_ids:customerIds},z.array(customerVisitFactSchema));
+      assertOwnRows(result,organizationId);
+      if(result.length!==customerIds.length||new Set(result.map(row=>row.customer_id)).size!==result.length||result.some(row=>!customerIds.includes(row.customer_id)))throw new ApiFailure(503,'Customer visit facts unavailable');
+      return result;
+    },
     /** 기존 전체 목록. 서버 상한(LEGACY_LIST_LIMIT)까지만 돌려주므로 더 많은 조직은 /customers/search를 쓴다. */
     async list(token: string, organizationId: string) {
       return rows(await request(token, 'GET', { select, organization_id: `eq.${organizationId}`, order: 'name.asc', limit: String(LEGACY_LIST_LIMIT) }));
@@ -160,7 +167,7 @@ export function createCustomerGateway(config: ServerConfig, fetcher: typeof fetc
   };
 }
 
-export type CustomerToolsGateway = Pick<ReturnType<typeof createCustomerGateway>, 'search' | 'listTags' | 'renameTag' | 'mergeTags' | 'deleteTag' | 'duplicateGroups' | 'merge'>;
+export type CustomerToolsGateway = Pick<ReturnType<typeof createCustomerGateway>, 'search' | 'listTags' | 'renameTag' | 'mergeTags' | 'deleteTag' | 'duplicateGroups' | 'merge' | 'visitFacts'>;
 
 type CoreCustomerGateway = {
   list(token: string, organizationId: string): Promise<CustomerInput[]>;

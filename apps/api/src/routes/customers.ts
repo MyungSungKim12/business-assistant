@@ -7,9 +7,9 @@ import type { AuditRecorder } from '../audit/recorder.js';
 
 const nullableText = (max: number) => z.string().trim().max(max).nullable().optional();
 const optionalProfile = {
-  email: nullableText(255), phone: nullableText(50), notes: z.string().max(5_000).optional(), birth_date: nullableText(10), skin_type: nullableText(100),
+  email: nullableText(255), phone: nullableText(50), notes: z.string().max(5_000).optional(), birth_date: z.iso.date().nullable().optional(), skin_type: nullableText(100),
   concerns: z.array(z.string().trim().min(1).max(100)).max(30).optional(), allergies: z.string().max(1_000).optional(),
-  last_visit_date: nullableText(10), next_visit_date: nullableText(10), tags: z.array(z.string().trim().min(1).max(50)).max(30).optional(), status: z.enum(['active', 'archived']).optional(),
+  last_visit_date: z.iso.date().nullable().optional(), next_visit_date: z.iso.date().nullable().optional(), tags: z.array(z.string().trim().min(1).max(50)).max(30).optional(), status: z.enum(['active', 'archived']).optional(),
   marketing_consent: z.boolean().optional(),
 };
 const createInput = z.object({ name: z.string().trim().min(1).max(200), ...optionalProfile }).strict();
@@ -61,6 +61,14 @@ export function registerCustomerRoutes(app: FastifyInstance, organizations: Pick
     const current = service(request);
     await current.organizations.requireAccess(current.token, current.organizationId, 'crm.basic');
     return current.customers.list(current.token, current.organizationId);
+  });
+  app.post('/api/v1/organizations/:organizationId/customers/visit-facts',async request=>{
+    const current=service(request);
+    const parsed=z.object({customer_ids:z.array(z.uuid()).max(200).refine(ids=>new Set(ids).size===ids.length)}).strict().safeParse(request.body);
+    if(!parsed.success)throw new ApiFailure(422,'Invalid customer batch');
+    await current.organizations.requireAccess(current.token,current.organizationId,'crm.basic');
+    if(!current.customers.visitFacts)throw new ApiFailure(503,'Customer visit facts unavailable');
+    return current.customers.visitFacts(current.token,current.organizationId,parsed.data.customer_ids);
   });
   /** 서버 검색·페이지. 응답 `{items, total, next_cursor}`. 기존 목록 경로는 그대로 둔다. */
   app.get('/api/v1/organizations/:organizationId/customers/search', async request => {
