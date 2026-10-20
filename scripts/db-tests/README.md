@@ -148,3 +148,7 @@ that the original fields render unchanged afterwards, that organization name, KS
 treatment category, next visit date, and consultation plan fill in and land in the source snapshot, that an
 issued document keeps its values after the customer record changes, that blank values block issuance,
 that members can preview but not issue or call the renderer directly, and that malformed tokens still fail closed.
+
+## Customer merge (065)
+
+Run `npm run test:customer-merge-065 --prefix scripts/db-tests` to execute the real `merge_customers` function from migration 065 (twice applied) against a fresh in-memory PostgreSQL database with minimal stand-in tables. It checks that every table carrying `customer_id` (including the appointment waitlist) moves to the primary customer with matching counts, that other customers and other organizations stay untouched, that the secondary customer is archived rather than deleted, field merging, same-request retry versus conflicting operation id, rejection of already merged customers and customers with immutable sale handoff records, and member/anonymous permission denial. It fails when a new migration adds a `customer_id` table that the merge and this test do not know about.

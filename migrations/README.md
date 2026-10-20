@@ -261,7 +261,8 @@
 
 ## 065 고객 병합의 예약 대기 목록 이동
 
-- `065_merge_customers_waitlist.sql`: 044의 `merge_customers`를 다시 정의해 `appointment_waitlist`(056)의 고객을 대표 고객으로 옮긴다. 044 이후에 만든 테이블이 병합 이동 목록에서 빠져 있어, 병합으로 보조 고객이 삭제되면 그 고객의 대기 건이 연쇄 삭제되던 문제를 막는다. 044 파일은 수정하지 않고 함수만 교체하며 시그니처·권한(owner/admin, authenticated 실행)은 같다.
+- `065_merge_customers_waitlist.sql`: 044의 `merge_customers`를 다시 정의해 `appointment_waitlist`(056)의 고객을 대표 고객으로 옮긴다. 044 이후에 만든 테이블이 병합 이동 목록에서 빠져 있어, 병합 뒤에도 대기 건이 보관된 보조 고객에 남아 대표 고객 화면에서 보이지 않던(이후 보조 고객을 영구 삭제하면 함께 사라지는) 문제를 막는다. 044 파일은 수정하지 않고 함수만 교체하며 시그니처·권한(owner/admin, authenticated 실행)은 같다.
 - 순서: **065 적용 → API 서버 재시작 → 앱 갱신**. 새 컬럼이 없어 앱 호환성 문제는 없고, 함수 교체라 재실행해도 안전하다.
-- 검증: API 계약 테스트(`migrations.customers044.contract.test.ts`)가 `customer_id`를 가진 모든 테이블이 최신 `merge_customers`에서 이동되는지 검사한다. 격리 DB에서 실제 병합을 수행하는 테스트는 아직 없다([프로젝트 현황](../docs/product/project-status-2026-10-20.md)의 개발 작업 1순위). 실제 Supabase 적용은 사용자 몫이다.
+- 검증: API 계약 테스트(`migrations.customers044.contract.test.ts`)가 `customer_id`를 가진 모든 테이블이 최신 `merge_customers`에서 이동되는지 검사한다. 격리 DB에서 실제 병합을 수행하는 테스트는 `npm run test:customer-merge-065 --prefix scripts/db-tests`다(아래 검증 항목). 실제 Supabase 적용은 사용자 몫이다.
 - 고객 병합은 되돌릴 수 없다. 065 적용 전에는 대기 목록이 있는 고객을 병합하지 않는다.
+- `scripts/db-tests/customer-merge-065.mjs`는 065의 실제 함수를 격리 DB에서 실행해 모든 `customer_id` 테이블(대기 목록 포함)의 이동·건수 기록, 다른 고객/조직 행 불변, 보조 고객 보관, 필드 병합, 같은 요청 재시도/충돌, 이미 병합된 고객·결제 인계 기록 거절, 구성원·익명 권한 거절을 확인한다. 새 마이그레이션이 `customer_id` 테이블을 추가하면 이 테스트가 실패해 병합 함수 갱신을 강제한다. 065 적용은 사용자 보고(실행 완료)이며 실계정 병합 확인은 별도다.
