@@ -6,6 +6,7 @@ Business Assistant는 뷰티 매장의 고객·상담·시술 운영과 상품·
 
 [5분 안에 시작하기](guide/getting-started/quick-start.md){ .md-button .md-button--primary }
 [고객에서 결제까지](guide/workflows/customer-to-payment.md){ .md-button }
+[전체 기능 테스트 흐름](product/functional-test-flows.md){ .md-button }
 
 </div>
 
