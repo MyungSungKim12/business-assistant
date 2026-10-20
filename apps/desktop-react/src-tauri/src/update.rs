@@ -7,12 +7,16 @@
 //! - 운영(release) 빌드는 HTTPS 주소만 허용한다. 로컬 http(127.0.0.1·localhost)는 debug 빌드에서만 허용한다.
 //!
 //! 미설정이어도 앱은 정상 시작한다(`update_check` 가 `{configured:false}` 를 돌려줄 뿐이다).
-//! 시작 직후에는 확인하지 않고, 설정되어 있을 때만 시작 30초 뒤 한 번 백그라운드로 확인한다
-//! (`BUSINESS_ASSISTANT_UPDATE_AUTOCHECK=0` 이면 끈다). 새 버전이 있으면 `update:available` 이벤트를 발행한다.
+//! 시작 직후에는 확인하지 않고, 앱 설정 파일에서 자동 확인이 켜져 있을 때 시작 30초 뒤 한 번 확인한다.
+//! 환경변수 `BUSINESS_ASSISTANT_UPDATE_AUTOCHECK=0` 은 설정 파일보다 우선해 자동 확인을 끈다.
+//! 새 버전이 있으면 `update:available` 이벤트를 발행한다. UI에서 끄면 대기 중인 확인도 건너뛴다.
 //!
 //! 검증: 설정 판정 함수는 cargo test 로 확인한다. 실제 다운로드·서명 검증·설치·재시작은 서명 키와 업데이트 서버가
 //! 준비된 뒤에 확인해야 한다(이 저장소에서는 실행하지 않았다).
 
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::Duration;
 
@@ -25,10 +29,45 @@ use url::Url;
 pub const PUBKEY_PLACEHOLDER: &str = "REPLACE_WITH_UPDATER_PUBLIC_KEY";
 const ENDPOINT_ENV: &str = "BUSINESS_ASSISTANT_UPDATE_ENDPOINT";
 const AUTOCHECK_ENV: &str = "BUSINESS_ASSISTANT_UPDATE_AUTOCHECK";
+const AUTOCHECK_FILE: &str = "update-autocheck";
 const AUTOCHECK_DELAY: Duration = Duration::from_secs(30);
 
 #[derive(Default)]
 pub struct UpdateState(pub Mutex<Option<Update>>);
+pub struct AutoCheckState(AtomicBool);
+
+fn autocheck_allowed_by_environment() -> bool {
+    !std::env::var(AUTOCHECK_ENV).map(|v| v.trim() == "0").unwrap_or(false)
+}
+
+fn autocheck_preference_path(app: &AppHandle) -> Result<PathBuf, String> {
+    app.path().app_config_dir().map(|dir| dir.join(AUTOCHECK_FILE)).map_err(|e| format!("업데이트 설정 경로를 찾지 못했습니다: {e}"))
+}
+
+fn load_autocheck_preference(path: &Path) -> bool {
+    match fs::read_to_string(path).unwrap_or_default().trim() {
+        "false" | "0" | "off" => false,
+        _ => true,
+    }
+}
+
+fn save_autocheck_preference(path: &Path, enabled: bool) -> Result<(), String> {
+    let parent = path.parent().ok_or_else(|| "업데이트 설정 경로가 올바르지 않습니다.".to_string())?;
+    fs::create_dir_all(parent).map_err(|e| format!("업데이트 설정 폴더를 만들지 못했습니다: {e}"))?;
+    fs::write(path, if enabled { "true" } else { "false" }).map_err(|e| format!("업데이트 설정을 저장하지 못했습니다: {e}"))
+}
+
+#[tauri::command]
+pub fn update_autocheck_get(app: AppHandle) -> Result<bool, String> {
+    Ok(load_autocheck_preference(&autocheck_preference_path(&app)?))
+}
+
+#[tauri::command]
+pub fn update_autocheck_set(app: AppHandle, enabled: bool) -> Result<(), String> {
+    save_autocheck_preference(&autocheck_preference_path(&app)?, enabled)?;
+    app.state::<AutoCheckState>().0.store(enabled && autocheck_allowed_by_environment(), Ordering::Relaxed);
+    Ok(())
+}
 
 /// 업데이트를 쓸 수 없는 이유
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -194,12 +233,19 @@ pub async fn update_install(app: AppHandle, state: State<'_, UpdateState>) -> Re
 /// 상태를 등록하고, 설정되어 있으면 시작 30초 뒤 한 번 백그라운드로 확인한다
 pub fn setup(app: &AppHandle) {
     app.manage(UpdateState::default());
-    if std::env::var(AUTOCHECK_ENV).map(|v| v.trim() == "0").unwrap_or(false) {
+    let preference_enabled = autocheck_preference_path(app).map(|path| load_autocheck_preference(&path)).unwrap_or(true);
+    let enabled_at_start = preference_enabled && autocheck_allowed_by_environment();
+    app.manage(AutoCheckState(AtomicBool::new(enabled_at_start)));
+    if !enabled_at_start {
         return;
     }
     let handle = app.clone();
     std::thread::spawn(move || {
         std::thread::sleep(AUTOCHECK_DELAY);
+        if !handle.state::<AutoCheckState>().0.load(Ordering::Relaxed) {
+            ba_log!("INFO", "사용자 설정으로 자동 업데이트 확인을 건너뜁니다.");
+            return;
+        }
         if !matches!(load_settings(&handle), Ok(Ok(_))) {
             return;
         }
@@ -215,8 +261,24 @@ pub fn setup(app: &AppHandle) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::Path;
 
     const KEY: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IHRlc3Q=";
+
+    #[test]
+    fn automatic_check_preference_defaults_to_enabled_and_persists_opt_out() {
+        let unique = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let dir = std::env::temp_dir().join(format!("ba-update-preference-{}-{unique}", std::process::id()));
+        let file = dir.join("update-autocheck");
+
+        assert!(load_autocheck_preference(&file));
+        save_autocheck_preference(&file, false).unwrap();
+        assert!(!load_autocheck_preference(&file));
+        save_autocheck_preference(&file, true).unwrap();
+        assert!(load_autocheck_preference(&file));
+
+        let _ = std::fs::remove_dir_all(Path::new(&dir));
+    }
 
     #[test]
     fn detects_placeholder_pubkey() {

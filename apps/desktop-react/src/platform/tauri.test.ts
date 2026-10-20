@@ -1,6 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createTauriPlatform, type TauriInvoke } from './tauri';
 
+const notifications = vi.hoisted(() => ({
+  isPermissionGranted: vi.fn(),
+  requestPermission: vi.fn(),
+  sendNotification: vi.fn(),
+}));
+vi.mock('@tauri-apps/plugin-notification', () => notifications);
+
 function invokeStub(handler?: TauriInvoke): TauriInvoke {
   return handler ?? vi.fn(async (command: string) => {
     if (command === 'get_config') return { apiBase: 'http://127.0.0.1:8000/api/v1', storageHost: 'demo.supabase.co' };
@@ -9,6 +16,12 @@ function invokeStub(handler?: TauriInvoke): TauriInvoke {
 }
 
 describe('createTauriPlatform', () => {
+  it('Native 시간 초과를 결과 미확인 상태의 재시도 가능 오류로 전달한다',async()=>{
+    const invoke=vi.fn(async(command:string)=>{if(command==='get_config')return {apiBase:'http://127.0.0.1:8000/api/v1',storageHost:''};throw {code:'NATIVE_TIMEOUT',message:'서버 응답 시간이 초과되었습니다.',retryable:true};});
+    const platform=await createTauriPlatform(invoke);
+    await expect(platform.request({method:'POST',path:'/payments',headers:{},body:'{"operation_id":"same"}'})).rejects.toMatchObject({status:0,code:'NATIVE_TIMEOUT',retryable:true,message:'서버 응답 시간이 초과되었습니다.'});
+    expect(invoke.mock.calls.filter(([command])=>command==='http_request')).toHaveLength(1);
+  });
   it('routes HTTP and token operations through native commands', async () => {
     const invoke = vi.fn(async (command: string, args?: Record<string, unknown>) => {
       if (command === 'get_config') return { apiBase: 'http://127.0.0.1:8000/api/v1', storageHost: 'demo.supabase.co' };
@@ -71,5 +84,32 @@ describe('createTauriPlatform', () => {
     await expect(platform.appVersion!()).resolves.toBe('0.1.0');
     await platform.installUpdate!();
     expect(invoke).toHaveBeenCalledWith('update_install');
+  });
+
+  it('reads and saves the native automatic update check preference', async () => {
+    const invoke = vi.fn(async (command: string, args?: Record<string, unknown>) => {
+      if (command === 'get_config') return { apiBase: 'http://127.0.0.1:8000/api/v1', storageHost: '' };
+      if (command === 'update_autocheck_get') return false;
+      if (command === 'update_autocheck_set') return undefined;
+      return args?.enabled ?? null;
+    });
+    const platform = await createTauriPlatform(invoke);
+
+    await expect(platform.getAutoUpdateCheckEnabled?.()).resolves.toBe(false);
+    await expect(platform.setAutoUpdateCheckEnabled?.(true)).resolves.toBeUndefined();
+    expect(invoke).toHaveBeenCalledWith('update_autocheck_set', { enabled: true });
+  });
+
+  it('requests OS permission and sends a native toast only after it is granted', async () => {
+    notifications.isPermissionGranted.mockResolvedValue(false);
+    notifications.requestPermission.mockResolvedValue('granted');
+    notifications.sendNotification.mockResolvedValue(undefined);
+    const platform = await createTauriPlatform(invokeStub());
+
+    await expect(platform.requestOsNotificationPermission?.()).resolves.toBe(true);
+    await platform.sendOsNotification?.('예약 임박', '앱에서 확인하세요.');
+
+    expect(notifications.requestPermission).toHaveBeenCalledOnce();
+    expect(notifications.sendNotification).toHaveBeenCalledWith({ title: '예약 임박', body: '앱에서 확인하세요.' });
   });
 });

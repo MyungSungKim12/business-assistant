@@ -4,7 +4,11 @@
  * nonce 는 같은 항목을 다시 선택해도 변경으로 감지되게 하는 값이다.
  */
 export interface WorkspaceFocus {
-  kind: 'customer' | 'appointment' | 'task';
+  kind: 'customer' | 'appointment' | 'task' | 'treatment' | 'checkout';
   id: string;
   nonce: number;
+  /** checkout의 id는 예약 ID이며 이 고객과의 연결을 함께 검증한다. */
+  customerId?: string;
+  /** 시술 연결 후보이며 자동 생성·연결하지 않는다. */
+  appointmentId?: string;
 }

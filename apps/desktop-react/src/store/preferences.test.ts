@@ -9,7 +9,7 @@ beforeEach(() => {
 describe('preferences', () => {
   it('기본값은 모두 끔이다', () => {
     expect(readPreferences('u1')).toEqual(DEFAULT_PREFERENCES);
-    expect(DEFAULT_PREFERENCES).toEqual({ maskPhone: false, idleLockMinutes: 0, fontScale: 1, startMenu: 'dashboard', notificationsEnabled: true, updateNotice: true, homeChartDays: 14 });
+    expect(DEFAULT_PREFERENCES).toEqual({ maskPhone: false, idleLockMinutes: 0, fontScale: 1, startMenu: 'dashboard', notificationsEnabled: true, desktopNotificationsEnabled: false, updateNotice: true, homeChartDays: 14 });
   });
 
   it('사용자별로 저장하고 다시 불러온다', () => {
@@ -42,9 +42,10 @@ describe('preferences', () => {
     usePreferences.getState().setFontScale(1.25);
     usePreferences.getState().setStartMenu('sales');
     usePreferences.getState().setNotificationsEnabled(false);
+    usePreferences.getState().setDesktopNotificationsEnabled(true);
     usePreferences.getState().setUpdateNotice(false);
     usePreferences.getState().setHomeChartDays(30);
-    expect(JSON.parse(localStorage.getItem(preferencesKey('u1'))!)).toEqual({ maskPhone: false, idleLockMinutes: 0, fontScale: 1.25, startMenu: 'sales', notificationsEnabled: false, updateNotice: false, homeChartDays: 30 });
+    expect(JSON.parse(localStorage.getItem(preferencesKey('u1'))!)).toEqual({ maskPhone: false, idleLockMinutes: 0, fontScale: 1.25, startMenu: 'sales', notificationsEnabled: false, desktopNotificationsEnabled: true, updateNotice: false, homeChartDays: 30 });
     usePreferences.getState().load('u2');
     expect(usePreferences.getState()).toMatchObject({ fontScale: 1, startMenu: 'dashboard', notificationsEnabled: true });
     expect(sanitizePreferences({ fontScale: 3, startMenu: 'admin', homeChartDays: 99 })).toEqual(DEFAULT_PREFERENCES);

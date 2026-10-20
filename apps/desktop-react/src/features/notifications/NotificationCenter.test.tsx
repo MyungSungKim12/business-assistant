@@ -12,7 +12,7 @@ const ORG = ID(900);
 const NOW = new Date('2026-10-13T05:00:00Z');
 const appointment = { id: ID(100), organization_id: ORG, customer_id: ID(1), staff_id: ID(5), service_id: ID(6), service_name_snapshot: '관리 60분', duration_minutes: 60, buffer_minutes: 0, start_at: '2026-10-13T05:30:00Z', end_at: '2026-10-13T06:30:00Z', status: 'reserved', source: 'phone', cancellation_reason: null, version: 1, resource_ids: [] };
 const customer = { id: ID(1), organization_id: ORG, name: '김하나', email: null, phone: '010-1234-5678', notes: '', birth_date: '1990-10-15', skin_type: null, concerns: [], allergies: '', last_visit_date: null, next_visit_date: null, tags: [], status: 'active' };
-const task = { id: ID(200), organization_id: ORG, created_by: ID(7), title: '재고 확인', description: '', due_at: '2026-10-10T03:00:00Z', status: 'open', priority: 'normal' };
+const task = { id: ID(200), organization_id: ORG, created_by: 'user-1', title: '재고 확인', description: '', due_at: '2026-10-10T03:00:00Z', status: 'open', priority: 'normal' };
 const wallet = { id: 'w1', customer_id: ID(1), name_snapshot: '10회권', count_balance: 2, expires_on: '2026-10-20' };
 
 function fakeApi(overrides: Partial<Record<keyof WorkspaceDataApi, unknown>> = {}) {

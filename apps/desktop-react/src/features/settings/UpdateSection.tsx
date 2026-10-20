@@ -40,9 +40,23 @@ export function UpdateSection({ platform }: { platform: Platform }) {
   const supported = Boolean(platform.checkUpdate);
   const [phase, setPhase] = useState<Phase>({ kind: 'idle' });
   const [version, setVersion] = useState<string | null>(null);
+  const [autoCheckEnabled, setAutoCheckEnabled] = useState(true);
+  const [autoCheckLoaded, setAutoCheckLoaded] = useState(false);
+  const [autoCheckBusy, setAutoCheckBusy] = useState(false);
+  const [autoCheckStatus, setAutoCheckStatus] = useState('');
   const alive = useRef(true);
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   useEffect(() => { platform.appVersion?.().then((v) => { if (alive.current && v) setVersion(v); }).catch(() => undefined); }, [platform]);
+  useEffect(() => {
+    if (!platform.getAutoUpdateCheckEnabled) return;
+    let active = true;
+    void platform.getAutoUpdateCheckEnabled().then((enabled) => {
+      if (active) { setAutoCheckEnabled(enabled); setAutoCheckLoaded(true); }
+    }).catch(() => {
+      if (active) { setAutoCheckLoaded(true); setAutoCheckStatus('자동 확인 설정을 불러오지 못했습니다.'); }
+    });
+    return () => { active = false; };
+  }, [platform]);
   const update = (next: Phase) => { if (alive.current) setPhase(next); };
 
   const check = async () => {
@@ -77,6 +91,32 @@ export function UpdateSection({ platform }: { platform: Platform }) {
   const busy = phase.kind === 'checking' || phase.kind === 'installing';
   return (
     <div>
+      {platform.getAutoUpdateCheckEnabled && platform.setAutoUpdateCheckEnabled ? <label>
+        <span>
+          <strong>자동 업데이트 확인</strong>
+          <small>앱 시작 30초 뒤 한 번 확인합니다. 켜면 다음 실행부터, 끄면 대기 중인 확인도 건너뜁니다.</small>
+          {autoCheckStatus ? <small role="status">{autoCheckStatus}</small> : null}
+        </span>
+        <input
+          type="checkbox"
+          aria-label="자동 업데이트 확인"
+          checked={autoCheckEnabled}
+          disabled={!autoCheckLoaded || autoCheckBusy}
+          onChange={(event) => {
+            const enabled = event.currentTarget.checked;
+            setAutoCheckBusy(true);
+            setAutoCheckStatus('');
+            void platform.setAutoUpdateCheckEnabled?.(enabled).then(() => {
+              if (alive.current) {
+                setAutoCheckEnabled(enabled);
+                setAutoCheckStatus('자동 업데이트 확인 설정을 저장했습니다.');
+              }
+            }).catch(() => {
+              if (alive.current) setAutoCheckStatus('설정을 저장하지 못했습니다. 다시 시도하세요.');
+            }).finally(() => { if (alive.current) setAutoCheckBusy(false); });
+          }}
+        />
+      </label> : null}
       <span>
         <strong>업데이트 확인{version ? ` (현재 ${version})` : ''}</strong>
         <small role="status">{describe(phase, supported)}</small>

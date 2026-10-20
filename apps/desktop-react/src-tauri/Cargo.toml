@@ -25,3 +25,4 @@ rfd = "0.15"
 tauri-plugin-updater = "2"
 tokio = { version = "1", features = ["fs", "io-util", "sync"] }
 futures-util = "0.3"
+tauri-plugin-notification = "2.7.0"

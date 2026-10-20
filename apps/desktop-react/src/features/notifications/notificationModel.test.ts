@@ -63,6 +63,18 @@ describe('예약 알림', () => {
 });
 
 describe('할 일 알림', () => {
+  it('담당자는 담당 할 일만 받고 미지정 할 일은 작성자에게만 보낸다', () => {
+    const currentUser = ID(701);
+    const otherUser = ID(702);
+    const items = buildNotifications(source({ tasks: [
+      task(1, '2026-10-13T20:00:00', { created_by: otherUser, assignee_id: currentUser }),
+      task(2, '2026-10-13T20:00:00', { created_by: currentUser, assignee_id: otherUser }),
+      task(3, '2026-10-13T20:00:00', { created_by: currentUser, assignee_id: null }),
+      task(4, '2026-10-13T20:00:00', { created_by: otherUser, assignee_id: null }),
+    ] }), NOW, currentUser);
+    expect(titles(items)).toEqual(['할 일1', '할 일3']);
+  });
+
   it('기한이 지난 것과 오늘 마감만, 완료·취소·기한 없음은 제외한다', () => {
     const items = buildNotifications(source({
       tasks: [

@@ -1,5 +1,5 @@
-import { fireEvent, render, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Platform } from '../../platform/types';
 import { preferencesKey, usePreferences } from '../../store/preferences';
 import { SettingsDialog } from './SettingsDialog';
@@ -34,5 +34,22 @@ describe('SettingsDialog 개인정보·보안', () => {
     fireEvent.change(screen.getByLabelText('자동 잠금 시간'), { target: { value: '10' } });
     expect(JSON.parse(localStorage.getItem(preferencesKey('user-1'))!)).toMatchObject({ maskPhone: true, idleLockMinutes: 10 });
     expect(Array.from(screen.getByLabelText('자동 잠금 시간').querySelectorAll('option')).map((option) => option.textContent)).toEqual(['끔', '5분', '10분', '30분']);
+  });
+
+  it('OS 알림은 사용자가 켜고 운영체제 권한을 허용한 뒤에만 설정에 저장한다', async () => {
+    const tauriPlatform = {
+      ...platform,
+      kind: 'tauri',
+      requestOsNotificationPermission: vi.fn(async () => true),
+      sendOsNotification: vi.fn(async () => undefined),
+    } as unknown as Platform;
+    render(<SettingsDialog platform={tauriPlatform} onClose={() => undefined} />);
+
+    const osNotifications = screen.getByRole('checkbox', { name: /운영체제 알림/ });
+    expect(osNotifications).not.toBeChecked();
+    fireEvent.click(osNotifications);
+
+    await waitFor(() => expect(tauriPlatform.requestOsNotificationPermission).toHaveBeenCalledOnce());
+    await waitFor(() => expect(JSON.parse(localStorage.getItem(preferencesKey('user-1'))!)).toMatchObject({ desktopNotificationsEnabled: true }));
   });
 });

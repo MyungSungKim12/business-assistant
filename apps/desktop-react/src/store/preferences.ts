@@ -24,13 +24,15 @@ export interface Preferences {
   startMenu: StartMenu;
   /** 앱 내 알림 센터 사용(UX-05) */
   notificationsEnabled: boolean;
+  /** OS 잠금 화면에 표시될 수 있으므로 사용자가 별도로 켠다(UX-07). */
+  desktopNotificationsEnabled: boolean;
   /** 새 버전이 확인되면 알려 준다(OPS-04). 끄면 설정의 '업데이트 확인'으로만 확인한다. */
   updateNotice: boolean;
   /** 홈 수입·지출 차트 기간(일) */
   homeChartDays: ChartDays;
 }
 
-export const DEFAULT_PREFERENCES: Preferences = { maskPhone: false, idleLockMinutes: 0, fontScale: 1, startMenu: 'dashboard', notificationsEnabled: true, updateNotice: true, homeChartDays: 14 };
+export const DEFAULT_PREFERENCES: Preferences = { maskPhone: false, idleLockMinutes: 0, fontScale: 1, startMenu: 'dashboard', notificationsEnabled: true, desktopNotificationsEnabled: false, updateNotice: true, homeChartDays: 14 };
 const KEY_PREFIX = 'business-assistant.prefs.';
 
 export const preferencesKey = (userId: string) => `${KEY_PREFIX}${userId}`;
@@ -44,6 +46,7 @@ export function sanitizePreferences(raw: unknown): Preferences {
     fontScale: FONT_SCALE_CHOICES.find((choice) => choice === value.fontScale) ?? DEFAULT_PREFERENCES.fontScale,
     startMenu: START_MENU_CHOICES.find((choice) => choice === value.startMenu) ?? DEFAULT_PREFERENCES.startMenu,
     notificationsEnabled: value.notificationsEnabled !== false,
+    desktopNotificationsEnabled: value.desktopNotificationsEnabled === true,
     updateNotice: value.updateNotice !== false,
     homeChartDays: CHART_DAYS_CHOICES.find((choice) => choice === value.homeChartDays) ?? DEFAULT_PREFERENCES.homeChartDays,
   };
@@ -71,14 +74,15 @@ interface PreferenceState extends Preferences {
   setFontScale(value: FontScale): void;
   setStartMenu(value: StartMenu): void;
   setNotificationsEnabled(value: boolean): void;
+  setDesktopNotificationsEnabled(value: boolean): void;
   setUpdateNotice(value: boolean): void;
   setHomeChartDays(value: ChartDays): void;
 }
 
 export const usePreferences = create<PreferenceState>((set, get) => {
   const update = (patch: Partial<Preferences>) => {
-    const { userId, maskPhone, idleLockMinutes, fontScale, startMenu, notificationsEnabled, updateNotice, homeChartDays } = get();
-    const next = { maskPhone, idleLockMinutes, fontScale, startMenu, notificationsEnabled, updateNotice, homeChartDays, ...patch };
+    const { userId, maskPhone, idleLockMinutes, fontScale, startMenu, notificationsEnabled, desktopNotificationsEnabled, updateNotice, homeChartDays } = get();
+    const next = { maskPhone, idleLockMinutes, fontScale, startMenu, notificationsEnabled, desktopNotificationsEnabled, updateNotice, homeChartDays, ...patch };
     if (userId) writePreferences(userId, next);
     set(next);
   };
@@ -91,6 +95,7 @@ export const usePreferences = create<PreferenceState>((set, get) => {
     setFontScale: (value) => update({ fontScale: value }),
     setStartMenu: (value) => update({ startMenu: value }),
     setNotificationsEnabled: (value) => update({ notificationsEnabled: value }),
+    setDesktopNotificationsEnabled: (value) => update({ desktopNotificationsEnabled: value }),
     setUpdateNotice: (value) => update({ updateNotice: value }),
     setHomeChartDays: (value) => update({ homeChartDays: value }),
   };

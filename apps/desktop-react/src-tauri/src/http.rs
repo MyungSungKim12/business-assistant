@@ -1,8 +1,9 @@
 use std::collections::HashMap;
-use reqwest::{Client, Method};
+use reqwest::Method;
 use serde::{Deserialize, Serialize};
 use url::Url;
 use crate::config;
+use crate::network::{self, NativeHttpError};
 
 #[derive(Deserialize)]
 pub struct NativeHttpRequest { method: String, path: String, headers: HashMap<String, String>, body: Option<String>, #[serde(default)] scope: Option<String> }
@@ -32,22 +33,22 @@ pub fn signed_url(raw: &str, allowed_host: &str) -> Result<Url, String> {
 }
 
 #[tauri::command]
-pub async fn http_request(request: NativeHttpRequest) -> Result<NativeHttpResponse, String> {
-    let cfg = config::load()?;
+pub async fn http_request(request: NativeHttpRequest) -> Result<NativeHttpResponse, NativeHttpError> {
+    let cfg = config::load().map_err(|_| NativeHttpError::invalid("서버 연결 설정을 확인하세요."))?;
     let base = if request.scope.as_deref() == Some("admin") {
-        if cfg.admin_api_base.is_empty() { return Err("관리자 API 주소가 설정되지 않았습니다. BUSINESS_ASSISTANT_ADMIN_API_BASE를 확인하세요.".into()); }
+        if cfg.admin_api_base.is_empty() { return Err(NativeHttpError::invalid("관리자 API 주소가 설정되지 않았습니다. BUSINESS_ASSISTANT_ADMIN_API_BASE를 확인하세요.")); }
         &cfg.admin_api_base
     } else { &cfg.api_base };
-    let url = api_url(base, &request.path)?;
-    let method = Method::from_bytes(request.method.as_bytes()).map_err(|_| "지원하지 않는 HTTP 방식입니다.".to_string())?;
-    let client = Client::builder().build().map_err(|e| e.to_string())?;
+    let url = api_url(base, &request.path).map_err(|_| NativeHttpError::invalid("API 경로가 허용 범위를 벗어났습니다."))?;
+    let method = Method::from_bytes(request.method.as_bytes()).map_err(|_| NativeHttpError::invalid("지원하지 않는 HTTP 방식입니다."))?;
+    let client = network::client(network::API_TIMEOUT)?;
     let mut builder = client.request(method, url);
     for (name, value) in request.headers { builder = builder.header(name, value); }
     if let Some(body) = request.body { builder = builder.body(body); }
-    let response = builder.send().await.map_err(|e| format!("서버에 연결하지 못했습니다: {e}"))?;
+    let response = builder.send().await.map_err(network::transport_error)?;
     let status = response.status().as_u16();
     let headers = response.headers().iter().filter_map(|(k, v)| v.to_str().ok().map(|v| (k.to_string(), v.to_string()))).collect();
-    let body = response.text().await.map_err(|e| e.to_string())?;
+    let body = response.text().await.map_err(network::transport_error)?;
     Ok(NativeHttpResponse { status, body, headers })
 }
 

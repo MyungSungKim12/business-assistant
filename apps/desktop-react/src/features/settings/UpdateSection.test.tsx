@@ -39,6 +39,18 @@ describe('UpdateSection', () => {
     expect(await screen.findByText('업데이트 중 오류가 발생했습니다: 연결 실패')).toBeInTheDocument();
   });
 
+  it('loads and persists the native automatic update check preference', async () => {
+    const getAutoUpdateCheckEnabled = vi.fn(async () => false);
+    const setAutoUpdateCheckEnabled = vi.fn(async (_enabled: boolean) => undefined);
+    view(platformWith({ getAutoUpdateCheckEnabled, setAutoUpdateCheckEnabled }));
+
+    const toggle = await screen.findByRole('checkbox', { name: /자동 업데이트 확인/ });
+    expect(toggle).not.toBeChecked();
+    fireEvent.click(toggle);
+    await waitFor(() => expect(setAutoUpdateCheckEnabled).toHaveBeenCalledWith(true));
+    expect(await screen.findByText('자동 업데이트 확인 설정을 저장했습니다.')).toBeInTheDocument();
+  });
+
   it('confirms before installing and shows progress', async () => {
     let emit: (p: UpdateProgress) => void = () => undefined;
     const installUpdate = vi.fn(() => new Promise<void>(() => undefined));

@@ -57,6 +57,35 @@ describe('앱 셸: 구독 메뉴(ADM-10)와 구성원 메뉴(TEAM-10)', () => {
 });
 
 describe('앱 셸: 전체 검색(UX-02)', () => {
+  it('고객 입력은 메뉴 이동·로그아웃·브라우저 종료 전에 보호된다', async () => {
+    const svc=services();
+    svc.api.call.mockImplementation(async (_method:string,path:string) => path.includes('/customers/search') ? {items:[customer],total:1,next_cursor:null} : []);
+    svc.api.listCustomerPhotos=vi.fn(async()=>[]);
+    svc.api.listCustomerActivities=vi.fn(async()=>[]);
+    render(<App services={svc}/>); await login();
+    fireEvent.click(screen.getByRole('button',{name:'고객관리'}));
+    const grid=await screen.findByRole('grid',{name:'고객 목록'});
+    fireEvent.click(await within(grid).findByText('박검색'));
+    await screen.findByDisplayValue('박검색');
+    fireEvent.change(screen.getByLabelText('이름'),{target:{value:'작성 중 이름'}});
+    const unload=new Event('beforeunload',{cancelable:true});
+    fireEvent(window,unload);
+    expect(unload.defaultPrevented).toBe(true);
+    fireEvent.click(screen.getByRole('button',{name:'홈'}));
+    let guard=await screen.findByRole('dialog',{name:'저장하지 않은 변경'});
+    fireEvent.click(within(guard).getByRole('button',{name:'계속 작성'}));
+    await waitFor(()=>expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(screen.getByLabelText('이름')).toHaveValue('작성 중 이름');
+    fireEvent.click(screen.getByRole('button',{name:'로그아웃'}));
+    const logout=await screen.findByRole('dialog',{name:'로그아웃'});
+    fireEvent.click(within(logout).getByRole('button',{name:'로그아웃'}));
+    guard=await screen.findByRole('dialog',{name:'저장하지 않은 변경'});
+    fireEvent.click(within(guard).getByRole('button',{name:'계속 작성'}));
+    await waitFor(()=>expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(svc.api.logout).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('이름')).toHaveValue('작성 중 이름');
+  });
+
   it('Ctrl+K 로 팔레트를 열고 고객을 선택하면 고객관리로 이동한다', async () => {
     render(<App services={services()} />); await login();
     fireEvent.keyDown(window, { key: 'k', ctrlKey: true });

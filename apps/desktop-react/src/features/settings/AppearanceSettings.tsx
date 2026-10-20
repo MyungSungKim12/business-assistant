@@ -1,4 +1,5 @@
-import { Select } from '@business-assistant/react-ui';
+import { notify, Select } from '@business-assistant/react-ui';
+import type { Platform } from '../../platform/types';
 import { FONT_SCALE_CHOICES, START_MENU_CHOICES, usePreferences, type FontScale, type StartMenu } from '../../store/preferences';
 
 const SCALE_LABELS: Record<FontScale, string> = { 1: '기본', 1.1: '조금 크게', 1.25: '크게' };
@@ -7,12 +8,28 @@ const START_LABELS: Record<StartMenu, string> = { dashboard: '홈', tasks: '할 
 const START_OPTIONS = START_MENU_CHOICES.map((menu) => ({ value: menu, label: START_LABELS[menu] }));
 
 /** 화면 표시와 알림 설정(UX-05, OPS-04). 값은 로그인한 사용자별로 이 기기에 저장된다. */
-export function AppearanceSettings() {
+export function AppearanceSettings({ platform }: { platform: Platform }) {
   const fontScale = usePreferences((state) => state.fontScale);
   const startMenu = usePreferences((state) => state.startMenu);
   const notificationsEnabled = usePreferences((state) => state.notificationsEnabled);
+  const desktopNotificationsEnabled = usePreferences((state) => state.desktopNotificationsEnabled);
   const updateNotice = usePreferences((state) => state.updateNotice);
-  const { setFontScale, setStartMenu, setNotificationsEnabled, setUpdateNotice } = usePreferences.getState();
+  const { setFontScale, setStartMenu, setNotificationsEnabled, setDesktopNotificationsEnabled, setUpdateNotice } = usePreferences.getState();
+  const toggleDesktopNotifications = async (enabled: boolean) => {
+    if (!enabled) { setDesktopNotificationsEnabled(false); return; }
+    if (!platform.requestOsNotificationPermission) return;
+    try {
+      const granted = await platform.requestOsNotificationPermission();
+      if (!granted) {
+        notify.error('운영체제 알림 권한이 허용되지 않았습니다. Windows 알림 설정을 확인하세요.');
+        return;
+      }
+      setDesktopNotificationsEnabled(true);
+    } catch (error) {
+      platform.log?.('WARN', `OS 알림 권한을 확인하지 못했습니다: ${error instanceof Error ? error.message : String(error)}`);
+      notify.error('운영체제 알림 권한을 확인하지 못했습니다.');
+    }
+  };
   return (
     <>
       <label>
@@ -27,6 +44,10 @@ export function AppearanceSettings() {
         <span><strong>알림 센터</strong><small>예약 임박·할 일 기한 등 앱 안 알림을 상단에 표시합니다.</small></span>
         <input type="checkbox" checked={notificationsEnabled} onChange={(event) => setNotificationsEnabled(event.currentTarget.checked)} />
       </label>
+      {platform.kind === 'tauri' && platform.requestOsNotificationPermission && platform.sendOsNotification && <label>
+        <span><strong>운영체제 알림</strong><small>예약 60분 전·할 일 마감 시각에 알려 줍니다. 앱이 실행 중일 때만 동작합니다.</small></span>
+        <input type="checkbox" checked={desktopNotificationsEnabled} onChange={(event) => void toggleDesktopNotifications(event.currentTarget.checked)} />
+      </label>}
       <label>
         <span><strong>새 버전 알림</strong><small>새 버전이 확인되면 안내합니다. 끄면 아래 '업데이트 확인'으로만 확인합니다.</small></span>
         <input type="checkbox" checked={updateNotice} onChange={(event) => setUpdateNotice(event.currentTarget.checked)} />

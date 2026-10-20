@@ -40,12 +40,19 @@ export interface Platform {
   onUpdateProgress?: (handler: (progress: UpdateProgress) => void) => Promise<() => void>;
   /** 앱이 시작 후 자동으로 확인한 새 업데이트를 받는다(데스크톱 전용). 해제 함수를 돌려준다. */
   onUpdateAvailable?: (handler: (info: { version: string }) => void) => Promise<() => void>;
+  /** 다음 데스크톱 시작 시 백그라운드 업데이트 확인 여부를 읽고 저장한다. */
+  getAutoUpdateCheckEnabled?: () => Promise<boolean>;
+  setAutoUpdateCheckEnabled?: (enabled: boolean) => Promise<void>;
   notifyReady?: () => Promise<void>;
   exitApp?: () => Promise<void>;
   /** 트레이 메뉴의 로그아웃·종료 요청을 받는다(데스크톱 전용). 해제 함수를 돌려준다. */
   subscribeTray?: (handler: (action: 'logout' | 'exit') => void) => Promise<() => void>;
   /** 서버 연결 상태를 트레이 메뉴에 표시한다(데스크톱 전용). */
   setTrayStatus?: (state: ConnectionState) => void;
+  /** OS 알림 권한을 요청한다(데스크톱 전용). */
+  requestOsNotificationPermission?: () => Promise<boolean>;
+  /** 개인정보를 포함하지 않는 OS 알림을 보낸다(데스크톱 전용). */
+  sendOsNotification?: (title: string, body: string) => Promise<void>;
   log?: (level: 'INFO' | 'WARN' | 'ERROR', message: string) => void;
 }
 

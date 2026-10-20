@@ -7,6 +7,7 @@ use tauri::{AppHandle, Emitter};
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
 use tokio::sync::oneshot;
 use crate::{config, http};
+use crate::network;
 
 const MAX_IMAGE_BYTES: u64 = 10 * 1024 * 1024;
 const MAX_FILE_BYTES: u64 = 50 * 1024 * 1024;
@@ -174,7 +175,7 @@ pub async fn upload_binary(app: AppHandle, id: Option<String>, url: String, path
     }
     let progress = id.clone().map(|id| (app.clone(), id));
     let reader = ChunkReader { file, sent: 0, last_emitted: 0, total: size, progress };
-    let request = reqwest::Client::new().put(target).header("Content-Type", detected).header("Content-Length", size)
+    let request = network::client(network::FILE_TIMEOUT).map_err(|e| e.message.to_string())?.put(target).header("Content-Type", detected).header("Content-Length", size)
         .body(reqwest::Body::wrap_stream(chunk_stream(reader))).send();
     let outcome = match registration {
         Some((_guard, cancelled)) => match select(Box::pin(request), cancelled).await {
@@ -183,7 +184,7 @@ pub async fn upload_binary(app: AppHandle, id: Option<String>, url: String, path
         },
         None => request.await,
     };
-    let response = outcome.map_err(|e| e.to_string())?;
+    let response = outcome.map_err(|e| network::transport_error(e).message.to_string())?;
     if !response.status().is_success() { return Err(format!("업로드에 실패했습니다. ({})", response.status())); }
     if let Some(id) = id { let _ = app.emit(UPLOAD_PROGRESS_EVENT, UploadProgress { id, sent: size, total: size }); }
     Ok(())
@@ -193,9 +194,9 @@ pub async fn upload_binary(app: AppHandle, id: Option<String>, url: String, path
 pub async fn download_binary(url: String) -> Result<Vec<u8>, String> {
     let cfg = config::load()?;
     let target = http::signed_url(&url, &cfg.storage_host)?;
-    let response = reqwest::Client::new().get(target).send().await.map_err(|e| e.to_string())?;
+    let response = network::client(network::FILE_TIMEOUT).map_err(|e| e.message.to_string())?.get(target).send().await.map_err(|e| network::transport_error(e).message.to_string())?;
     if !response.status().is_success() { return Err(format!("파일 다운로드에 실패했습니다. ({})", response.status())); }
-    let bytes = response.bytes().await.map_err(|e| e.to_string())?;
+    let bytes = response.bytes().await.map_err(|e| network::transport_error(e).message.to_string())?;
     // 사진 외에 PDF 미리보기·파일 내려받기에도 쓰므로 파일 자료 한도(50MB)까지 허용한다.
     if bytes.len() as u64 > MAX_FILE_BYTES { return Err("다운로드 파일이 50MB를 초과합니다.".into()); }
     Ok(bytes.to_vec())

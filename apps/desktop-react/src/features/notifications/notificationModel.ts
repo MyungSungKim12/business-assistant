@@ -17,6 +17,8 @@ export interface NotificationItem {
   menu: MenuId;
   /** 정렬 기준(작을수록 먼저). */
   sortKey: string;
+  /** OS 알림 전달 시각. OS 알림 대상이 아니면 null 또는 생략한다. */
+  osNotifyAt?: string | null;
 }
 
 export interface WalletRow {
@@ -69,16 +71,18 @@ export function appointmentNotifications(appointments: Appointment[], customers:
       urgent,
       menu: 'appointments',
       sortKey: `1-${appointment.start_at}`,
+      osNotifyAt: new Date(start.getTime() - IMMINENT_MINUTES * 60_000).toISOString(),
     });
   }
   return items;
 }
 
 /** 기한이 지났거나 오늘까지인 미완료 할 일. */
-export function taskNotifications(tasks: Task[], now: Date): NotificationItem[] {
+export function taskNotifications(tasks: Task[], now: Date, userId?: string): NotificationItem[] {
   const today = kstDateKey(now);
   const items: NotificationItem[] = [];
   for (const task of tasks) {
+    if (userId && (task.assignee_id ?? task.created_by) !== userId) continue;
     if (!OPEN_TASK_STATUSES.has(task.status) || !task.due_at) continue;
     const due = kstDateKey(task.due_at);
     if (!due || due > today) continue;
@@ -91,6 +95,7 @@ export function taskNotifications(tasks: Task[], now: Date): NotificationItem[] 
       urgent: overdue,
       menu: 'tasks',
       sortKey: `2-${due}`,
+      osNotifyAt: task.due_at,
     });
   }
   return items;
@@ -151,11 +156,11 @@ export const KIND_LABELS: Record<NotificationKind, string> = { appointment: '예
 const KIND_ORDER: Record<NotificationKind, number> = { appointment: 0, task: 1, birthday: 2, wallet: 3 };
 
 /** 모든 알림을 모아 종류·시각 순으로 정렬한다. 순수 함수(now 주입). */
-export function buildNotifications(source: NotificationSource, now: Date): NotificationItem[] {
+export function buildNotifications(source: NotificationSource, now: Date, userId?: string): NotificationItem[] {
   const customers: CustomerMap = new Map(source.customers.map((customer) => [customer.id, customer]));
   return [
     ...appointmentNotifications(source.appointments, customers, now),
-    ...taskNotifications(source.tasks, now),
+    ...taskNotifications(source.tasks, now, userId),
     ...birthdayNotifications(source.customers, now),
     ...walletNotifications(source.wallets, customers, now),
   ].sort((a, b) => KIND_ORDER[a.kind] - KIND_ORDER[b.kind] || a.sortKey.localeCompare(b.sortKey) || a.id.localeCompare(b.id));

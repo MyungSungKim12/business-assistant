@@ -1,5 +1,6 @@
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/plugin-notification';
 import { ApiError } from '../api/errors';
 import type { HttpRequest, HttpResponse } from '../api/transport';
 import type { BinarySource, Platform, UpdateCheckResult, UpdateProgress } from './types';
@@ -10,6 +11,11 @@ export type TauriInvoke = (command: string, args?: Record<string, unknown>) => P
 interface NativeConfig { apiBase: string; storageHost: string }
 
 function nativeError(error: unknown): ApiError {
+  if(error && typeof error==='object' && 'code' in error && 'message' in error && 'retryable' in error
+    && ['NATIVE_TIMEOUT','NATIVE_TRANSPORT','NATIVE_CONFIG'].includes(String(error.code))
+    && typeof error.message==='string' && typeof error.retryable==='boolean'){
+    return new ApiError(0,String(error.code),error.message,error.retryable);
+  }
   const message = error instanceof Error ? error.message : String(error);
   return new ApiError(0, 'NATIVE_TRANSPORT', message || '운영체제 통신에 실패했습니다.', true);
 }
@@ -56,6 +62,11 @@ export async function createTauriPlatform(invoke: TauriInvoke = tauriInvoke as T
       return () => { offLogout(); offExit(); };
     },
     setTrayStatus: (state) => { void call<void>('tray_set_status', { state }).catch(() => undefined); },
+    async requestOsNotificationPermission() {
+      if (await isPermissionGranted()) return true;
+      return (await requestPermission()) === 'granted';
+    },
+    async sendOsNotification(title, body) { sendNotification({ title, body }); },
     log: (level, message) => { void call<void>('log_write', { level, message }).catch(() => undefined); },
     async pickImages() {
       const selected = await call<Array<{ name: string; contentType: string; size: number; path: string }> | null>('pick_images');
@@ -74,6 +85,8 @@ export async function createTauriPlatform(invoke: TauriInvoke = tauriInvoke as T
     async onUpdateAvailable(handler) {
       return listen<{ version?: string }>('update:available', (event) => handler({ version: String(event.payload?.version ?? '') }));
     },
+    getAutoUpdateCheckEnabled: () => call<boolean>('update_autocheck_get'),
+    setAutoUpdateCheckEnabled: (enabled) => call<void>('update_autocheck_set', { enabled }),
     autostart: {
       isEnabled: () => call<boolean>('autostart_is_enabled'),
       setEnabled: (enabled) => call<void>('autostart_set', { enabled }),

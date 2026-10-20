@@ -29,6 +29,8 @@ export interface NotificationState {
   loading: boolean;
   /** 일부 데이터를 불러오지 못했을 때 true(나머지 알림은 보여 준다). */
   partial: boolean;
+  /** 현재 사용자·매장의 알림을 오류 없이 모두 불러왔는지 */
+  ready: boolean;
   isRead(id: string): boolean;
   markRead(id: string): void;
   markAllRead(): void;
@@ -47,14 +49,25 @@ export function useNotifications({ api, organizationId, userId, enabled, now = (
   const [tick, setTick] = useState(0);
   const [read, setRead] = useState<Set<string>>(() => loadReadIds(userId));
   const alive = useRef(true);
+  const scope = `${userId}:${organizationId}`;
+  const activeScope = useRef(scope);
   const nowRef = useRef(now);
   nowRef.current = now;
 
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+  useEffect(() => {
+    if (activeScope.current === scope) return;
+    activeScope.current = scope;
+    setSource(EMPTY);
+    setLoading(false);
+    setPartial(false);
+    setLoaded(false);
+  }, [scope]);
   useEffect(() => { setRead(loadReadIds(userId)); }, [userId]);
 
   const refresh = useCallback(async (force = false) => {
     if (!enabled) return;
+    const requestScope = `${userId}:${organizationId}`;
     const maxAge = force ? 0 : OPEN_MAX_AGE_MS;
     const today = kstDateKey(nowRef.current());
     setLoading(true);
@@ -65,7 +78,7 @@ export function useNotifications({ api, organizationId, userId, enabled, now = (
       loadCustomers(api, organizationId, maxAge),
       loadWalletRecords(api, organizationId, maxAge),
     ]);
-    if (!alive.current) return;
+    if (!alive.current || activeScope.current !== requestScope) return;
     const [appointments, tasks, customers, wallets] = results;
     setSource({
       appointments: appointments.status === 'fulfilled' ? (appointments.value as Appointment[]) : [],
@@ -77,7 +90,7 @@ export function useNotifications({ api, organizationId, userId, enabled, now = (
     setPartial(failed);
     setLoaded(!failed);
     setLoading(false);
-  }, [api, enabled, organizationId]);
+  }, [api, enabled, organizationId, userId]);
 
   // 처음 한 번과 5분마다 갱신한다.
   useEffect(() => {
@@ -95,7 +108,7 @@ export function useNotifications({ api, organizationId, userId, enabled, now = (
   }, [enabled]);
 
   // tick 은 계산을 다시 하게 하는 의존성이다.
-  const items = useMemo(() => buildNotifications(source, now()), [source, tick]);
+  const items = useMemo(() => buildNotifications(source, now(), userId), [source, tick, userId]);
 
   // 첫 불러오기가 모두 성공한 뒤에만 지난 알림의 읽음 기록을 정리한다.
   useEffect(() => {
@@ -128,6 +141,7 @@ export function useNotifications({ api, organizationId, userId, enabled, now = (
   const unread = items.filter((item) => !read.has(item.id));
   return {
     items, unreadCount: unread.length, hasUrgentUnread: unread.some((item) => item.urgent),
-    loading, partial, isRead: (id) => read.has(id), markRead, markAllRead, refresh,
+    loading, partial, ready: loaded && !partial && activeScope.current === scope,
+    isRead: (id) => read.has(id), markRead, markAllRead, refresh,
   };
 }

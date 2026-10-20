@@ -10,6 +10,7 @@ import { OrganizationCreateForm } from '../features/auth/OrganizationCreateForm'
 import { OrganizationPicker } from '../features/auth/OrganizationPicker';
 import { NotificationCenter } from '../features/notifications/NotificationCenter';
 import { useNotifications } from '../features/notifications/useNotifications';
+import { useOsNotificationDelivery } from '../features/notifications/osNotificationDelivery';
 import { SearchPalette } from '../features/search/SearchPalette';
 import type { SearchResult } from '../features/search/searchModel';
 import { TopBar, type MenuId } from '../features/shell/TopBar';
@@ -36,9 +37,21 @@ export function App({ services }: { services: AppServices }) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [focus, setFocus] = useState<WorkspaceFocus | null>(null);
   const [dirty, setDirty] = useState(false);
+  const [draftBusy, setDraftBusy] = useState(false);
+  const beforeLeave = useCallback(async () => {
+    if (draftBusy) { notify.info('처리 중입니다. 결과를 확인한 뒤 이동해 주세요.'); return false; }
+    return !dirty || await confirm({ title: '저장하지 않은 변경', message: '저장하지 않은 입력이 있습니다. 버리고 계속할까요?', confirmLabel: '버리고 계속', cancelLabel: '계속 작성', tone: 'danger' });
+  }, [dirty, draftBusy]);
+  const guardedLogout = async () => { if (await beforeLeave()) await logout(); };
+  const guardedExit = async () => { if (await beforeLeave()) await services.platform.exitApp?.(); };
+  useEffect(() => {
+    const protect = (event: BeforeUnloadEvent) => { if (dirty || draftBusy) { event.preventDefault(); event.returnValue = ''; } };
+    window.addEventListener('beforeunload', protect);
+    return () => window.removeEventListener('beforeunload', protect);
+  }, [dirty, draftBusy]);
   useEffect(() => services.platform.subscribeConnection((state) => { setConnection(state); services.platform.setTrayStatus?.(state); }), [services.platform]);
 
-  useTrayActions(services.platform, { signedIn: phase !== 'login' && phase !== 'restoring', logout });
+  useTrayActions(services.platform, { signedIn: phase !== 'login' && phase !== 'restoring', logout, beforeLeave });
 
   const api = services.api as ApiClient;
   const ready = phase === 'ready' && Boolean(organization && entitlement && user);
@@ -55,6 +68,7 @@ export function App({ services }: { services: AppServices }) {
   const fontScale = usePreferences((state) => state.fontScale);
   const startMenu = usePreferences((state) => state.startMenu);
   const notificationsEnabled = usePreferences((state) => state.notificationsEnabled);
+  const desktopNotificationsEnabled = usePreferences((state) => state.desktopNotificationsEnabled);
   const updateNotice = usePreferences((state) => state.updateNotice);
 
   // 글자 크기: 문서 전체 배율. 미지원 환경에서는 무시된다.
@@ -80,7 +94,8 @@ export function App({ services }: { services: AppServices }) {
   }, [ready, updateNotice, services.platform]);
   const idle = useIdleLock(idleLockMinutes, ready);
   const platformAdmin = usePlatformAdmin(api, ready);
-  const notifications = useNotifications({ api, organizationId, userId, enabled: ready && !idle.locked && notificationsEnabled });
+  const notifications = useNotifications({ api, organizationId, userId, enabled: ready && !idle.locked && (notificationsEnabled || desktopNotificationsEnabled) });
+  useOsNotificationDelivery({ items: notifications.items, ready: notifications.ready, enabled: ready && !idle.locked && desktopNotificationsEnabled, userId, organizationId, platform: services.platform });
   const openSearch = useCallback(() => setSearchOpen(true), []);
   useSearchShortcut(openSearch, ready && !idle.locked);
   const menus = useMemo(() => searchMenus(Boolean(canManage), platformAdmin, customerEnabled), [canManage, platformAdmin, customerEnabled]);
@@ -88,7 +103,7 @@ export function App({ services }: { services: AppServices }) {
   // 작성 중인 내용이 있으면 메뉴를 옮기기 전에 확인한다. 이동했으면(또는 이미 그 화면이면) true.
   const navigate = async (id: MenuId): Promise<boolean> => {
     if (id === active) return true;
-    if (dirty && !(await confirm({ title: '저장하지 않은 변경', message: '저장하지 않은 변경 내용이 있습니다. 이동하시겠습니까?', confirmLabel: '이동', tone: 'danger' }))) return false;
+    if (!(await beforeLeave())) return false;
     setDirty(false);
     setFocus(null);
     setActive(id);
@@ -96,8 +111,15 @@ export function App({ services }: { services: AppServices }) {
   };
   const openSearchResult = async (result: SearchResult) => {
     setSearchOpen(false);
+    if (result.focus && result.menu === active && !(await beforeLeave())) return;
     const moved = await navigate(result.menu);
     if (moved && result.focus) setFocus({ ...result.focus, nonce: Date.now() });
+  };
+  const openFocusedPage = async (menu: MenuId, target: Omit<WorkspaceFocus, 'nonce'>) => {
+    if (menu === active && !(await beforeLeave())) return false;
+    if (!(await navigate(menu))) return false;
+    setFocus({...target,nonce:Date.now()});
+    return true;
   };
 
   if (phase === 'restoring') return <><main className="center-layout"><p>세션을 확인하고 있습니다…</p></main><ConfirmDialog /></>;
@@ -140,20 +162,20 @@ export function App({ services }: { services: AppServices }) {
           notifications={notificationsEnabled ? <NotificationCenter state={notifications} onNavigate={(id) => void navigate(id)} /> : undefined}
           onNavigate={(id) => void navigate(id)}
           onSettings={() => setSettings(true)}
-          onLogout={() => void logout()}
-          onExit={services.platform.exitApp}
+          onLogout={() => void guardedLogout()}
+          onExit={services.platform.exitApp ? guardedExit : undefined}
         />
         <main className="workspace">
           <Workspace api={api} organizationId={organization.id} organizationName={organization.name} canManage={canManage} currentUserId={user.user_id} currentRole={organization.role as 'owner' | 'admin' | 'member'}
-            active={active} readOnly={readOnly} focus={focus} onNavigate={navigate} onDirtyChange={setDirty}
+            active={active} readOnly={readOnly} focus={focus} onNavigate={navigate} onDirtyChange={setDirty} onBusyChange={setDraftBusy} onOpenFocus={openFocusedPage} canUseSales={entitlement.features.includes('crm.basic') && entitlement.features.includes('finance.basic')}
             onError={(error) => services.platform.log?.('ERROR', `화면 오류(${active}): ${error.name}: ${error.message.slice(0, 300)}`)} />
         </main>
         {settings && <SettingsDialog platform={services.platform} onClose={() => setSettings(false)} />}
         {searchOpen && !idle.locked && <SearchPalette api={api} organizationId={organization.id} menus={menus} onClose={() => setSearchOpen(false)} onSelect={(result) => void openSearchResult(result)} />}
         <NoticeHost />
-        <ConfirmDialog />
       </div>
-      {idle.locked && <LockScreen email={user.email} verify={(email, password) => services.api.login(email, password)} onUnlock={idle.unlock} onLogout={() => void logout()} />}
+      <ConfirmDialog />
+      {idle.locked && <LockScreen email={user.email} verify={(email, password) => services.api.login(email, password)} onUnlock={idle.unlock} onLogout={() => void guardedLogout()} />}
     </>
   );
 }
