@@ -1,5 +1,6 @@
 import type { CallApi } from '../appointment-resources/api';
-import { cartBundleSchema, movementsSchema, orgWalletsSchema, productSchema, productsSchema, walletHistorySchema, walletSchema, walletsSchema, walletUseResultSchema } from './schemas';
+import { z } from 'zod';
+import { cartBundleSchema, movementsSchema, orgWalletsSchema, productSchema, productsSchema, walletHistorySchema, walletSchema, walletsSchema, walletUseResultSchema, purchaseOrderSchema, purchaseOrdersSchema, supplierSchema, suppliersSchema } from './schemas';
 
 const base = (organizationId: string) => `/organizations/${organizationId}`;
 
@@ -11,6 +12,12 @@ export type StockChangeKind = 'supplier_return' | 'disposal' | 'stocktake';
 export type WalletAction = 'pause' | 'resume' | 'extend';
 
 export const catalogApi = {
+  listSuppliers:(api:CallApi,o:string)=>api.call('GET',`${base(o)}/catalog-suppliers`,suppliersSchema),
+  createSupplier:(api:CallApi,o:string,input:{name:string;contact_name:string;phone:string;email:string;note:string;is_active:boolean})=>api.call('POST',`${base(o)}/catalog-suppliers`,supplierSchema,input),
+  listPurchaseOrders:(api:CallApi,o:string)=>api.call('GET',`${base(o)}/catalog-purchase-orders`,purchaseOrdersSchema),
+  createPurchaseOrder:(api:CallApi,o:string,input:{supplier_id:string;operation_id:string;note:string;lines:{product_id:string;quantity_ordered:number;unit_cost:string;note:string}[]})=>api.call('POST',`${base(o)}/catalog-purchase-orders`,purchaseOrderSchema,input),
+  updatePurchaseOrder:(api:CallApi,o:string,id:string,input:{status:'ordered'|'canceled';expected_version:number})=>api.call('PATCH',`${base(o)}/catalog-purchase-orders/${id}`,purchaseOrderSchema,input),
+  receivePurchaseOrderLine:(api:CallApi,o:string,id:string,lineId:string,input:{quantity:number;operation_id:string})=>api.call('POST',`${base(o)}/catalog-purchase-orders/${id}/lines/${lineId}/receipts`,z.object({receipt_id:z.string(),order_id:z.string(),line_id:z.string(),quantity:z.number(),replayed:z.boolean()}),input),
   listProducts: (api: CallApi, organizationId: string) => api.call('GET', `${base(organizationId)}/catalog-products`, productsSchema),
   createProduct: (api: CallApi, organizationId: string, input: ProductInput & { operation_id: string }) => api.call('POST', `${base(organizationId)}/catalog-products`, productSchema, input),
   updateProduct: (api: CallApi, organizationId: string, productId: string, input: ProductInput & { operation_id: string; expected_version: number }) =>

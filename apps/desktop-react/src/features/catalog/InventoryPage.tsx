@@ -1,3 +1,4 @@
+import { useDraftProtection } from '../../app/DraftBoundary';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { DataGrid, ErrorState, LoadingState, Modal, Select, confirm, notify, type Column } from '@business-assistant/react-ui';
 import type { ApiClient } from '../../api/client';
@@ -7,6 +8,7 @@ import { movementExportColumns, productExportColumns } from '../../lib/io/domain
 import { catalogApi, type ProductInput, type StockChangeKind } from './api';
 import { movementLabel, won, type CatalogProduct, type StockMovement } from './schemas';
 import { StocktakeDialog } from './StocktakeDialog';
+import { PurchaseOrdersDialog } from './PurchaseOrdersDialog';
 import { emptyMovementFilter, filterMovements, isLowStock, lowStockLimit, parseLowStockInput, DEFAULT_LOW_STOCK, type MovementFilter } from './stock';
 import './catalog.css';
 
@@ -48,6 +50,7 @@ export function InventoryPage({ api, organizationId, readOnly }: InventoryPagePr
   const [stockFilter, setStockFilter] = useState<'all' | 'low'>('all');
   const [lowStockText, setLowStockText] = useState('');
   const [stocktakeOpen, setStocktakeOpen] = useState(false);
+  const [purchaseOpen,setPurchaseOpen]=useState(false);
   const [movementFilter, setMovementFilter] = useState<MovementFilter>(emptyMovementFilter);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [form, setForm] = useState<Form>(emptyForm);
@@ -62,6 +65,7 @@ export function InventoryPage({ api, organizationId, readOnly }: InventoryPagePr
 
   const selected = rows.find((row) => row.id === selectedId) ?? null;
   const dirty = JSON.stringify([form, stock, lowStockText]) !== baseline;
+  useDraftProtection(dirty, busy);
   const editable = !readOnly && !busy;
 
   const load = useCallback(async () => {
@@ -193,6 +197,7 @@ export function InventoryPage({ api, organizationId, readOnly }: InventoryPagePr
         <div className="catalog-toolbar-actions">
           <ExportButton title="상품 목록" columns={productExportColumns} rows={visible} disabled={loading || loadError !== ''} />
           {!readOnly && <button type="button" disabled={busy || loading || loadError !== ''} onClick={() => guarded(() => setStocktakeOpen(true))}>재고 실사</button>}
+          {!readOnly&&<button type="button" disabled={busy||loading||loadError!==''} onClick={()=>setPurchaseOpen(true)}>공급처 · 발주</button>}
           {!readOnly && <button type="button" className="primary-button" disabled={busy} onClick={startNew}>새 상품</button>}
         </div>
       </div>
@@ -270,6 +275,7 @@ export function InventoryPage({ api, organizationId, readOnly }: InventoryPagePr
         </Modal>
       )}
       {stocktakeOpen && <StocktakeDialog api={api} organizationId={organizationId} products={stocktakeProducts} onApplied={applyStocktake} onClose={() => { setStocktakeOpen(false); void load(); }} />}
+      {purchaseOpen&&<PurchaseOrdersDialog api={api} organizationId={organizationId} products={rows} readOnly={readOnly} onClose={()=>{setPurchaseOpen(false);void load()}}/>}
     </section>
   );
 }

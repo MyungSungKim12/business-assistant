@@ -11,11 +11,16 @@ export const productSchema = z.object({
   low_stock_threshold: z.number().nullable().optional(),
 });
 export const productsSchema = z.array(productSchema);
+export const supplierSchema=z.object({id:z.string(),organization_id:z.string(),name:z.string(),contact_name:z.string(),phone:z.string(),email:z.string(),note:z.string(),is_active:z.boolean(),version:z.number(),created_by:z.string(),created_at:z.string(),updated_at:z.string()});
+export const suppliersSchema=z.array(supplierSchema);
+export const purchaseLineSchema=z.object({id:z.string(),organization_id:z.string(),order_id:z.string(),product_id:z.string(),quantity_ordered:z.number(),quantity_received:z.number(),unit_cost:money,note:z.string(),created_at:z.string()});
+export const purchaseOrderSchema=z.object({id:z.string(),organization_id:z.string(),supplier_id:z.string(),status:z.enum(['draft','ordered','received','canceled']),ordered_at:z.string().nullable(),note:z.string(),version:z.number(),created_by:z.string(),created_at:z.string(),updated_at:z.string(),lines:z.array(purchaseLineSchema).default([])});
+export const purchaseOrdersSchema=z.array(purchaseOrderSchema);
 export type CatalogProduct = z.infer<typeof productSchema>;
 
 export const movementSchema = z.object({
   id: z.string(), organization_id: z.string(), product_id: z.string(),
-  movement_kind: z.enum(['receipt', 'sale', 'refund', 'customer_return', 'supplier_return', 'disposal', 'stocktake', 'treatment_use']),
+  movement_kind: z.enum(['receipt', 'purchase_order_receipt', 'sale', 'refund', 'customer_return', 'supplier_return', 'disposal', 'stocktake', 'treatment_use','adjustment']),
   quantity: z.number(), reason: z.string(), created_by: z.string(), created_at: z.string(),
 });
 export const movementsSchema = z.array(movementSchema);
@@ -61,7 +66,7 @@ export type CartBundle = z.infer<typeof cartBundleSchema>;
 export type WalletUseResult = z.infer<typeof walletUseResultSchema>;
 
 export const movementLabel: Record<StockMovement['movement_kind'], string> = {
-  receipt: '입고', sale: '판매 출고', refund: '환불 복원', customer_return: '고객 상품 반품', supplier_return: '거래처 반품', disposal: '폐기', stocktake: '실사 조정', treatment_use: '시술 소모',
+  receipt: '입고', purchase_order_receipt: '발주 입고', sale: '판매 출고', refund: '환불 복원', customer_return: '고객 상품 반품', supplier_return: '거래처 반품', disposal: '폐기', stocktake: '실사 조정', treatment_use: '시술 소모', adjustment: '재고 조정',
 };
 
 export const won = (value: unknown): string => {

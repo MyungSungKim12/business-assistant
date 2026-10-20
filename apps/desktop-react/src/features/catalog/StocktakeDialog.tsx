@@ -6,6 +6,7 @@ import { catalogApi } from './api';
 import { buildStocktakePlan, type StocktakeEntry } from './stock';
 import type { CatalogProduct } from './schemas';
 import './catalog.css';
+import { useDraftProtection } from '../../app/DraftBoundary';
 
 type RowState = { status: 'pending' | 'done' | 'failed'; message: string };
 const DEFAULT_REASON = '정기 재고 실사';
@@ -26,6 +27,13 @@ export function StocktakeDialog({ api, organizationId, products, onApplied, onCl
   const [rowStates, setRowStates] = useState<Record<string, RowState>>({});
   const [applied, setApplied] = useState<Record<string, CatalogProduct>>({});
   const [busy, setBusy] = useState(false);
+  const dirty = Object.values(counts).some(value => value.trim() !== '') || reason !== DEFAULT_REASON;
+  useDraftProtection(dirty, busy);
+  async function close() {
+    if (busy) return;
+    if (dirty && !(await confirm({ title: '작성 중인 실사', message: '아직 반영하지 않은 실사 입력을 버리고 닫을까요?', confirmLabel: '닫기', cancelLabel: '계속 작성' }))) return;
+    onClose();
+  }
   const [message, setMessage] = useState('');
   const trackers = useRef(new Map<string, OperationTracker>());
 
@@ -90,7 +98,7 @@ export function StocktakeDialog({ api, organizationId, products, onApplied, onCl
   }
 
   return (
-    <Modal title="재고 실사" size="lg" onClose={onClose}>
+    <Modal title="재고 실사" size="lg" onClose={() => void close()}>
       <div className="stocktake">
         <p className="muted">실제로 센 수량을 입력하세요. 입력하지 않은 상품은 바꾸지 않습니다.</p>
         <div className="stocktake-table" role="region" aria-label="실사 입력">
@@ -125,7 +133,7 @@ export function StocktakeDialog({ api, organizationId, products, onApplied, onCl
           <label>실사 사유<input value={reason} disabled={busy} onChange={(event) => setReason(event.currentTarget.value)} /></label>
           <span className="muted" aria-live="polite">차이 {plan.entries.length}건 · 일치 {plan.unchanged}건{plan.invalid.length ? ` · 오류 ${plan.invalid.length}건` : ''}</span>
           <button type="button" className="primary-button" disabled={busy || plan.entries.length === 0} onClick={() => void submit()}>차이 확인 후 반영</button>
-          <button type="button" disabled={busy} onClick={onClose}>닫기</button>
+          <button type="button" disabled={busy} onClick={() => void close()}>닫기</button>
         </div>
         {message && <p aria-live="polite" className="catalog-message">{message}</p>}
       </div>

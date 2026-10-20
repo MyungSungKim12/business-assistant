@@ -26,6 +26,19 @@ const confirmApply = async () => {
 };
 
 describe('StocktakeDialog', () => {
+  it('하단 닫기에서도 실사 입력을 버릴지 확인하고 취소하면 입력을 지킨다', async () => {
+    const kit=server({}),onClose=vi.fn();
+    render(<><ConfirmDialog/><StocktakeDialog api={kit.api} organizationId={ORG} products={[a]} onApplied={()=>undefined} onClose={onClose}/></>);
+    count('크림','8');
+    const dialog=screen.getByRole('dialog',{name:'재고 실사'});
+    fireEvent.click(within(dialog).getAllByRole('button',{name:'닫기'})[1]);
+    const guard=await screen.findByRole('dialog',{name:'작성 중인 실사'});
+    fireEvent.click(within(guard).getByRole('button',{name:'계속 작성'}));
+    await waitFor(()=>expect(screen.queryByRole('dialog',{name:'작성 중인 실사'})).not.toBeInTheDocument());
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('크림 실사 수량')).toHaveValue(8);
+  });
+
   it('입력한 수량의 차이를 표에 계산해 보여 주고 차이가 없으면 반영 버튼이 꺼져 있다', () => {
     open({});
     expect(screen.getByRole('button', { name: '차이 확인 후 반영' })).toBeDisabled();

@@ -140,3 +140,10 @@
 }
 
 .catalog-checklist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; max-height: 260px; overflow: auto; }
+.purchase-dialog { display:grid; gap:14px; }
+.purchase-dialog fieldset { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; border:1px solid var(--border-subtle); border-radius:10px; padding:14px; }
+.purchase-dialog fieldset legend { padding:0 6px; font-weight:600; }
+.purchase-dialog label { display:grid; gap:5px; }
+.purchase-list { display:grid; gap:10px; }
+.purchase-list article { border:1px solid var(--border-subtle); border-radius:10px; padding:12px; }
+.purchase-list header,.purchase-line { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:6px 0; }
