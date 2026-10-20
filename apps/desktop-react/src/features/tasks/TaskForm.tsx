@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { DateTimeField, Select } from '@business-assistant/react-ui';
-import type { Task } from '../../api/schemas';
+import type { Appointment, Task } from '../../api/schemas';
 import { isoToLocalInput } from './taskDates';
 import { PRIORITY_LABELS, RECURRENCE_LABELS, priorityOf, recurrenceOf, type TaskPriority, type TaskRecurrence } from './taskMeta';
 import { labelsOf, labelsText } from './checklistLogic';
@@ -17,6 +17,7 @@ export interface TaskFormValues {
   recurrence: '' | TaskRecurrence;
   /** 연결한 고객 ID. 빈 문자열이면 연결 없음. */
   customerId: string;
+  appointmentId: string;
   /** 담당자 사용자 ID. 빈 문자열이면 지정 안 함. */
   assigneeId: string;
 }
@@ -25,11 +26,11 @@ const RECURRENCE_OPTIONS: Array<{ value: '' | TaskRecurrence; label: string }> =
 const PRIORITY_OPTIONS = (Object.keys(PRIORITY_LABELS) as TaskPriority[]).map((value) => ({ value, label: PRIORITY_LABELS[value] }));
 
 export function valuesFromTask(task: Task | null, defaultDue: string): TaskFormValues {
-  if (!task) return { title: '', description: '', due: defaultDue, priority: 'normal', labels: '', recurrence: '', customerId: '', assigneeId: '' };
-  return { title: task.title, description: task.description, due: isoToLocalInput(task.due_at), priority: priorityOf(task), labels: labelsText(labelsOf(task)), recurrence: recurrenceOf(task) ?? '', customerId: task.customer_id ?? '', assigneeId: task.assignee_id ?? '' };
+  if (!task) return { title: '', description: '', due: defaultDue, priority: 'normal', labels: '', recurrence: '', customerId: '', appointmentId: '', assigneeId: '' };
+  return { title: task.title, description: task.description, due: isoToLocalInput(task.due_at), priority: priorityOf(task), labels: labelsText(labelsOf(task)), recurrence: recurrenceOf(task) ?? '', customerId: task.customer_id ?? '', appointmentId: task.appointment_id ?? '', assigneeId: task.assignee_id ?? '' };
 }
 
-const same = (a: TaskFormValues, b: TaskFormValues) => a.title === b.title && a.description === b.description && a.due === b.due && a.priority === b.priority && a.labels === b.labels && a.recurrence === b.recurrence && a.customerId === b.customerId && a.assigneeId === b.assigneeId;
+const same = (a: TaskFormValues, b: TaskFormValues) => a.title === b.title && a.description === b.description && a.due === b.due && a.priority === b.priority && a.labels === b.labels && a.recurrence === b.recurrence && a.customerId === b.customerId && a.appointmentId === b.appointmentId && a.assigneeId === b.assigneeId;
 
 export interface TaskFormProps {
   /** 편집할 할 일. null이면 신규 등록. */
@@ -39,13 +40,14 @@ export interface TaskFormProps {
   readOnly: boolean;
   /** 고객 연결 선택지. 비어 있으면 고객 칸을 숨긴다. */
   customers?: Array<{ id: string; name: string }>;
+  appointments?: Appointment[];
   /** 담당자 선택지(구성원). 비어 있으면 담당자 칸을 숨긴다. */
   people?: Array<{ id: string; name: string }>;
   onSubmit: (values: TaskFormValues) => Promise<void>;
   onDirtyChange: (dirty: boolean) => void;
 }
 
-export function TaskForm({ task, defaultDue, readOnly, customers = [], people = [], onSubmit, onDirtyChange }: TaskFormProps) {
+export function TaskForm({ task, defaultDue, readOnly, customers = [], appointments = [], people = [], onSubmit, onDirtyChange }: TaskFormProps) {
   const base = valuesFromTask(task, defaultDue);
   const [values, setValues] = useState<TaskFormValues>(base);
   const [saving, setSaving] = useState(false);
@@ -60,7 +62,7 @@ export function TaskForm({ task, defaultDue, readOnly, customers = [], people = 
     if (same(previous, base)) return;
     setValues((current) => (same(current, previous) ? base : current));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [base.title, base.description, base.due, base.priority, base.labels, base.recurrence, base.customerId, base.assigneeId]);
+  }, [base.title, base.description, base.due, base.priority, base.labels, base.recurrence, base.customerId, base.appointmentId, base.assigneeId]);
 
   const dirty = !same(values, base);
   useEffect(() => { onDirtyChange(dirty); }, [dirty, onDirtyChange]);
@@ -86,6 +88,11 @@ export function TaskForm({ task, defaultDue, readOnly, customers = [], people = 
   };
 
   const customerOptions = [{ value: '', label: '연결 안 함' }, ...customers.map((customer) => ({ value: customer.id, label: customer.name })), ...(values.customerId && !customers.some((customer) => customer.id === values.customerId) ? [{ value: values.customerId, label: '(목록에 없는 고객)' }] : [])];
+  const appointmentOptions = [{ value: '', label: '연결 안 함' }, ...appointments.filter((appointment) => appointment.status !== 'canceled').map((appointment) => {
+    const customerName = customers.find((customer) => customer.id === appointment.customer_id)?.name ?? '고객';
+    const when = new Intl.DateTimeFormat('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(appointment.start_at));
+    return { value: appointment.id, label: `${when} · ${customerName} · ${appointment.service_name_snapshot}` };
+  }), ...(values.appointmentId && !appointments.some((appointment) => appointment.id === values.appointmentId) ? [{ value: values.appointmentId, label: '(목록에 없는 예약)' }] : [])];
   const assigneeOptions = [{ value: '', label: '지정 안 함' }, ...people.map((person) => ({ value: person.id, label: person.name })), ...(values.assigneeId && !people.some((person) => person.id === values.assigneeId) ? [{ value: values.assigneeId, label: '(구성원 아님)' }] : [])];
   const canSave = !readOnly && !saving && values.title.trim() !== '' && (task === null || dirty);
   return (
@@ -98,7 +105,11 @@ export function TaskForm({ task, defaultDue, readOnly, customers = [], people = 
       </div>
       <label>반복<Select options={RECURRENCE_OPTIONS} value={values.recurrence} disabled={readOnly} onChange={(recurrence) => patch({ recurrence })} /></label>
       {people.length > 0 || values.assigneeId ? <label>담당자<Select options={assigneeOptions} value={values.assigneeId} disabled={readOnly} onChange={(assigneeId) => patch({ assigneeId })} /></label> : null}
-      {customers.length > 0 || values.customerId ? <label>고객<Select options={customerOptions} value={values.customerId} disabled={readOnly} onChange={(customerId) => patch({ customerId })} /></label> : null}
+      {customers.length > 0 || values.customerId ? <label>고객<Select options={customerOptions} value={values.customerId} disabled={readOnly || Boolean(values.appointmentId)} onChange={(customerId) => patch({ customerId })} /></label> : null}
+      {appointments.length > 0 || values.appointmentId ? <label>예약<Select options={appointmentOptions} value={values.appointmentId} disabled={readOnly} onChange={(appointmentId) => {
+        const appointment = appointments.find((row) => row.id === appointmentId);
+        patch({ appointmentId, ...(appointment ? { customerId: appointment.customer_id } : {}) });
+      }} /></label> : null}
       <label>라벨<input value={values.labels} disabled={readOnly} placeholder="쉼표로 구분(예: 재고, 월말)" onChange={(event) => patch({ labels: event.currentTarget.value })} /></label>
       {error && <p role="alert" className="tasks-error">{error}</p>}
       {!readOnly && (

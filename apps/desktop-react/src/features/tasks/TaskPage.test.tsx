@@ -26,6 +26,7 @@ function makeApi(initial: Task[] = seed()) {
     listTasks: vi.fn(async () => rows),
     listTaskPeople: vi.fn(async () => [{ user_id: ME, name: '김담당' }, { user_id: BOSS, name: '원장' }]),
     listCustomers: vi.fn(async () => [{ id: CUSTOMER, organization_id: ORG, name: '박고객', status: 'active' }]),
+    listAppointments: vi.fn(async () => [{ id: '77777777-7777-4777-8777-777777777777', organization_id: ORG, customer_id: CUSTOMER, staff_id: ME, service_id: '88888888-8888-4888-8888-888888888888', service_name_snapshot: '속눈썹 펌', duration_minutes: 60, buffer_minutes: 0, start_at: local(2026, 10, 22, 14), end_at: local(2026, 10, 22, 15), status: 'reserved', source: 'manual', cancellation_reason: null, version: 1 }]),
     createTask: vi.fn(async (_o: string, input: Pick<Task, 'title' | 'description' | 'due_at'> & { priority: string }) => {
       const created = makeTask(rows.length + 5, { ...input });
       rows = [...rows, created];
@@ -434,6 +435,16 @@ describe('TaskPage 라벨·체크리스트(TASK-02)', () => {
 });
 
 describe('TaskPage 반복·고객 연결(TASK-01)', () => {
+  it('예약을 연결하면 예약의 고객과 함께 저장한다', async () => {
+    const api = makeApi();
+    renderPage(api);
+    await ready();
+    fireEvent.click(within(grid()).getByText('재고 확인'));
+    fireEvent.change(await within(detail()).findByLabelText('예약'), { target: { value: '77777777-7777-4777-8777-777777777777' } });
+    fireEvent.click(within(detail()).getByRole('button', { name: '저장' }));
+    await waitFor(() => expect(api.updateTask).toHaveBeenCalledWith(ORG, expect.any(String), expect.objectContaining({ appointment_id: '77777777-7777-4777-8777-777777777777', customer_id: CUSTOMER })));
+  });
+
   it('기한이 있는 할 일에 반복과 고객을 지정해 저장한다', async () => {
     const api = makeApi();
     renderPage(api);

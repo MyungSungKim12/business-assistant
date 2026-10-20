@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { confirm, notify } from '@business-assistant/react-ui';
 import type { ApiClient } from '../../api/client';
-import type { Customer, Task } from '../../api/schemas';
+import type { Appointment, Customer, Task } from '../../api/schemas';
 import { TaskCalendar } from './TaskCalendar';
 import { TaskDetail } from './TaskDetail';
 import type { TaskFormValues } from './TaskForm';
@@ -38,6 +38,7 @@ export function TaskPage({ api, organizationId, readOnly = false, currentUserId 
   const [createDue, setCreateDue] = useState('');
   const [completing, setCompleting] = useState(false);
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [people, setPeople] = useState<Array<{ user_id: string; name: string }>>([]);
   // 담당자 선택지. 불러오지 못해도 할 일 화면은 그대로 쓴다.
   useEffect(() => { let live = true; Promise.resolve().then(() => api.listTaskPeople(organizationId)).then((rows) => { if (live) setPeople(rows); }, () => undefined); return () => { live = false; }; }, [api, organizationId]);
@@ -47,6 +48,8 @@ export function TaskPage({ api, organizationId, readOnly = false, currentUserId 
   const canWork = useCallback((task: Task) => !readOnly || (currentUserId !== '' && task.assignee_id === currentUserId), [readOnly, currentUserId]);
   // 고객 연결 선택지. 불러오지 못해도 할 일 화면은 그대로 쓴다.
   useEffect(() => { let live = true; Promise.resolve().then(() => api.listCustomers(organizationId)).then((rows) => { if (live) setCustomers(rows.filter((row) => row.status !== 'archived')); }, () => undefined); return () => { live = false; }; }, [api, organizationId]);
+  // 예약 조회 권한/연결이 없어도 할 일 목록 자체는 계속 사용할 수 있다.
+  useEffect(() => { let live = true; Promise.resolve().then(() => api.listAppointments(organizationId)).then((rows) => { if (live) setAppointments(rows); }, () => undefined); return () => { live = false; }; }, [api, organizationId]);
   const customerOptions = useMemo(() => [...customers].sort((a, b) => a.name.localeCompare(b.name, 'ko')).map((row) => ({ id: row.id, name: row.name })), [customers]);
   const dirtyRef = useRef(false);
   const itemsRef = useRef<Task[]>([]);
@@ -95,13 +98,13 @@ export function TaskPage({ api, organizationId, readOnly = false, currentUserId 
   };
 
   const createTask = async (values: TaskFormValues) => {
-    const created = await api.createTask(organizationId, { title: values.title, description: values.description, due_at: localInputToIso(values.due), priority: values.priority, labels: parseLabels(values.labels), recurrence: values.recurrence || null, customer_id: values.customerId || null, assignee_id: values.assigneeId || null });
+    const created = await api.createTask(organizationId, { title: values.title, description: values.description, due_at: localInputToIso(values.due), priority: values.priority, labels: parseLabels(values.labels), recurrence: values.recurrence || null, customer_id: values.customerId || null, appointment_id: values.appointmentId || null, assignee_id: values.assigneeId || null });
     setItems((current) => [...current, created]);
     setCreateDue('');
     setSelectedId(created.id);
   };
   const updateTask = async (task: Task, values: TaskFormValues) => {
-    const saved = await api.updateTask(organizationId, task.id, { title: values.title, description: values.description, due_at: localInputToIso(values.due), priority: values.priority, labels: parseLabels(values.labels), recurrence: values.recurrence || null, customer_id: values.customerId || null, assignee_id: values.assigneeId || null });
+    const saved = await api.updateTask(organizationId, task.id, { title: values.title, description: values.description, due_at: localInputToIso(values.due), priority: values.priority, labels: parseLabels(values.labels), recurrence: values.recurrence || null, customer_id: values.customerId || null, appointment_id: values.appointmentId || null, assignee_id: values.assigneeId || null });
     setItems((current) => mergeTask(current, saved));
   };
   const changeStatus = async (task: Task, status: TaskStatus) => {
@@ -181,6 +184,7 @@ export function TaskPage({ api, organizationId, readOnly = false, currentUserId 
       />
       <TaskDetail
         customers={customerOptions}
+        appointments={appointments}
         people={personOptions}
         canWork={canWork}
         task={selected}

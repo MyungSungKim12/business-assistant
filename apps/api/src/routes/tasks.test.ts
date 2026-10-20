@@ -48,7 +48,7 @@ describe('task routes', () => {
     const { app, calls } = fixture();
     const result = await app.inject({ method: 'POST', url: base, headers, payload: { title: '월말 정리', labels: ['재고', '월말'], checklist: [{ id: 'a', text: '상자', done: false }] } });
     expect(result.statusCode).toBe(200);
-    expect(calls[0].input).toEqual({ title: '월말 정리', description: '', due_at: null, priority: 'normal', labels: ['재고', '월말'], checklist: [{ id: 'a', text: '상자', done: false }], recurrence: null, customer_id: null, assignee_id: null });
+    expect(calls[0].input).toEqual({ title: '월말 정리', description: '', due_at: null, priority: 'normal', labels: ['재고', '월말'], checklist: [{ id: 'a', text: '상자', done: false }], recurrence: null, customer_id: null, appointment_id: null, assignee_id: null });
     const bare = await app.inject({ method: 'POST', url: base, headers, payload: { title: '기본' } });
     expect(bare.statusCode).toBe(200);
     expect(calls[1].input).toMatchObject({ labels: [], checklist: [] });
@@ -128,6 +128,19 @@ describe('task assignee and completion record (049)', () => {
     const result = await app.inject({ method: 'GET', url: `/api/v1/organizations/${organizationId}/task-people`, headers });
     expect(result.statusCode).toBe(200);
     expect(result.json()).toEqual([{ user_id: assignee, name: '김담당' }]);
+    await app.close();
+  });
+});
+
+describe('task appointment link (055)', () => {
+  const appointmentId = 'e9cc39fd-8e8c-4df8-a623-1f23a3a936bd';
+  it('accepts appointment link on create and patch, and allows clearing it', async () => {
+    const { app, calls } = fixture();
+    await app.inject({ method: 'POST', url: base, headers, payload: { title: '시술 준비', appointment_id: appointmentId } });
+    await app.inject({ method: 'PATCH', url: `${base}/${taskId}`, headers, payload: { appointment_id: null } });
+    expect(calls[0].input).toMatchObject({ appointment_id: appointmentId });
+    expect(calls[1].input).toEqual({ appointment_id: null });
+    expect((await app.inject({ method: 'PATCH', url: `${base}/${taskId}`, headers, payload: { appointment_id: 'bad-id' } })).statusCode).toBe(422);
     await app.close();
   });
 });

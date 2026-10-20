@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { confirm } from '@business-assistant/react-ui';
-import type { Task } from '../../api/schemas';
+import type { Appointment, Task } from '../../api/schemas';
 import { formatDue } from './taskDates';
 import { TaskChecklist } from './TaskChecklist';
 import type { Checklist } from './checklistLogic';
@@ -16,6 +16,7 @@ export interface TaskDetailProps {
   createDue: string;
   readOnly: boolean;
   customers?: Array<{ id: string; name: string }>;
+  appointments?: Appointment[];
   people?: Array<{ id: string; name: string }>;
   /** 이 할 일의 상태·체크리스트를 바꿀 수 있는지(관리자이거나 담당자). 내용 수정은 readOnly가 따로 막는다. */
   canWork?: (task: Task) => boolean;
@@ -32,7 +33,7 @@ function createdAtOf(task: Task): string | null {
   return typeof value === 'string' ? formatDue(value) : null;
 }
 
-export function TaskDetail({ task, createKey, createDue, readOnly, customers, people, canWork, onCreate, onUpdate, onStatus, onChecklist, onDelete, onDirtyChange }: TaskDetailProps) {
+export function TaskDetail({ task, createKey, createDue, readOnly, customers, appointments, people, canWork, onCreate, onUpdate, onStatus, onChecklist, onDelete, onDirtyChange }: TaskDetailProps) {
   const [actionError, setActionError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -60,7 +61,7 @@ export function TaskDetail({ task, createKey, createDue, readOnly, customers, pe
         <header className="tasks-panel__head"><h2>새 할 일 등록</h2></header>
         <div className="tasks-detail__body">
           {readOnly && <p className="tasks-muted">조회 전용 계정입니다. 목록에서 할 일을 선택해 내용을 확인하세요.</p>}
-          {!readOnly && <TaskForm key={`new-${createKey}`} task={null} defaultDue={createDue} readOnly={false} customers={customers} people={people} onSubmit={onCreate} onDirtyChange={onDirtyChange} />}
+          {!readOnly && <TaskForm key={`new-${createKey}`} task={null} defaultDue={createDue} readOnly={false} customers={customers} appointments={appointments} people={people} onSubmit={onCreate} onDirtyChange={onDirtyChange} />}
         </div>
       </aside>
     );
@@ -83,7 +84,7 @@ export function TaskDetail({ task, createKey, createDue, readOnly, customers, pe
             {status === 'done' && task.completed_by_name && <><dt>완료한 사람</dt><dd data-testid="completed-by">{task.completed_by_name}{completedAt ? ` · ${completedAt}` : ''}</dd></>}
           </dl>
         )}
-        <TaskForm key={task.id} task={task} defaultDue="" readOnly={readOnly} customers={customers} people={people} onSubmit={(values) => onUpdate(task, values)} onDirtyChange={onDirtyChange} />
+        <TaskForm key={task.id} task={task} defaultDue="" readOnly={readOnly} customers={customers} appointments={appointments} people={people} onSubmit={(values) => onUpdate(task, values)} onDirtyChange={onDirtyChange} />
         <TaskChecklist key={`check-${task.id}`} task={task} readOnly={!work} onChange={(checklist) => onChecklist(task, checklist)} />
         {actionError && <p role="alert" className="tasks-error">{actionError}</p>}
         {work && (

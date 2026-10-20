@@ -15,15 +15,16 @@ const fields = {
   checklist: checklistSchema,
   recurrence: z.enum(['daily', 'weekly', 'monthly']).nullable(),
   customer_id: z.uuid().nullable(),
+  appointment_id: z.uuid().nullable(),
   assignee_id: z.uuid().nullable(),
 };
 const taskInput = z.object({
   title: fields.title, description: fields.description.default(''), due_at: fields.due_at.default(null), priority: fields.priority.default('normal'),
-  labels: fields.labels.default([]), checklist: fields.checklist.default([]), recurrence: fields.recurrence.default(null), customer_id: fields.customer_id.default(null), assignee_id: fields.assignee_id.default(null),
+  labels: fields.labels.default([]), checklist: fields.checklist.default([]), recurrence: fields.recurrence.default(null), customer_id: fields.customer_id.default(null), appointment_id: fields.appointment_id.default(null), assignee_id: fields.assignee_id.default(null),
 }).strict().refine((value) => value.recurrence === null || value.due_at !== null, { message: '반복하려면 기한이 필요하다' });
 const taskPatch = z.object({
   title: fields.title.optional(), description: fields.description.optional(), due_at: fields.due_at.optional(), priority: fields.priority.optional(),
-  labels: fields.labels.optional(), checklist: fields.checklist.optional(), recurrence: fields.recurrence.optional(), customer_id: fields.customer_id.optional(), assignee_id: fields.assignee_id.optional(), status: z.enum(['open', 'in_progress', 'done', 'canceled']).optional(),
+  labels: fields.labels.optional(), checklist: fields.checklist.optional(), recurrence: fields.recurrence.optional(), customer_id: fields.customer_id.optional(), appointment_id: fields.appointment_id.optional(), assignee_id: fields.assignee_id.optional(), status: z.enum(['open', 'in_progress', 'done', 'canceled']).optional(),
 }).strict().refine((value) => Object.keys(value).length > 0);
 
 export function registerTaskRoutes(app: FastifyInstance, organizations: Pick<{ requireAccess(token: string, id: string, feature: string, write?: boolean): Promise<string> }, 'requireAccess'> | undefined, tasks?: TaskGateway): void {
