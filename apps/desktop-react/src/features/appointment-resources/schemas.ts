@@ -22,7 +22,7 @@ export const consumablesSchema = z.array(consumableSchema);
 export const serviceStaffListSchema = z.array(z.object({ service_id: z.string(), staff_id: z.string() }));
 export const serviceStaffIdsSchema = z.object({ staff_ids: z.array(z.string()) });
 
-export const staffSchema = z.object({ id: z.string(), organization_id: z.string(), name: z.string(), is_active: z.boolean(), schedule_version: z.number().default(1) });
+export const staffSchema = z.object({ id: z.string(), organization_id: z.string(), name: z.string(), is_active: z.boolean(), profile_version: z.number().int().positive().optional(), schedule_version: z.number().default(1) });
 export const staffListSchema = z.array(staffSchema);
 export type AppointmentStaffRow = z.infer<typeof staffSchema>;
 

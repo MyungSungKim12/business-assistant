@@ -52,6 +52,7 @@ export const resourceApi = {
 
   listStaff: (api: CallApi, organizationId: string) => api.call('GET', `${base(organizationId)}/appointment-staff`, staffListSchema),
   createStaff: (api: CallApi, organizationId: string, input: { name: string }) => api.call('POST', `${base(organizationId)}/appointment-staff`, staffSchema, input),
+  updateStaffProfile: (api:CallApi,organizationId:string,staffId:string,input:{name:string;is_active:boolean;expected_version:number;operation_id:string})=>api.call('PUT',`${base(organizationId)}/appointment-staff/${staffId}`,staffSchema,input),
   getAvailability: (api: CallApi, organizationId: string, staffId: string) => api.call('GET', `${base(organizationId)}/appointment-staff/${staffId}/availability`, availabilitySchema),
   saveWorkingHours: (api: CallApi, organizationId: string, staffId: string, input: { timezone_name: string; hours: { weekday: number; start: string; end: string }[]; expected_version: number; operation_id: string }) =>
     api.call('PUT', `${base(organizationId)}/appointment-staff/${staffId}/working-hours`, workingHoursSavedSchema, input),

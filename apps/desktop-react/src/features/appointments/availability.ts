@@ -43,6 +43,7 @@ export function availabilityPath(organizationId: string, query: AvailabilityQuer
 export async function fetchAvailability(api: ApiClient, organizationId: string, query: AvailabilityQuery): Promise<Availability | null> {
   const result = await api.call('GET', availabilityPath(organizationId, query), availabilitySchema.or(z.unknown()));
   const parsed = availabilitySchema.safeParse(result);
+  if(parsed.success&&(parsed.data.date!==query.date||parsed.data.service_id!==query.serviceId))throw new Error('Availability query mismatch');
   return parsed.success ? parsed.data : null;
 }
 

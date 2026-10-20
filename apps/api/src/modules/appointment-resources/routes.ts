@@ -13,6 +13,7 @@ const kind = z.enum(['room', 'equipment']);
 const awareDateTime = z.iso.datetime({ offset: true });
 
 const staffRequest = z.object({ name: name(120) }).strict();
+const staffUpdate = z.object({ name: name(120), is_active: z.boolean(), expected_version: version, operation_id: operationId }).strict();
 const serviceRequest = z.object({
   name: name(160), duration_minutes: z.number().int().min(5).max(480), buffer_minutes: z.number().int().min(0).max(120).default(0),
 }).strict();
@@ -73,6 +74,11 @@ export function registerAppointmentResourceRoutes(app: FastifyInstance, organiza
     const input = body(staffRequest, request);
     await authorize(c.token, c.params.organizationId, true);
     return reply.code(201).send(await c.gateway.createStaff(c.token, c.params.organizationId, input.name));
+  });
+  app.put(`${base}/appointment-staff/:staffId`, async request => {
+    const c=context(request,{staffId:z.uuid()}),input=body(staffUpdate,request);
+    await authorize(c.token,c.params.organizationId,true);
+    return c.gateway.updateStaffProfile(c.token,c.params.organizationId,c.params.staffId,input);
   });
   app.get(`${base}/appointment-staff/:staffId/availability`, async (request) => {
     const c = context(request, { staffId: z.uuid() });

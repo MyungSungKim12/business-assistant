@@ -45,7 +45,7 @@ export function AppointmentToolbar({ view, day, onViewChange, onDayChange, onPre
         </div>
         <strong className="apt-toolbar__label" aria-live="polite">{view === 'week' ? formatWeekLabel(day) : formatDateLabel(day)}</strong>
         <input type="date" aria-label="예약 날짜" value={day} onChange={(event) => { if (event.target.value) onDayChange(event.target.value); }} />
-        {staffFilter && view !== 'day' && (
+        {staffFilter && (
           <select aria-label="담당자 필터" value={staffFilter.value} onChange={(event) => staffFilter.onChange(event.target.value)}>
             <option value="">담당자 전체</option>
             {staffFilter.options.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}

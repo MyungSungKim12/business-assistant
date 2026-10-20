@@ -30,7 +30,176 @@ const renderPage = (api: ApiClient, props: { readOnly?: boolean; canManageResour
 const block = () => screen.findByRole('button', { name: /^10:00 김고객/ });
 const putCalls = (api: ApiClient) => (api.call as unknown as ReturnType<typeof vi.fn>).mock.calls.filter((call) => call[0] === 'PUT');
 
+it('중지된 담당자의 기존 예약 상세에서도 이름을 보존한다',async()=>{
+ const api=client({listAppointmentStaff:vi.fn(async()=>[{id:ids.staff,organization_id:ids.org,name:'중지 담당자',is_active:false,schedule_version:1}])},[{...appointment,status:'completed'}]);
+ renderPage(api,{readOnly:true});
+ fireEvent.click(await block());
+ expect(within(await screen.findByRole('region',{name:'예약 상세'})).getByText('중지 담당자')).toBeInTheDocument();
+});
+
 describe('AppointmentPage 보기 전환', () => {
+  it('방문 처리된 예약에서 같은 예약을 수납 화면으로 전달한다',async()=>{
+    const open=vi.fn(async()=>true);
+    render(<><AppointmentPage api={client({},[{...appointment,status:'checked_in'}])} organizationId={ids.org} readOnly={false} onOpenCheckout={open}/><ConfirmDialog/></>);
+    fireEvent.click(await block());
+    fireEvent.click(within(await screen.findByRole('region',{name:'예약 상세'})).getByRole('button',{name:'수납 장바구니'}));
+    expect(open).toHaveBeenCalledWith(expect.objectContaining({id:ids.appointment,customer_id:ids.customer}));
+  });
+  it('방문 전 예약에는 수납 진입 버튼을 표시하지 않는다',async()=>{
+    render(<><AppointmentPage api={client()} organizationId={ids.org} readOnly={false} onOpenCheckout={vi.fn(async()=>true)}/><ConfirmDialog/></>);
+    fireEvent.click(await block());
+    expect(within(await screen.findByRole('region',{name:'예약 상세'})).queryByRole('button',{name:'수납 장바구니'})).not.toBeInTheDocument();
+  });
+  it.each(['edit','memo'])('서버에서 선택 예약이 다른 날짜로 이동해도 %s 입력이 사라지지 않는다',async(kind)=>{
+    const api=client({},[appointment]);
+    renderPage(api);
+    fireEvent.click(await block());
+    const detail=await screen.findByRole('region',{name:'예약 상세'});
+    if(kind==='edit'){
+      fireEvent.click(within(detail).getByRole('button',{name:'예약 수정'}));
+      fireEvent.change(await screen.findByLabelText('시작 시각'),{target:{value:`${today}T15:00`}});
+    }else fireEvent.change(within(detail).getByPlaceholderText('알레르기·요청 사항 등을 적어 두세요'),{target:{value:'지켜야 하는 메모'}});
+    fireEvent.click(screen.getByRole('button',{name:'예약 새로고침'}));
+    await waitFor(()=>expect(screen.getByRole('button',{name:'예약 새로고침'})).toBeEnabled());
+    if(kind==='edit')expect(screen.getByLabelText('시작 시각')).toHaveValue(`${today}T15:00`);
+    else expect(screen.getByPlaceholderText('알레르기·요청 사항 등을 적어 두세요')).toHaveValue('지켜야 하는 메모');
+  });
+
+  it('대기 예약 전환의 담당자 선택에도 서비스 지정 직원을 적용한다', async () => {
+    const otherStaff='99999999-9999-4999-8999-999999999999';
+    const entry={id:'66666666-6666-4666-8666-666666666666',organization_id:ids.org,customer_id:ids.customer,service_id:ids.service,staff_id:null,preferred_date:today,note:'',status:'waiting',version:1,created_at:new Date().toISOString()};
+    const api=client({listAppointmentStaff:vi.fn(async()=>[{id:ids.staff,name:'김담당',is_active:true},{id:otherStaff,name:'이지정',is_active:true}])},[appointment],async(_method,path)=>{
+      if(path.endsWith('/appointment-waitlist'))return [entry];
+      if(path.endsWith('/appointment-service-staff'))return [{service_id:ids.service,staff_id:otherStaff}];
+      return [];
+    });
+    renderPage(api);
+    await block();
+    fireEvent.click(screen.getByRole('button',{name:'대기 목록'}));
+    fireEvent.click(await screen.findByRole('button',{name:'예약 만들기'}));
+    const picker=screen.getByLabelText('예약 담당자');
+    expect(within(picker).queryByRole('option',{name:'김담당'})).not.toBeInTheDocument();
+    expect(picker).toHaveValue(otherStaff);
+  });
+
+  it('편집 중 자동 갱신이 와도 편집 시작 버전으로 충돌을 검사한다', async () => {
+    const api = client({}, [appointment], async (method, path) => {
+      if (method === 'PUT') throw Object.assign(new Error('conflict'), { status: 409 });
+      return path.includes('/appointments?') ? [{ ...appointment, version: 3, status: 'confirmed' }] : [];
+    });
+    renderPage(api);
+    fireEvent.click(await block());
+    fireEvent.click(within(await screen.findByRole('region', { name: '예약 상세' })).getByRole('button', { name: '예약 수정' }));
+    const form = await screen.findByRole('form', { name: '예약 수정' });
+    fireEvent.change(within(form).getByLabelText('시작 시각'), { target: { value: `${today}T15:00` } });
+    fireEvent.click(screen.getByRole('button', { name: '예약 새로고침' }));
+    await screen.findByText(/다른 곳에서 예약이 변경되었습니다/);
+    expect(within(form).getByLabelText('시작 시각')).toHaveValue(`${today}T15:00`);
+    fireEvent.click(within(form).getByRole('button', { name: '변경 저장' }));
+    await waitFor(() => expect(putCalls(api)).toHaveLength(1));
+    expect(putCalls(api)[0][3]).toMatchObject({ expected_version: 2 });
+    await screen.findByText(/다른 곳에서 먼저 변경되었거나, 같은 시간에/);
+  });
+
+  it('상태 저장 전에 시작한 갱신 응답이 늦게 와도 저장된 상태를 되돌리지 않는다', async () => {
+    let resolve!: (rows: unknown[]) => void;
+    const api = client({}, [appointment], async (_method,path) => path.includes('/appointments?') ? new Promise(done => { resolve=done; }) : []);
+    renderPage(api);
+    await block();
+    fireEvent.click(screen.getByRole('button', { name: '예약 새로고침' }));
+    fireEvent.click(await block());
+    fireEvent.click(within(await screen.findByRole('region', { name: '예약 상세' })).getByRole('button', { name: '확정' }));
+    await waitFor(async () => expect(await block()).toHaveAttribute('data-status', 'confirmed'));
+    resolve([appointment]);
+    await waitFor(() => expect(screen.getByRole('button', { name: '예약 새로고침' })).toBeEnabled());
+    expect(await block()).toHaveAttribute('data-status','confirmed');
+  });
+
+  it('날짜를 변경하면 이전 갱신이 완료되지 않아도 새 날짜를 갱신할 수 있다', async () => {
+    let resolve!: (rows: unknown[]) => void;
+    const api = client({}, [appointment], async (_method,path) => path.includes('/appointments?') ? new Promise(done => { resolve=done; }) : []);
+    renderPage(api);
+    await block();
+    fireEvent.click(screen.getByRole('button', { name: '예약 새로고침' }));
+    fireEvent.click(screen.getByRole('button', { name: '다음 일' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: '예약 새로고침' })).toBeEnabled());
+    resolve([appointment]);
+  });
+
+  it('대기 입력 후 팝업 닫기를 취소하면 입력을 유지한다', async () => {
+    renderPage(client());
+    await block();
+    fireEvent.click(screen.getByRole('button', { name: '대기 목록' }));
+    const dialog = await screen.findByRole('dialog', { name: '예약 대기 목록' });
+    fireEvent.change(within(dialog).getByLabelText('대기 메모'), { target: { value: '오후 시간 희망' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: '닫기' }));
+    const guard = await screen.findByRole('dialog', { name: '작성 중인 대기 예약' });
+    fireEvent.click(within(guard).getByRole('button', { name: '계속 작성' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '작성 중인 대기 예약' })).not.toBeInTheDocument());
+    expect(screen.getByLabelText('대기 메모')).toHaveValue('오후 시간 희망');
+  });
+
+  it('현재 기간을 새로고침하면 변경된 상태를 반영하고 작성 중 입력은 보존한다', async () => {
+    const api = client({}, [appointment], async (_method, path) => path.includes('/appointments?') ? [{ ...appointment, status: 'confirmed', version: 3 }] : []);
+    renderPage(api);
+    await block();
+    fireEvent.change(screen.getByLabelText('시작 시각'), { target: { value: `${today}T13:00` } });
+    fireEvent.click(screen.getByRole('button', { name: '예약 새로고침' }));
+    await waitFor(async () => expect(await block()).toHaveAttribute('data-status', 'confirmed'));
+    expect(screen.getByLabelText('시작 시각')).toHaveValue(`${today}T13:00`);
+    expect(screen.getByLabelText('예약 동기화 상태')).toHaveTextContent('최근 갱신');
+  });
+
+  it('상태 필터는 일 보기와 목록에 동일하게 적용된다', async () => {
+    renderPage(client({}, [appointment, { ...appointment, id: '88888888-8888-4888-8888-888888888888', status: 'canceled' }]));
+    await waitFor(() => expect(screen.getAllByRole('button', { name: /^10:00 김고객/ })).toHaveLength(2));
+    fireEvent.change(screen.getByLabelText('예약 상태 필터'), { target: { value: 'confirmed' } });
+    expect(screen.queryByRole('button', { name: /^10:00 김고객/ })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('예약 상태 필터'), { target: { value: 'reserved' } });
+    expect(screen.getAllByRole('button', { name: /^10:00 김고객/ })).toHaveLength(1);
+  });
+
+  it('메모를 작성하다 다른 예약을 고르면 입력을 버릴지 확인한다', async () => {
+    renderPage(client({}, [appointment, { ...appointment, id: '88888888-8888-4888-8888-888888888888', start_at: `${today}T12:00:00+09:00`, end_at: `${today}T13:00:00+09:00` }]));
+    fireEvent.click(await block());
+    fireEvent.change(await screen.findByPlaceholderText('알레르기·요청 사항 등을 적어 두세요'), { target: { value: '작성 중 메모' } });
+    fireEvent.click(screen.getByRole('button', { name: /^12:00 김고객/ }));
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('알레르기·요청 사항 등을 적어 두세요')).toHaveValue('작성 중 메모');
+    fireEvent.click(screen.getByRole('button', { name: '계속 작성' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
+  it('내부 예약 대기 목록을 열고 대기 상태를 표시한다', async () => {
+    const waitlist = { id: '66666666-6666-4666-8666-666666666666', organization_id: ids.org, customer_id: ids.customer, service_id: ids.service, staff_id: null, preferred_date: null, note: '', status: 'waiting', version: 1, created_at: new Date().toISOString() };
+    const api = client({}, [appointment], async (_method, path) => path.endsWith('/appointment-waitlist') ? [waitlist] : []);
+    renderPage(api);
+    fireEvent.click(await screen.findByRole('button', { name: '대기 목록' }));
+    expect(await screen.findByRole('dialog', { name: '예약 대기 목록' })).toBeInTheDocument();
+    const dialog = screen.getByRole('dialog', { name: '예약 대기 목록' });
+    expect(within(within(dialog).getByRole('table', { name: '대기 고객 목록' })).getByRole('cell', { name: '김고객' })).toBeInTheDocument();
+    expect(within(dialog).getByText('대기 중')).toBeInTheDocument();
+  });
+
+  it('대기 고객을 선택한 시간으로 예약하고 예약 목록에 반영한다', async () => {
+    const waitlist = { id: '66666666-6666-4666-8666-666666666666', organization_id: ids.org, customer_id: ids.customer, service_id: ids.service, staff_id: null, preferred_date: today, note: '', status: 'waiting', version: 1, created_at: new Date().toISOString() };
+    const api = client({}, [appointment], async (method, path, _schema, body) => {
+      if (method === 'GET' && path.endsWith('/appointment-waitlist')) return [waitlist];
+      if (method === 'POST' && path.endsWith('/book')) {
+        expect(body).toMatchObject({ staff_id: ids.staff, expected_version: 1 });
+        expect((body as { operation_id: string }).operation_id).toMatch(/^[0-9a-f-]{36}$/i);
+        return { appointment: { ...appointment, id: '77777777-7777-4777-8777-777777777777', start_at: `${today}T10:00:00+09:00` }, waitlist: { ...waitlist, status: 'booked', version: 2 }, replayed: false };
+      }
+      return [];
+    });
+    renderPage(api);
+    fireEvent.click(await screen.findByRole('button', { name: '대기 목록' }));
+    fireEvent.click(await screen.findByRole('button', { name: '예약 만들기' }));
+    fireEvent.click(within(screen.getByRole('dialog', { name: '예약 대기 목록' })).getByRole('button', { name: '예약 저장' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '예약 대기 목록' })).not.toBeInTheDocument());
+    await waitFor(() => expect(within(screen.getByRole('region', { name: '일 보기 달력' })).getAllByRole('button', { name: /^10:00 김고객/ })).toHaveLength(2));
+  });
+
   it('기본은 일 보기이고 담당자 열에 예약 블록을 그린다', async () => {
     renderPage(client());
     const region = screen.getByRole('region', { name: '일 보기 달력' });
@@ -145,7 +314,7 @@ describe('AppointmentPage 상세·상태 처리', () => {
     fireEvent.change(screen.getByLabelText('노쇼 사유 (필수)'), { target: { value: '연락 두절' } });
     fireEvent.click(submit);
     await waitFor(() => expect(api.transitionAppointment).toHaveBeenCalledWith(ids.org, ids.appointment, expect.objectContaining({ target_status: 'no_show', reason: '연락 두절', expected_version: 2 })));
-    expect(await screen.findByText('노쇼')).toBeInTheDocument();
+    expect(await within(screen.getByRole('region', { name: '예약 상세' })).findByText('노쇼')).toBeInTheDocument();
   });
 
   it('상태 변경이 409로 거절되면 한국어로 알리고 다시 불러온다', async () => {
@@ -279,7 +448,9 @@ describe('AppointmentPage 예약 수정', () => {
     expect(await screen.findByText(/다른 곳에서 먼저 변경되었거나, 같은 시간에/)).toBeInTheDocument();
     expect(within(form).getByLabelText('시작 시각')).toHaveValue(`${today}T13:00`);
     fireEvent.click(within(form).getByRole('button', { name: '최신 상태 불러오기' }));
+    fireEvent.click(await screen.findByRole('button', { name: '버리고 이동' }));
     await waitFor(() => expect(api.listAppointments).toHaveBeenCalledTimes(2));
+    expect(await screen.findByRole('region', { name: '예약 상세' })).toBeInTheDocument();
   });
 
   it('422는 입력 확인을 안내한다', async () => {
@@ -334,10 +505,12 @@ describe('AppointmentPage 담당자 필터(APT-14)', () => {
     ]),
   }, [appointment, other]);
 
-  it('일 보기에서는 필터를 숨기고, 주 보기에서 담당자를 고르면 그 담당자 예약만 보인다', async () => {
+  it('일·주 보기에서 담당자를 고르면 해당 담당자 예약만 보인다', async () => {
     renderPage(twoStaff());
     await screen.findAllByRole('button', { name: /^10:00 김고객/ });
-    expect(screen.queryByRole('combobox', { name: '담당자 필터' })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByRole('combobox', { name: '담당자 필터' }), { target: { value: otherStaff } });
+    expect(screen.getAllByRole('button', { name: /^10:00 김고객/ })).toHaveLength(1);
+    fireEvent.change(screen.getByRole('combobox', { name: '담당자 필터' }), { target: { value: '' } });
     fireEvent.click(screen.getByRole('button', { name: '주' }));
     const week = screen.getByRole('region', { name: '주 보기 달력' });
     expect(within(week).getByText('김고객 · 김담')).toBeInTheDocument();
@@ -369,7 +542,8 @@ describe('AppointmentPage 메모(APT-14)', () => {
     const save = screen.getByRole('button', { name: '메모 저장' });
     expect(save).toBeDisabled();
     fireEvent.change(textarea, { target: { value: '알레르기 주의' } });
-    fireEvent.click(save);
+    await waitFor(() => expect(screen.getByRole('button', { name: '메모 저장' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: '메모 저장' }));
     await waitFor(() => expect(setAppointmentMemo).toHaveBeenCalledWith(ids.org, ids.appointment, '알레르기 주의'));
     await waitFor(() => expect(screen.getByRole('button', { name: '메모 저장' })).toBeDisabled());
     expect(screen.getByRole('textbox', { name: /메모/ })).toHaveValue('알레르기 주의');

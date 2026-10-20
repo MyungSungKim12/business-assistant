@@ -3,9 +3,11 @@ import type { ApiClient } from '../../api/client';
 import { appointmentSchema, type Appointment, type AppointmentService, type AppointmentStaff, type Customer } from '../../api/schemas';
 import { ResourcePicker, describeRequirements, isDefiniteRejection, missingRequirements, useOperationTracker } from '../appointment-resources';
 import type { AppointmentResource, ResourceRequirement } from '../appointment-resources';
-import { kstIso, todayKstKey, toKstLocalInput } from './appointmentTime';
+import { formatKstTime, kstIso, todayKstKey, toKstLocalInput } from './appointmentTime';
 import { canStaffDoService, type ServiceStaffMap } from './serviceStaff';
 import { AvailabilityChips } from './AvailabilityChips';
+import { AppointmentCustomerPicker } from './AppointmentCustomerPicker';
+import { useDraftProtection } from '../../app/DraftBoundary';
 import { dateOfLocalInput, type AvailabilityQuery } from './availability';
 
 export interface FormValues {
@@ -41,13 +43,17 @@ export interface AppointmentFormProps {
   onCancel?: () => void;
   /** 충돌(409) 뒤 서버의 최신 예약을 다시 불러오게 한다. */
   onReload?: () => void;
+  onCustomerFound?: (customer: Customer) => void;
+  onBusyChange?: (busy: boolean) => void;
 }
 
 const sortedIds = (ids: string[]) => [...ids].sort();
 const sameValues = (a: FormValues, b: FormValues) => a.customer_id === b.customer_id && a.staff_id === b.staff_id && a.service_id === b.service_id && a.start_at === b.start_at && sortedIds(a.resource_ids).join() === sortedIds(b.resource_ids).join();
 
 /** 새 예약·예약 수정 공용 폼. 저장에 실패해도 입력은 그대로 둔다. */
-export function AppointmentForm({ api, organizationId, customers, staff, services, serviceStaff = {}, appointment, seed, customerName, staffName, onSaved, onDirtyChange, onCancel, onReload }: AppointmentFormProps) {
+export function AppointmentForm({ api, organizationId, customers, staff, services, serviceStaff = {}, appointment: latestAppointment, seed, customerName, staffName, onSaved, onDirtyChange, onCancel, onReload, onCustomerFound, onBusyChange }: AppointmentFormProps) {
+  // 자동 갱신이 편집 시작 버전을 바꾸면 동시 수정 검사가 우회된다. 명시적으로 다시 열 때만 기준을 바꾼다.
+  const appointment = useRef(latestAppointment).current;
   const editing = appointment !== undefined;
   const initial = useMemo<FormValues>(() => (appointment
     ? { customer_id: appointment.customer_id, staff_id: appointment.staff_id, service_id: appointment.service_id, start_at: toKstLocalInput(appointment.start_at), resource_ids: appointment.resource_ids }
@@ -61,6 +67,8 @@ export function AppointmentForm({ api, organizationId, customers, staff, service
   const operation = useOperationTracker();
 
   const dirty = !sameValues(values, initial);
+  useDraftProtection(dirty, saving);
+  useEffect(() => { onBusyChange?.(saving); return () => onBusyChange?.(false); }, [saving, onBusyChange]);
   const dirtyReport = useRef(onDirtyChange);
   dirtyReport.current = onDirtyChange;
   useEffect(() => { dirtyReport.current(dirty); }, [dirty]);
@@ -69,7 +77,9 @@ export function AppointmentForm({ api, organizationId, customers, staff, service
   const missing = missingRequirements(requirements.needs, requirements.pool, values.resource_ids);
   const serviceChanged = editing && values.service_id !== appointment.service_id;
 
-  const customerOptions = editing && !customers.some((row) => row.id === appointment.customer_id) ? [{ id: appointment.customer_id, name: customerName(appointment.customer_id) }, ...customers] : customers;
+  const customerOptions = editing && !customers.some((row) => row.id === appointment.customer_id)
+    ? [{ id: appointment.customer_id, name: customerName(appointment.customer_id), status: 'archived' as const, phone: null, tags: [] } as unknown as Customer, ...customers]
+    : customers;
   // 서비스를 고르면 그 서비스를 맡을 수 있는 직원만 보인다. 수정 중인 예약의 기존 담당자는 서비스·담당자를 안 바꾸는 동안 그대로 둔다.
   const keepsOriginalStaff = (staffId: string) => editing && staffId === appointment.staff_id && values.service_id === appointment.service_id;
   const eligible = (staffId: string) => canStaffDoService(serviceStaff, values.service_id, staffId) || keepsOriginalStaff(staffId);
@@ -101,6 +111,7 @@ export function AppointmentForm({ api, organizationId, customers, staff, service
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    if (saving) return;
     if (staffNotAllowed) { setError('선택한 담당자는 이 서비스를 맡을 수 없습니다. 담당자나 서비스를 바꿔 주세요.'); return; }
     if (missing.length > 0) { setError(`필수 자원이 부족합니다. 필요한 기준: ${describeRequirements(requirements.needs)}`); return; }
     const input = {
@@ -141,12 +152,8 @@ export function AppointmentForm({ api, organizationId, customers, staff, service
   return (
     <form className="apt-form" onSubmit={submit} aria-label={editing ? '예약 수정' : '새 예약'}>
       <header className="apt-side__head"><h2>{editing ? '예약 수정' : '새 예약'}</h2></header>
-      <label>고객
-        <select required disabled={editing} value={values.customer_id} onChange={(e) => set({ customer_id: e.target.value })}>
-          <option value="">선택</option>
-          {customerOptions.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
-        </select>
-      </label>
+      <fieldset disabled={saving} className="apt-form__fields">
+      <AppointmentCustomerPicker api={api} organizationId={organizationId} customers={customerOptions} value={values.customer_id} disabled={editing} onChange={(id,customer) => { set({ customer_id:id }); if(customer) onCustomerFound?.(customer); }} />
       {editing && <p className="muted apt-form__hint">고객은 바꿀 수 없습니다. 다른 고객이면 새 예약을 만드세요.</p>}
       <label>담당자
         <select required value={values.staff_id} onChange={(e) => set({ staff_id: e.target.value })}>
@@ -165,6 +172,8 @@ export function AppointmentForm({ api, organizationId, customers, staff, service
       <label>시작 시각
         <input required type="datetime-local" value={values.start_at} onChange={(e) => set({ start_at: e.target.value })} />
       </label>
+      {values.start_at && values.service_id && <p className="apt-form__schedule">예상 종료 {formatKstTime(Date.parse(kstIso(values.start_at)) + (services.find(x => x.id === values.service_id)?.duration_minutes ?? appointment?.duration_minutes ?? 0) * 60_000)} · 여유 {services.find(x => x.id === values.service_id)?.buffer_minutes ?? appointment?.buffer_minutes ?? 0}분</p>}
+      {latestAppointment && latestAppointment.version !== appointment?.version && <p role="alert" className="apt-warning">다른 곳에서 예약이 변경되었습니다. 현재 입력은 유지되며, 저장 시 충돌을 확인합니다. 최신 예약을 확인한 뒤 다시 수정해 주세요.</p>}
       <AvailabilityChips api={api} organizationId={organizationId} query={availabilityQuery} startAt={values.start_at} onPick={pickTime} />
       <ResourcePicker
         api={api}
@@ -185,6 +194,7 @@ export function AppointmentForm({ api, organizationId, customers, staff, service
         {editing && onCancel && <button type="button" onClick={onCancel} disabled={saving}>수정 취소</button>}
         <button className="primary-button" disabled={saving}>{saving ? '저장 중…' : editing ? '변경 저장' : '예약 저장'}</button>
       </div>
+      </fieldset>
     </form>
   );
 }

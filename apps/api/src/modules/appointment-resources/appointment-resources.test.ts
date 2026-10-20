@@ -102,11 +102,11 @@ describe('공간·장비 자원', () => {
     const make = (n: number) => ({ ...RESOURCE_ROW, id: `${String(n).padStart(8, '0')}-8e8c-4df8-a623-1f23a3a936bd` });
     const pages = [Array.from({ length: 200 }, (_, index) => make(index + 1)), [make(500)]];
     let page = 0;
-    const { send, calls } = setup(() => ({ body: pages[page++] }));
+    const { send, calls } = setup(() => {const current=page++;return {body:pages[current],headers:{'Content-Range':current===0?'0-199/201':'200-200/201'}};});
     const response = await send('GET', 'appointment-resources');
     expect(response.json()).toHaveLength(201);
     expect(calls.map((call) => call.url.searchParams.get('offset'))).toEqual(['0', '200']);
-    expect(calls[0].url.searchParams.get('limit')).toBe('200');
+    expect(calls[0].url.searchParams.get('limit')).toBe('250');
   });
 
   it('충돌(P0001)은 409, 없음은 404, 검증은 422로 매핑한다', async () => {

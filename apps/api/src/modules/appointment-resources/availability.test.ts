@@ -198,6 +198,22 @@ function setup(handler = reply(), features = ['task.basic']) {
 }
 
 describe('GET appointment-availability', () => {
+  it('인증·기능 권한이 없으면 묶음 DB 조회를 시작하지 않는다',async()=>{
+    const {get,calls}=setup(reply(),[]);
+    expect((await app.inject({url:`/api/v1/organizations/${ORG}/appointment-availability?service_id=${SERVICE}&date=${DATE}`})).statusCode).toBe(401);
+    expect((await get(`service_id=${SERVICE}&date=${DATE}`)).statusCode).toBe(403);
+    expect(calls).toHaveLength(0);
+  });
+  it('서비스에 지정되지 않은 직원은 추천에서 빼고 명시 조회는 422로 거절한다', async () => {
+    const {get,calls}=setup(reply({appointment_service_staff:[{organization_id:ORG,service_id:SERVICE,staff_id:STAFF_B}]}));
+    const result=await get(`service_id=${SERVICE}&date=${DATE}`);
+    expect(result.statusCode).toBe(200);
+    expect(result.json().staff).toEqual([]);
+    expect(result.json().slots.some((slot:AvailabilitySlot)=>slot.available)).toBe(false);
+    expect(calls.some(call=>table(call)==='appointment_staff_working_hours')).toBe(false);
+    expect((await get(`service_id=${SERVICE}&date=${DATE}&staff_id=${STAFF_A}`)).statusCode).toBe(422);
+  });
+
   it('서비스·담당자·근무시간을 읽어 슬롯과 안내 문구를 돌려주고 쓰기 요청은 보내지 않는다', async () => {
     const { get, calls, organizations } = setup();
     const response = await get(`service_id=${SERVICE}&date=${DATE}`);
@@ -219,7 +235,7 @@ describe('GET appointment-availability', () => {
     const body = (await get(`service_id=${SERVICE}&date=${DATE}&staff_id=${STAFF_A}`)).json() as { slots: AvailabilitySlot[] };
     expect(slot(body.slots, '10:00').blocked).toEqual([{ code: 'staff_busy', staff_id: STAFF_A }]);
     const appointments = calls.find((call) => table(call) === 'appointments')!;
-    expect(appointments.url.searchParams.get('and')).toBe('(start_at.gte.2026-12-13T00:00:00+09:00,start_at.lt.2026-12-15T00:00:00+09:00)');
+    expect(appointments.url.searchParams.get('and')).toBe('(start_at.gte.2026-12-13T00:00:00+09:00,start_at.lt.2026-12-16T00:00:00+09:00)');
   });
 
   it('필수 자원을 서비스 기준으로 읽는다', async () => {

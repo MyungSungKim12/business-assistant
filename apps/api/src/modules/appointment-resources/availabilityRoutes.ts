@@ -24,7 +24,7 @@ export const availabilityQuery = z.object({
 });
 export type AvailabilityQuery = z.infer<typeof availabilityQuery>;
 
-type Reader = Pick<AppointmentResourceGateway, 'listServices' | 'listStaff' | 'listResources' | 'listRequirements' | 'getStaffAvailability' | 'listAppointments'>;
+type Reader = Pick<AppointmentResourceGateway, 'listServices' | 'listStaff' | 'listResources' | 'listRequirements' | 'getStaffSchedules' | 'listAppointments' | 'getServiceStaff'>;
 
 export type AvailabilityResponse = {
   date: string;
@@ -42,21 +42,25 @@ const addDays = (day: string, days: number) => new Date(Date.parse(`${day}T00:00
 
 /** 사용자 토큰으로 필요한 표를 읽어 순수 계산 함수에 넘긴다. 쓰기는 하지 않는다. */
 export async function loadAvailability(gateway: Reader, token: string, organizationId: string, query: AvailabilityQuery, now: Date = new Date()): Promise<AvailabilityResponse> {
-  const [services, allStaff, resources, requirements] = await Promise.all([
+  const [services, allStaff, resources, requirements, assignedStaff] = await Promise.all([
     gateway.listServices(token, organizationId), gateway.listStaff(token, organizationId),
     gateway.listResources(token, organizationId), gateway.listRequirements(token, organizationId, query.service_id),
+    gateway.getServiceStaff(token, organizationId, query.service_id),
   ]);
   const service = services.find((item) => item.id === query.service_id && item.is_active);
   if (!service) throw new ApiFailure(404, 'Service not found');
   const activeStaff = allStaff.filter((item) => item.is_active);
-  const staff = query.staff_id ? activeStaff.filter((item) => item.id === query.staff_id) : activeStaff;
-  if (query.staff_id && staff.length === 0) throw new ApiFailure(404, 'Staff not found');
+  if (query.staff_id && !activeStaff.some(item => item.id === query.staff_id)) throw new ApiFailure(404, 'Staff not found');
+  const eligibleStaff = activeStaff.filter(item => assignedStaff.length === 0 || assignedStaff.includes(item.id));
+  const staff = query.staff_id ? eligibleStaff.filter((item) => item.id === query.staff_id) : eligibleStaff;
+  if (query.staff_id && staff.length === 0) throw new ApiFailure(422, 'Staff cannot perform this service');
 
   const [schedules, appointments] = await Promise.all([
-    Promise.all(staff.map((item) => gateway.getStaffAvailability(token, organizationId, item.id))),
+    gateway.getStaffSchedules(token, organizationId, staff.map(item=>item.id), query.date),
     // 전날 늦은 예약의 여유 시간이 0시대 슬롯과 겹칠 수 있어 전날부터 읽는다.
-    gateway.listAppointments(token, organizationId, { fromDate: addDays(query.date, -1), toDate: query.date }),
+    gateway.listAppointments(token, organizationId, { fromDate: addDays(query.date, -1), toDate: addDays(query.date,1) }),
   ]);
+  if(schedules.length!==staff.length||schedules.some((schedule,index)=>schedule.staff_id!==staff[index].id))throw new ApiFailure(503,'Appointment service unavailable');
   const stepMinutes = query.step_minutes ?? DEFAULT_STEP_MINUTES;
   const slots = computeAvailability({
     date: query.date, durationMinutes: service.duration_minutes, bufferMinutes: service.buffer_minutes, stepMinutes,

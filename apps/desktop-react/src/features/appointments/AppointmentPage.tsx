@@ -5,14 +5,17 @@ import { appointmentsSchema, type Appointment, type AppointmentService, type App
 import { ResourceManagerDialog, resourceApi } from '../appointment-resources';
 import type { AppointmentResource } from '../appointment-resources';
 import { AppointmentDetail } from './AppointmentDetail';
+import { AppointmentStatusHistory } from './AppointmentStatusHistory';
 import { AppointmentForm, type FormValues } from './AppointmentForm';
 import { AppointmentList } from './AppointmentList';
 import { AppointmentToolbar, type ViewMode } from './AppointmentToolbar';
+import { WaitlistDialog } from './WaitlistDialog';
 import { DayGrid } from './DayGrid';
 import { ReasonModal, type ReasonKind } from './ReasonModal';
 import { WeekGrid } from './WeekGrid';
 import { buildServiceStaffMap, canStaffDoService, type ServiceStaffMap } from './serviceStaff';
-import { canEditAppointment, mergeAppointments, nameLookup, needsReason, type TargetStatus } from './appointmentRules';
+import { canEditAppointment, mergeAppointments, nameLookup, needsReason, statusLabels, type TargetStatus } from './appointmentRules';
+import { useDraftProtection } from '../../app/DraftBoundary';
 import { addDays, formatKstTime, kstDateKey, kstIso, localInputAt, todayKstKey, toKstLocalInput, weekStartOf } from './appointmentTime';
 import './appointments.css';
 
@@ -33,11 +36,16 @@ interface AppointmentPageProps {
   readOnly: boolean;
   /** 공간·장비 자원 관리 권한(소유자·관리자). */
   canManageResources?: boolean;
+  onOpenCustomer?: (row: Appointment) => Promise<boolean>;
+  onOpenTreatment?: (row: Appointment) => Promise<boolean>;
+  onOpenCheckout?: (row: Appointment) => Promise<boolean>;
 }
 
-export function AppointmentPage({ api, organizationId, readOnly, canManageResources = false }: AppointmentPageProps) {
+export function AppointmentPage({ api, organizationId, readOnly, canManageResources = false, onOpenCustomer, onOpenTreatment, onOpenCheckout }: AppointmentPageProps) {
   const [items, setItems] = useState<Appointment[]>([]);
+  const [selectedSnapshot, setSelectedSnapshot] = useState<Appointment | null>(null);
   const [staff, setStaff] = useState<AppointmentStaff[]>([]);
+  const [staffDirectory,setStaffDirectory]=useState<AppointmentStaff[]>([]);
   const [staffFilter, setStaffFilter] = useState('');
   const [serviceStaff, setServiceStaff] = useState<ServiceStaffMap>({});
   const [services, setServices] = useState<AppointmentService[]>([]);
@@ -48,11 +56,23 @@ export function AppointmentPage({ api, organizationId, readOnly, canManageResour
   const [day, setDay] = useState(() => todayKstKey());
   const [panel, setPanel] = useState<Panel>(() => (readOnly ? { kind: 'none' } : { kind: 'create', key: 0 }));
   const [resourceDialog, setResourceDialog] = useState(false);
+  const [waitlistDialog,setWaitlistDialog]=useState(false);
   const [reasonTarget, setReasonTarget] = useState<{ appointment: Appointment; kind: ReasonKind } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [statusFilter, setStatusFilter] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastSynced, setLastSynced] = useState<number | null>(null);
+  const [syncError, setSyncError] = useState('');
+  const [resourceWarning, setResourceWarning] = useState('');
   const [now, setNow] = useState(() => Date.now());
   const dirtyRef = useRef(false);
+  const editorBusy = useRef(false);
+  const reportBusy = useCallback((saving: boolean) => { editorBusy.current = saving; }, []);
   const createKey = useRef(1);
+  const mutationRevision = useRef(0);
+  const syncRequest = useRef(0);
+  useDraftProtection(false, busy);
+  const reportDirty = useCallback((dirty: boolean) => { dirtyRef.current = dirty; }, []);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 60_000);
@@ -61,6 +81,30 @@ export function AppointmentPage({ api, organizationId, readOnly, canManageResour
 
   // 지금 보는 기간이 서버 기본 범위 밖이면 그 기간만 따로 읽는다.
   const visible = useMemo(() => (view === 'week' ? { from: weekStartOf(day), to: addDays(weekStartOf(day), 6) } : { from: day, to: day }), [view, day]);
+  const scope = `${organizationId}:${visible.from}:${visible.to}`;
+  const scopeRef = useRef(scope);
+  scopeRef.current = scope;
+  const refreshVisible = useCallback(async () => {
+    const request = ++syncRequest.current, revision = mutationRevision.current;
+    setRefreshing(true);
+    try {
+      const rows = await api.call('GET', `/organizations/${organizationId}/appointments?from_date=${visible.from}&to_date=${visible.to}`, appointmentsSchema);
+      if (request !== syncRequest.current || scopeRef.current !== scope || revision !== mutationRevision.current) return;
+      setItems(old => mergeAppointments(old.filter(item => kstDateKey(item.start_at) < visible.from || kstDateKey(item.start_at) > visible.to), rows));
+      setLastSynced(Date.now()); setSyncError('');
+    } catch {
+      if (request === syncRequest.current && scopeRef.current === scope) setSyncError('최근 예약을 확인하지 못했습니다. 화면은 마지막으로 받은 일정입니다. 새로고침해 주세요.');
+    } finally { if (request === syncRequest.current) setRefreshing(false); }
+  }, [api, organizationId, visible, scope]);
+  useEffect(() => {
+    setRefreshing(false);
+    let pending = false;
+    const sync = async () => { if (document.visibilityState === 'hidden' || pending) return; pending = true; try { await refreshVisible(); } finally { pending = false; } };
+    const timer = setInterval(() => void sync(), 60_000);
+    const focus = () => void sync();
+    window.addEventListener('focus', focus); document.addEventListener('visibilitychange', focus);
+    return () => { clearInterval(timer); window.removeEventListener('focus', focus); document.removeEventListener('visibilitychange', focus); syncRequest.current++; };
+  }, [refreshVisible]);
   const fetchVisible = useCallback(async (): Promise<Appointment[]> => {
     const today = todayKstKey();
     if (visible.from >= addDays(today, -DEFAULT_PAST_DAYS) && visible.to <= addDays(today, DEFAULT_FUTURE_DAYS)) return [];
@@ -73,17 +117,18 @@ export function AppointmentPage({ api, organizationId, readOnly, canManageResour
     api.listAppointmentServices(organizationId),
     api.listCustomers(organizationId),
     fetchVisible(),
-    resourceApi.listResources(api, organizationId).catch((): AppointmentResource[] => []),
-    // 담당 가능 직원 규칙. 불러오지 못하면 제한 없이 보여 주고, 서버가 저장 시 검사한다.
-    resourceApi.listServiceStaff(api, organizationId).catch(() => []),
+    resourceApi.listResources(api, organizationId).catch(() => { setResourceWarning('공간·장비 정보를 확인하지 못했습니다. 저장 시 서버가 최종 검사합니다.'); return [] as AppointmentResource[]; }),
+    resourceApi.listServiceStaff(api, organizationId).catch(() => { setResourceWarning('담당 가능 직원 규칙을 확인하지 못했습니다. 저장 시 서버가 최종 검사합니다.'); return []; }),
   ])
     .then(([appointments, staffRows, serviceRows, customerRows, rangeRows, resourceRows, serviceStaffRows]) => {
       setServiceStaff(buildServiceStaffMap(serviceStaffRows));
       setItems((old) => mergeAppointments(old, [...appointments, ...rangeRows]));
       setStaff(staffRows.filter((row) => row.is_active));
+      setStaffDirectory(staffRows);
       setServices(serviceRows.filter((row) => row.is_active));
-      setCustomers(customerRows.filter((row) => row.status === 'active'));
+      setCustomers(customerRows);
       setResources(resourceRows);
+      setLastSynced(Date.now());
     })
     .catch(() => setError('예약 정보를 불러오지 못했습니다.')), [api, organizationId, fetchVisible]);
 
@@ -101,18 +146,27 @@ export function AppointmentPage({ api, organizationId, readOnly, canManageResour
   }, [fetchVisible]);
 
   const customerName = useMemo(() => nameLookup(customers, '고객'), [customers]);
-  const staffName = useMemo(() => nameLookup(staff, '담당자'), [staff]);
+  const staffName = useMemo(() => nameLookup(staffDirectory, '담당자'), [staffDirectory]);
   const resourceName = useCallback((id: string) => resources.find((row) => row.id === id)?.name, [resources]);
   // 담당자 필터는 주·목록 보기에만 적용한다. 선택한 담당자가 사라졌으면(비활성 등) 전체로 본다.
   const activeStaffFilter = staff.some((row) => row.id === staffFilter) ? staffFilter : '';
-  const filteredItems = useMemo(() => (activeStaffFilter ? items.filter((item) => item.staff_id === activeStaffFilter) : items), [items, activeStaffFilter]);
+  const filteredItems = useMemo(() => items.filter(item => (!activeStaffFilter || item.staff_id === activeStaffFilter) && (!statusFilter || item.status === statusFilter)), [items, activeStaffFilter, statusFilter]);
+  const summaryRows = items.filter(item => kstDateKey(item.start_at) >= visible.from && kstDateKey(item.start_at) <= visible.to && (!activeStaffFilter || item.staff_id === activeStaffFilter));
   const listRows = useMemo(() => filteredItems.filter((item) => kstDateKey(item.start_at) === day).sort((a, b) => a.start_at.localeCompare(b.start_at)), [filteredItems, day]);
 
-  const selected = panel.kind === 'detail' || panel.kind === 'edit' ? items.find((item) => item.id === panel.id) ?? null : null;
+  const selected = panel.kind === 'detail' || panel.kind === 'edit'
+    ? items.find((item) => item.id === panel.id) ?? (selectedSnapshot?.id === panel.id ? selectedSnapshot : null)
+    : null;
   const selectedId = selected?.id ?? null;
+  useEffect(() => {
+    if (panel.kind !== 'detail' && panel.kind !== 'edit') return;
+    const current = items.find(item => item.id === panel.id);
+    if (current) setSelectedSnapshot(current);
+  }, [items, panel]);
 
   /** 작성 중인 입력이 사라질 이동이면 먼저 확인한다. 이동해도 되면 true. */
   async function canLeaveForm(): Promise<boolean> {
+    if (busy || editorBusy.current) { notify.info('저장 중입니다. 결과를 확인한 뒤 이동해 주세요.'); return false; }
     if (!dirtyRef.current) return true;
     return confirm({ title: '작성 중인 내용', message: '저장하지 않은 입력이 있습니다. 버리고 이동할까요?', confirmLabel: '버리고 이동', cancelLabel: '계속 작성' });
   }
@@ -120,6 +174,7 @@ export function AppointmentPage({ api, organizationId, readOnly, canManageResour
   async function selectAppointment(appointment: Appointment) {
     if (panel.kind !== 'create' && selectedId === appointment.id) return;
     if (!(await canLeaveForm())) return;
+    setSelectedSnapshot(appointment);
     setPanel({ kind: 'detail', id: appointment.id });
   }
 
@@ -134,8 +189,9 @@ export function AppointmentPage({ api, organizationId, readOnly, canManageResour
     setPanel(readOnly ? { kind: 'none' } : { kind: 'create', key: createKey.current++ });
   }
 
-  function startEdit() {
+  async function startEdit() {
     if (!selected) return;
+    if (!(await canLeaveForm())) return;
     setPanel({ kind: 'edit', id: selected.id });
   }
 
@@ -161,6 +217,7 @@ export function AppointmentPage({ api, organizationId, readOnly, canManageResour
     const label = `${kstDateKey(kstIso(startLocal))} ${formatKstTime(kstIso(startLocal))}${staffId !== item.staff_id ? ` · ${staffName(staffId)}` : ''}`;
     const ok = await confirm({ title: '예약 이동', message: `${customerName(item.customer_id)}님 예약을 ${label}(으)로 옮길까요?`, confirmLabel: '이동' });
     if (!ok) return;
+    mutationRevision.current++;
     setBusy(true);
     try {
       const saved = await api.call('PUT', `/organizations/${organizationId}/appointments/${item.id}`, appointmentsSchema.element, {
@@ -176,16 +233,19 @@ export function AppointmentPage({ api, organizationId, readOnly, canManageResour
         ? '옮기지 못했습니다. 다른 곳에서 먼저 변경되었거나, 그 시간에 담당자·공간·장비가 사용 중이거나 근무 시간이 아닙니다. 최신 상태를 불러옵니다.'
         : status === 422 ? '옮기지 못했습니다. 시간 또는 담당자가 올바르지 않습니다.' : '예약을 옮기지 못했습니다. 잠시 후 다시 시도해 주세요.');
       void load();
-    } finally { setBusy(false); }
+    } finally { mutationRevision.current++; setBusy(false); }
   }
 
   /** 메모만 저장한다. 응답에는 자원 선택이 없으므로 화면 목록에는 메모만 반영해 기존 값(버전·자원)을 지키지 않게 되는 일을 막는다. */
   async function saveMemo(item: Appointment, memo: string) {
+    mutationRevision.current++;
     const saved = await api.setAppointmentMemo(organizationId, item.id, memo);
+    mutationRevision.current++;
     setItems((old) => old.map((row) => (row.id === item.id ? { ...row, memo: saved.memo } : row)));
   }
 
   async function transition(item: Appointment, target: TargetStatus, reason: string | null = null) {
+    mutationRevision.current++;
     setBusy(true);
     try {
       const saved = await api.transitionAppointment(organizationId, item.id, { target_status: target, reason, expected_version: item.version, operation_id: crypto.randomUUID() });
@@ -195,7 +255,7 @@ export function AppointmentPage({ api, organizationId, readOnly, canManageResour
       const status = (failure as { status?: number }).status;
       setError(status === 409 ? '다른 곳에서 먼저 변경되었거나 지금 상태에서는 할 수 없는 처리입니다. 목록을 새로 불러옵니다.' : '예약 상태를 변경하지 못했습니다.');
       void load();
-    } finally { setBusy(false); }
+    } finally { mutationRevision.current++; setBusy(false); }
   }
 
   async function advance(item: Appointment, target: TargetStatus) {
@@ -205,12 +265,15 @@ export function AppointmentPage({ api, organizationId, readOnly, canManageResour
   }
 
   function created(saved: Appointment) {
+    mutationRevision.current++;
     setItems((old) => mergeAppointments(old, [saved]));
     setPanel({ kind: 'create', key: createKey.current++ });
     notify.success('예약을 저장했습니다.');
   }
 
   function edited(saved: Appointment) {
+    mutationRevision.current++;
+    setSelectedSnapshot(saved);
     setItems((old) => mergeAppointments(old, [saved]));
     setPanel({ kind: 'detail', id: saved.id });
     notify.success('예약을 수정했습니다.');
@@ -227,7 +290,8 @@ export function AppointmentPage({ api, organizationId, readOnly, canManageResour
           key={`create-${panel.key}`}
           api={api}
           organizationId={organizationId}
-          customers={customers}
+          customers={customers.filter(row => row.status === 'active')}
+          onCustomerFound={customer => setCustomers(old => [...old.filter(row => row.id !== customer.id), customer])}
           staff={staff}
           services={services}
           serviceStaff={serviceStaff}
@@ -235,7 +299,8 @@ export function AppointmentPage({ api, organizationId, readOnly, canManageResour
           customerName={customerName}
           staffName={staffName}
           onSaved={created}
-          onDirtyChange={(dirty) => { dirtyRef.current = dirty; }}
+          onDirtyChange={reportDirty}
+          onBusyChange={reportBusy}
         />
       );
     }
@@ -245,7 +310,7 @@ export function AppointmentPage({ api, organizationId, readOnly, canManageResour
           key={`edit-${selected.id}`}
           api={api}
           organizationId={organizationId}
-          customers={customers}
+          customers={customers.filter(row => row.status === 'active')}
           staff={staff}
           services={services}
           serviceStaff={serviceStaff}
@@ -253,15 +318,17 @@ export function AppointmentPage({ api, organizationId, readOnly, canManageResour
           customerName={customerName}
           staffName={staffName}
           onSaved={edited}
-          onDirtyChange={(dirty) => { dirtyRef.current = dirty; }}
+          onDirtyChange={reportDirty}
+          onBusyChange={reportBusy}
           onCancel={() => void cancelEdit()}
-          onReload={() => void load()}
+          onReload={() => void (async () => { if (await canLeaveForm()) { await load(); setPanel({ kind: 'detail', id: selected.id }); } })()}
         />
       );
     }
     if (selected) {
       return (
         <AppointmentDetail
+          history={<AppointmentStatusHistory api={api} organizationId={organizationId} appointmentId={selected.id} version={selected.version} />}
           appointment={selected}
           customerName={customerName}
           staffName={staffName}
@@ -272,6 +339,11 @@ export function AppointmentPage({ api, organizationId, readOnly, canManageResour
           onSaveMemo={(memo) => saveMemo(selected, memo)}
           onEdit={startEdit}
           onClose={() => void closePanel()}
+          onDirtyChange={reportDirty}
+          onBusyChange={reportBusy}
+          onOpenCustomer={onOpenCustomer ? () => void onOpenCustomer(selected) : undefined}
+          onOpenTreatment={onOpenTreatment ? () => void onOpenTreatment(selected) : undefined}
+          onOpenCheckout={onOpenCheckout ? () => void onOpenCheckout(selected) : undefined}
         />
       );
     }
@@ -293,16 +365,23 @@ export function AppointmentPage({ api, organizationId, readOnly, canManageResour
         onNext={() => shiftDay(1)}
         onToday={() => setDay(todayKstKey())}
         staffFilter={{ options: staff.map((row) => ({ id: row.id, name: row.name })), value: activeStaffFilter, onChange: setStaffFilter }}
-        extra={canManageResources ? <button type="button" onClick={() => setResourceDialog(true)}>공간·장비 관리</button> : undefined}
+        extra={<><button type="button" aria-label="예약 새로고침" disabled={refreshing} onClick={() => void refreshVisible()}>{refreshing ? '갱신 중…' : '새로고침'}</button>{!readOnly&&<><button type="button" className="primary-button" onClick={() => void startCreate()}>새 예약</button><button type="button" onClick={()=>setWaitlistDialog(true)}>대기 목록</button></>}{canManageResources&&<button type="button" onClick={() => setResourceDialog(true)}>공간·장비 관리</button>}</>}
       />
+      <div className="apt-overview" aria-label="예약 현황">
+        <div className="apt-overview__counts"><strong>{view === 'week' ? '이번 주' : '선택일'} {summaryRows.length}건</strong>{Object.entries(statusLabels).map(([status,label]) => <span key={status} className="apt-status" data-status={status}>{label} {summaryRows.filter(item => item.status === status).length}</span>)}</div>
+        <label>상태 <select aria-label="예약 상태 필터" value={statusFilter} onChange={e => setStatusFilter(e.target.value)}><option value="">전체 상태</option>{Object.entries(statusLabels).map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+        <small className="muted" aria-label="예약 동기화 상태" aria-live="polite">{lastSynced ? `최근 갱신 ${formatKstTime(lastSynced)} · 1분마다 확인` : '일정을 불러오는 중…'}</small>
+      </div>
+      {(syncError || resourceWarning) && <p role="alert" className="apt-warning">{syncError || resourceWarning}</p>}
+      {selected && !items.some(item => item.id === selected.id) && <p role="status" className="apt-warning">선택한 예약이 현재 조회 기간에서 사라졌습니다. 다른 날짜로 이동했거나 조회 대상이 달라졌을 수 있습니다. 마지막으로 확인한 예약과 작성 중 입력을 유지합니다. 저장 전 최신 일정을 확인하세요.</p>}
       {error && <p role="alert" className="form-error apt-error">{error} <button type="button" onClick={() => { setError(''); void load(); }}>다시 불러오기</button></p>}
       <div className="apt-body">
         <section className="apt-main" aria-label="예약 달력">
           {view === 'day' && (
             <DayGrid
               day={day}
-              items={items}
-              staff={staff}
+              items={filteredItems}
+              staff={activeStaffFilter ? staff.filter(row => row.id === activeStaffFilter) : staff}
               customerName={customerName}
               selectedId={selectedId}
               now={now}
@@ -343,6 +422,7 @@ export function AppointmentPage({ api, organizationId, readOnly, canManageResour
         <aside className="apt-side">{renderSide()}</aside>
       </div>
       {resourceDialog && <ResourceManagerDialog api={api} organizationId={organizationId} readOnly={!canManageResources} onClose={() => { setResourceDialog(false); void load(); }} />}
+      {waitlistDialog&&<WaitlistDialog api={api} organizationId={organizationId} customers={customers} staff={staff} services={services} resources={resources} serviceStaff={serviceStaff} readOnly={readOnly} onBooked={appointment=>{mutationRevision.current++;setItems(old=>mergeAppointments(old,[appointment]));setDay(kstDateKey(appointment.start_at));setWaitlistDialog(false)}} onClose={()=>setWaitlistDialog(false)}/>}
       {reasonTarget && (
         <ReasonModal
           kind={reasonTarget.kind}

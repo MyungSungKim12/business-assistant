@@ -1,4 +1,5 @@
 import type { Appointment } from '../../api/schemas';
+import type { ReactNode } from 'react';
 import { AppointmentMemo } from './AppointmentMemo';
 import { formatDateLabel, formatKstTime, kstDateKey } from './appointmentTime';
 import { allowedTransitions, canEditAppointment, statusLabel, targetLabels, type NameLookup, type TargetStatus } from './appointmentRules';
@@ -18,10 +19,16 @@ export interface AppointmentDetailProps {
   onSaveMemo: (memo: string) => Promise<void>;
   onEdit: () => void;
   onClose: () => void;
+  onDirtyChange?: (dirty: boolean) => void;
+  onBusyChange?: (busy: boolean) => void;
+  onOpenCustomer?: () => void;
+  onOpenTreatment?: () => void;
+  onOpenCheckout?: () => void;
+  history?: ReactNode;
 }
 
 /** 선택한 예약의 내용과 상태 변경·수정 버튼. */
-export function AppointmentDetail({ appointment, customerName, staffName, resourceName, readOnly, busy = false, onTransition, onSaveMemo, onEdit, onClose }: AppointmentDetailProps) {
+export function AppointmentDetail({ appointment, customerName, staffName, resourceName, readOnly, busy = false, onTransition, onSaveMemo, onEdit, onClose, onDirtyChange, onBusyChange, onOpenCustomer, onOpenTreatment, onOpenCheckout, history }: AppointmentDetailProps) {
   const targets = readOnly ? [] : allowedTransitions(appointment.status);
   const editable = !readOnly && canEditAppointment(appointment.status);
   const startDate = kstDateKey(appointment.start_at);
@@ -50,8 +57,15 @@ export function AppointmentDetail({ appointment, customerName, staffName, resour
         </div>
         <div><dt>등록 경로</dt><dd>{sourceLabels[appointment.source] ?? appointment.source}</dd></div>
         {appointment.cancellation_reason && <div><dt>취소 사유</dt><dd>{appointment.cancellation_reason}</dd></div>}
+        {appointment.no_show_reason && <div><dt>노쇼 사유</dt><dd>{appointment.no_show_reason}</dd></div>}
       </dl>
-      <AppointmentMemo key={appointment.id} value={appointment.memo} readOnly={readOnly} onSave={onSaveMemo} />
+      {(onOpenCustomer || onOpenTreatment || onOpenCheckout) && <div className="apt-detail__actions" role="group" aria-label="연결된 업무">
+        {onOpenCustomer && <button type="button" disabled={busy} onClick={onOpenCustomer}>고객 정보</button>}
+        {onOpenTreatment && <button type="button" disabled={busy} onClick={onOpenTreatment}>시술 이력</button>}
+        {onOpenCheckout && (appointment.status==='checked_in'||appointment.status==='completed') && <button type="button" disabled={busy} onClick={onOpenCheckout}>수납 장바구니</button>}
+      </div>}
+      <AppointmentMemo key={appointment.id} value={appointment.memo} readOnly={readOnly} onSave={onSaveMemo} onDirtyChange={onDirtyChange} onBusyChange={onBusyChange} />
+      {history}
       {(targets.length > 0 || editable) && (
         <div className="apt-detail__actions" role="group" aria-label="예약 처리">
           {targets.map((target) => (

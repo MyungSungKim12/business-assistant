@@ -5,12 +5,11 @@ import { createRest, type Query } from '../../supabase/rest.js';
 import { withPgErrorMap } from '../catalog/pgErrors.js';
 
 const UNAVAILABLE = 'Appointment service unavailable';
-const PAGE = 200;
 
 const row = { id: z.uuid(), organization_id: z.uuid() };
 const kind = z.enum(['room', 'equipment']);
 
-export const staffSchema = z.object({ ...row, name: z.string(), is_active: z.boolean(), schedule_version: z.number().int().min(1).default(1) });
+export const staffSchema = z.object({ ...row, name: z.string(), is_active: z.boolean(), profile_version: z.number().int().positive().optional(), schedule_version: z.number().int().min(1).default(1) });
 export const serviceSchema = z.object({
   ...row, name: z.string(), duration_minutes: z.number().int().min(5).max(480), buffer_minutes: z.number().int().min(0).max(120),
   is_active: z.boolean(), resource_version: z.number().int().min(1).default(1),
@@ -38,7 +37,7 @@ export const appointmentSchema = z.object({
   ...row, customer_id: z.uuid(), staff_id: z.uuid(), service_id: z.uuid(), service_name_snapshot: z.string(),
   duration_minutes: z.number().int(), buffer_minutes: z.number().int(), start_at: z.string(), end_at: z.string(),
   status: z.enum(['reserved', 'confirmed', 'checked_in', 'completed', 'canceled', 'no_show']),
-  source: z.enum(['manual', 'phone', 'walk_in', 'online']), cancellation_reason: z.string().nullable(),
+  source: z.enum(['manual', 'phone', 'walk_in', 'online']), cancellation_reason: z.string().nullable(), no_show_reason: z.string().nullable().optional(),
   version: z.number().int().min(1), memo: z.string().default(''), resource_ids: z.array(z.uuid()).max(20).default([]),
 });
 
@@ -68,16 +67,10 @@ export function createAppointmentResourceGateway(config: ServerConfig, fetcher: 
   const rest = createRest(config, withPgErrorMap(fetcher), UNAVAILABLE);
   const fail = () => new ApiFailure(503, UNAVAILABLE);
 
-  /** Python `_list`와 같이 200건씩 id 순으로 끝까지 읽고, 조직 불일치·중복 행은 닫힌 실패로 처리한다. */
+  /** 조직 범위의 목록을 count/범위로 검증한다. 짧은 페이지를 끝으로 추측하지 않는다. */
   async function listAll<T extends { id: string; organization_id: string }>(token: string, table: string, organizationId: string, schema: z.ZodType<T>, filters: Query = {}): Promise<T[]> {
-    const items: T[] = [];
-    for (;;) {
-      const page = await rest.select(token, table, { organization_id: `eq.${organizationId}`, order: 'id.asc', limit: String(PAGE), offset: String(items.length), ...filters }, schema);
-      if (page.some((item) => item.organization_id !== organizationId)) throw fail();
-      items.push(...page);
-      if (page.length < PAGE) break;
-    }
-    if (new Set(items.map((item) => item.id)).size !== items.length) throw fail();
+    const items = await rest.selectAll(token, table, { organization_id: `eq.${organizationId}`, order: 'id.asc', ...filters }, schema);
+    if(items.some(item=>item.organization_id!==organizationId))throw fail();
     return items;
   }
   const rpc = <T>(token: string, name: string, organizationId: string, args: Record<string, unknown>, schema: z.ZodType<T>) =>
@@ -100,6 +93,11 @@ export function createAppointmentResourceGateway(config: ServerConfig, fetcher: 
     listResources: (token: string, organizationId: string) => listAll(token, 'appointment_resources', organizationId, resourceSchema),
 
     createStaff: (token: string, organizationId: string, name: string) => single(token, 'create_appointment_staff', organizationId, { p_name: name }, staffSchema),
+    async updateStaffProfile(token:string,organizationId:string,staffId:string,input:{name:string;is_active:boolean;expected_version:number;operation_id:string}) {
+      const saved=await single(token,'update_appointment_staff_profile',organizationId,{p_staff_id:staffId,p_name:input.name,p_is_active:input.is_active,p_expected_version:input.expected_version,p_operation_id:input.operation_id},staffSchema);
+      if(saved.id!==staffId||saved.profile_version===undefined)throw fail();
+      return saved;
+    },
     createService: (token: string, organizationId: string, name: string, durationMinutes: number, bufferMinutes: number) =>
       single(token, 'create_appointment_service', organizationId, { p_name: name, p_duration_minutes: durationMinutes, p_buffer_minutes: bufferMinutes }, serviceSchema),
 
@@ -170,6 +168,30 @@ export function createAppointmentResourceGateway(config: ServerConfig, fetcher: 
     },
 
     /** 담당자 근무시간(주간)과 진행 중인 휴무. */
+    async getStaffSchedules(token:string,organizationId:string,staffIds:string[],date:string) {
+      if(!z.array(z.uuid()).max(2000).safeParse(staffIds).success||new Set(staffIds).size!==staffIds.length||!z.iso.date().safeParse(date).success)throw fail();
+      const schedules=new Map(staffIds.map(id=>[id,{staff_id:id,hours:[] as z.infer<typeof workingHourSchema>[],time_off:[] as AppointmentTimeOff[]}]));
+      const seenHours=new Set<string>(),seenOff=new Set<string>();
+      const start=`${date}T00:00:00+09:00`,end=`${addDays(date,2)}T00:00:00+09:00`;
+      for(let offset=0;offset<staffIds.length;offset+=50){
+        const batch=staffIds.slice(offset,offset+50),allowed=new Set(batch);
+        const filters={organization_id:`eq.${organizationId}`,staff_id:`in.(${batch.join(',')})`,order:'id.asc'};
+        const [hours,timeOff]=await Promise.all([
+          rest.selectAll(token,'appointment_staff_working_hours',filters,workingHourSchema),
+          rest.selectAll(token,'appointment_staff_time_off',{...filters,status:'eq.active',and:`(start_at.lt.${end},end_at.gt.${start})`},timeOffSchema),
+        ]);
+        for(const hour of hours){
+          if(hour.organization_id!==organizationId||!allowed.has(hour.staff_id)||seenHours.has(hour.id))throw fail();
+          seenHours.add(hour.id);schedules.get(hour.staff_id)!.hours.push(hour);
+        }
+        for(const off of timeOff){
+          if(off.organization_id!==organizationId||!allowed.has(off.staff_id)||off.status!=='active'||seenOff.has(off.id)
+            ||!Number.isFinite(Date.parse(off.start_at))||!Number.isFinite(Date.parse(off.end_at))||Date.parse(off.start_at)>=Date.parse(end)||Date.parse(off.end_at)<=Date.parse(start))throw fail();
+          seenOff.add(off.id);schedules.get(off.staff_id)!.time_off.push(off);
+        }
+      }
+      return [...schedules.values()];
+    },
     async getStaffAvailability(token: string, organizationId: string, staffId: string) {
       const staff = (await listAll(token, 'appointment_staff', organizationId, staffSchema, { id: `eq.${staffId}` })).find((item) => item.id === staffId);
       if (!staff) throw new ApiFailure(404, 'Not found');
