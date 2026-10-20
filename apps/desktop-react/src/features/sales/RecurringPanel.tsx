@@ -1,3 +1,4 @@
+import { useDraftProtection } from '../../app/DraftBoundary';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { confirm, notify } from '@business-assistant/react-ui';
 import type { ApiClient } from '../../api/client';
@@ -38,6 +39,7 @@ export function RecurringPanel({ api, organizationId, readOnly, categories, onDi
   const [formError, setFormError] = useState('');
   const ticket = useRef(0);
   const dirty = !same(form, baseline);
+  useDraftProtection(dirty, saving);
   useEffect(() => onDirty(dirty), [dirty, onDirty]);
 
   const load = useCallback(async () => {

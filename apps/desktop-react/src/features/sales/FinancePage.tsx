@@ -1,3 +1,4 @@
+import { useDraftProtection } from '../../app/DraftBoundary';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DateField, Select, confirm, notify } from '@business-assistant/react-ui';
 import type { ApiClient } from '../../api/client';
@@ -67,6 +68,7 @@ function LedgerPanel({ api, organizationId, readOnly, categories, onCategories, 
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
   const dirty = !sameForm(form, baseline);
+  useDraftProtection(dirty, saving);
   useEffect(() => onDirty(dirty), [dirty, onDirty]);
   const ticket = useRef(0);
 
@@ -207,6 +209,7 @@ function SettlementPanel({ api, organizationId, readOnly, onDirty }: { api: ApiC
   const operation = useRef<{ id: string; signature: string } | null>(null);
   const ticket = useRef(0);
   const dirty = reason.trim() !== '' || (data?.close ? cash !== data.close.counted_cash : cash !== '');
+  useDraftProtection(dirty, saving);
   useEffect(() => onDirty(dirty), [dirty, onDirty]);
 
   const load = useCallback(async (day: string) => {

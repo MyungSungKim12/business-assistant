@@ -87,12 +87,13 @@ export function createSalesGateway(config: ServerConfig, fetcher: typeof fetch =
 
   return {
     /* ---------- 방문 장바구니 ---------- */
-    async listVisits(token: string, organizationId: string, customerId?: string, status?: string): Promise<CustomerVisit[]> {
+    async listVisits(token: string, organizationId: string, customerId?: string, status?: string, appointmentId?: string): Promise<CustomerVisit[]> {
       const query: Record<string, string> = { select: '*', organization_id: `eq.${organizationId}`, order: 'opened_at.desc,id.desc' };
       if (customerId) query.customer_id = `eq.${customerId}`;
       if (status) query.status = `eq.${status}`;
+      if (appointmentId) query.appointment_id = `eq.${appointmentId}`;
       const rows = await pages(token, 'customer_visits', query, customerVisit);
-      if (rows.some((row) => row.organization_id !== organizationId)) throw unavailable();
+      if (rows.some((row) => row.organization_id !== organizationId || (customerId && row.customer_id !== customerId) || (appointmentId && row.appointment_id !== appointmentId))) throw unavailable();
       return rows;
     },
     async listCartDrafts(token: string, organizationId: string): Promise<TreatmentSaleDraft[]> {

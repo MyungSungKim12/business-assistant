@@ -21,7 +21,7 @@ export type SalePaymentFilter = {
 export type PaymentPart = { method: 'cash' | 'card' | 'transfer'; amount: string; reference: string };
 
 export const salesApi = {
-  visits: (api: ApiClient, o: string) => api.call('GET', `${org(o)}/visits`, visitsSchema),
+  visits: (api: ApiClient, o: string, filter: {customerId?:string;appointmentId?:string} = {}) => api.call('GET', `${org(o)}/visits${query({customer_id:filter.customerId,appointment_id:filter.appointmentId})}`, visitsSchema),
   drafts: (api: ApiClient, o: string) => api.call('GET', `${org(o)}/sale-cart-drafts`, draftsSchema),
   /** 판매 가능한 상품·회원권(기존 operations 읽기 경로). */
   async catalog(api: ApiClient, o: string): Promise<CatalogItem[]> {

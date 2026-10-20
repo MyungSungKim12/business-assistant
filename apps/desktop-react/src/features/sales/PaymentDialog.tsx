@@ -1,3 +1,4 @@
+import { useDraftProtection } from '../../app/DraftBoundary';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Modal, Select, confirm, notify } from '@business-assistant/react-ui';
 import type { ApiClient } from '../../api/client';
@@ -72,6 +73,7 @@ function RecordForm({ api, organizationId, visitId, snapshot, canManage, onChang
   const [confirmed, setConfirmed] = useState(false);
   const [error, setError] = useState('');
   const dirty = confirmed || Object.values(values).some((pair) => pair.amount || pair.reference);
+  useDraftProtection(dirty || op.pending != null, op.busy);
   useEffect(() => onDirty(dirty && op.pending == null), [dirty, op.pending, onDirty]);
   const payable = snapshot.status === 'ready' || snapshot.status === 'collecting';
   const locked = !canManage || op.busy || op.pending != null || op.invalid;
@@ -127,6 +129,7 @@ function RefundForm({ api, organizationId, visitId, snapshot, canManage, onChang
   const [confirmed, setConfirmed] = useState(false);
   const [error, setError] = useState('');
   const dirty = Boolean(amount || reason || confirmed);
+  useDraftProtection(dirty || op.pending != null, op.busy);
   useEffect(() => onDirty(dirty && op.pending == null), [dirty, op.pending, onDirty]);
   const selected = candidates.find((item) => item.receipt.id === sourceId) ?? candidates[0];
   const locked = !canManage || op.busy || op.pending != null || op.invalid;
@@ -193,6 +196,7 @@ function ReturnForm({ api, organizationId, visitId, snapshot, canManage, onChang
   const [confirmed, setConfirmed] = useState(false);
   const [error, setError] = useState('');
   const dirty = Boolean(amount || reason || confirmed);
+  useDraftProtection(dirty || op.pending != null, op.busy);
   useEffect(() => onDirty(dirty && op.pending == null), [dirty, op.pending, onDirty]);
   const line = lines.find((item) => item.id === lineId) ?? lines[0];
   const receipt = receipts.find((item) => item.receipt.id === receiptId) ?? receipts[0];

@@ -42,7 +42,7 @@ export function registerSalesRoutes(app: FastifyInstance, organizations: OrgAcce
     const { organizationId } = parse(orgParams, request.params, 'Invalid organization ID');
     const filter = parse(visitsFilter, request.query, 'Invalid visit filter');
     await authorize(token, organizationId, CART_FEATURES);
-    return gateway.listVisits(token, organizationId, filter.customer_id, filter.status);
+    return gateway.listVisits(token, organizationId, filter.customer_id, filter.status, filter.appointment_id);
   });
   app.get(`${base}/sale-cart-drafts`, async (request) => {
     const token = start(request);

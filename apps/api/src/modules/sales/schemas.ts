@@ -172,7 +172,7 @@ export const financeFilter = z.object({
 }).refine((value) => !value.from_date || !value.to_date || value.from_date <= value.to_date);
 export const financeSummaryFilter = z.object({ from_date: z.iso.date().optional(), to_date: z.iso.date().optional() })
   .refine((value) => !value.from_date || !value.to_date || value.from_date <= value.to_date);
-export const visitsFilter = z.object({ customer_id: uuid.optional(), status: z.enum(['open', 'checkout_ready', 'closed', 'canceled']).optional() });
+export const visitsFilter = z.object({ customer_id: uuid.optional(), appointment_id: uuid.optional(), status: z.enum(['open', 'checkout_ready', 'closed', 'canceled']).optional() });
 export const settlementDate = z.object({ business_date: z.iso.date() });
 
 /* ---------- SALE-10: 수납·환불·반품 내역 검색 ---------- */

@@ -6,6 +6,22 @@ const answer = (body: unknown) => () => ({ body });
 const CART = `/visits/${visitId}/sale-cart`;
 
 describe('방문 장바구니 API', () => {
+  it('잘못된 예약 ID 필터는 DB 조회 전에 거절한다',async()=>{
+    const {send,calls}=sandbox();
+    expect((await send('GET','/visits?appointment_id=invalid')).statusCode).toBe(422);
+    expect(calls).toEqual([]);
+  });
+  it('예약에서 방문을 찾을 때 조직·고객·예약 필터를 모두 사용한다',async()=>{
+    const {send,calls}=sandbox(call=>({body:call.query.offset==='0'?[visitRow({appointment_id:op})]:[]}),{role:'member'});
+    expect((await send('GET',`/visits?customer_id=${customerId}&appointment_id=${op}`)).statusCode).toBe(200);
+    expect(calls[0].query).toMatchObject({organization_id:`eq.${org}`,customer_id:`eq.${customerId}`,appointment_id:`eq.${op}`});
+  });
+  it('예약 조회 응답의 조직·고객·예약이 다르면 닫힌 실패로 처리한다',async()=>{
+    for(const row of [visitRow({organization_id:op,appointment_id:op}),visitRow({customer_id:op,appointment_id:op}),visitRow({appointment_id:null})]){
+      const {send}=sandbox(call=>({body:call.query.offset==='0'?[row]:[]}));
+      expect((await send('GET',`/visits?customer_id=${customerId}&appointment_id=${op}`)).statusCode).toBe(503);
+    }
+  });
   it('회원은 조회만 하고 변경은 관리자만 한다', async () => {
     const { send, calls } = sandbox((call) => call.path.endsWith('/customer_visits') ? { body: [] } : { body: bundle() }, { role: 'member' });
     expect((await send('GET', '/visits')).statusCode).toBe(200);

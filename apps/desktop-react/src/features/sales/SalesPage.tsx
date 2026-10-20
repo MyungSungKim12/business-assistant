@@ -1,3 +1,4 @@
+import { useDraftProtection } from '../../app/DraftBoundary';
 import { usePrivacy } from '../../lib/privacy';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Select, confirm } from '@business-assistant/react-ui';
@@ -30,16 +31,36 @@ const discountLabel = (cart: CartBundle['cart']) => {
   return `할인 ${formatWon(cart.discount_total)} · ${detail}${cart.discount_reason ? ` · ${cart.discount_reason}` : ''}`;
 };
 
-type OpenRequest = { customerId: string; visitId: string; nonce: number };
+type OpenRequest = { customerId: string; visitId: string; nonce: number; appointmentId?: string };
+export type AppointmentCheckoutRequest = { customerId: string; appointmentId: string; nonce: number };
 type SalesView = 'cart' | 'history';
 
 /** 매출 화면: 장바구니와 매출 내역(수납·환불 검색) 두 탭. 장바구니는 탭을 옮겨도 입력 상태를 유지하려고 숨기기만 한다. */
-export function SalesPage({ api, organizationId, readOnly, organizationName = '' }: { api: ApiClient; organizationId: string; readOnly: boolean; organizationName?: string }) {
+export function SalesPage({ api, organizationId, readOnly, organizationName = '', appointmentRequest }: { api: ApiClient; organizationId: string; readOnly: boolean; organizationName?: string; appointmentRequest?: AppointmentCheckoutRequest }) {
   const [view, setView] = useState<SalesView>('cart');
   const [historyOpened, setHistoryOpened] = useState(false);
   const [openRequest, setOpenRequest] = useState<OpenRequest | null>(null);
+  const [retryEntry,setRetryEntry]=useState(0);
+  const [entry,setEntry]=useState<{key:string;error:string}|null>(null);
+  const entryKey=appointmentRequest ? JSON.stringify([organizationId,appointmentRequest.appointmentId,appointmentRequest.customerId,appointmentRequest.nonce,retryEntry]) : '';
+  useEffect(()=>{
+    if(!appointmentRequest)return;
+    let alive=true;
+    const target=appointmentRequest;
+    setEntry(null);
+    void salesApi.visits(api,organizationId,{customerId:target.customerId,appointmentId:target.appointmentId}).then(rows=>{
+      if(!alive)return;
+      if(rows.length!==1)throw new Error('Expected exactly one linked visit');
+      const row=rows[0]!;
+      if(row.organization_id!==organizationId||row.customer_id!==target.customerId||row.appointment_id!==target.appointmentId||row.status==='canceled')throw new Error('Visit link mismatch');
+      setOpenRequest(old=>({customerId:target.customerId,visitId:row.id,appointmentId:target.appointmentId,nonce:(old?.nonce??0)+1}));
+      setView('cart');setEntry({key:entryKey,error:''});
+    }).catch(()=>{if(alive)setEntry({key:entryKey,error:'예약 방문 연결 확인 실패'});});
+    return()=>{alive=false;};
+  },[api,organizationId,entryKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const choose = (next: SalesView) => { if (next === 'history') setHistoryOpened(true); setView(next); };
   const openVisit = (row: SalePayment) => { setOpenRequest({ customerId: row.customer_id, visitId: row.visit_id, nonce: (openRequest?.nonce ?? 0) + 1 }); setView('cart'); };
+  if(appointmentRequest&&(entry?.key!==entryKey||entry.error))return <section className="sales-page"><h1>예약 방문 연결</h1>{entry?.key===entryKey&&entry.error ? <p role="alert">예약에 연결된 방문을 확인하지 못했습니다. 방문 처리 여부·권한·연결 정보를 확인하세요. 새 방문은 만들지 않았습니다. <button type="button" onClick={()=>setRetryEntry(n=>n+1)}>다시 확인</button></p> : <p role="status">예약에 연결된 기존 방문을 확인하는 중…</p>}</section>;
   return <div className="sales-shell">
     <div className="sales-tabs" role="tablist" aria-label="매출 화면">
       <button type="button" role="tab" aria-selected={view === 'cart'} className={view === 'cart' ? 'is-active' : ''} onClick={() => choose('cart')}>장바구니</button>
@@ -86,6 +107,7 @@ function CartView({ api, organizationId, readOnly, openRequest, organizationName
 
   const selectedLine = bundle?.lines.find((line) => line.id === lineId);
   const dirty = (selectedLine !== undefined && !sameForm(editor, lineForm(selectedLine))) || (bundle !== null && !sameForm(discount, discountFromCart(bundle)));
+  useDraftProtection(dirty || pending !== null, busy || pending !== null);
   const say = (text: string, tone: 'info' | 'error' = 'info') => { setStatus(text); setStatusTone(tone); };
 
   async function allowChange(): Promise<boolean> {
@@ -102,13 +124,15 @@ function CartView({ api, organizationId, readOnly, openRequest, organizationName
     if (next) setVisits((old) => old.some((visit) => visit.id === next.visit.id) ? old.map((visit) => visit.id === next.visit.id ? next.visit : visit) : [next.visit, ...old]);
   }, []);
 
-  const loadCart = useCallback(async (id: string) => {
+  const loadCart = useCallback(async (id: string, expected?: { customerId:string;appointmentId?:string }) => {
     const ticket = ++request.current;
     setCartLoading(true);
     say('선택한 방문의 장바구니를 불러오는 중…');
     try {
       const next = await salesApi.cart(api, organizationId, id);
       if (ticket !== request.current) return;
+      if(next.visit.id!==id||next.visit.organization_id!==organizationId||next.cart.organization_id!==organizationId||next.cart.visit_id!==id||next.cart.customer_id!==next.visit.customer_id
+        ||(expected&&(next.visit.customer_id!==expected.customerId||(expected.appointmentId&&next.visit.appointment_id!==expected.appointmentId))))throw new Error('Visit cart link mismatch');
       showBundle(next);
       say('방문 내역을 불러왔습니다. 실제 수납은 ‘수납 기록 · 내역’에서 확인하세요.');
     } catch (error) {
@@ -256,12 +280,11 @@ function CartView({ api, organizationId, readOnly, openRequest, organizationName
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openRequest, loading]);
   async function openFromHistory(target: OpenRequest) {
-    if (target.visitId === visitId && bundle) return;
     if (!await allowChange()) return;
     setCustomerId(target.customerId);
     setVisitId(target.visitId);
     showBundle(null);
-    void loadCart(target.visitId);
+    void loadCart(target.visitId,{customerId:target.customerId,appointmentId:target.appointmentId});
   }
 
   if (loading) return <section className="sales-page"><p role="status" className="muted">고객과 열린 방문, 시술 초안을 불러오는 중…</p></section>;

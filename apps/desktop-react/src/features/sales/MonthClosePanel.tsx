@@ -1,3 +1,4 @@
+import { useDraftProtection } from '../../app/DraftBoundary';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { confirm, notify } from '@business-assistant/react-ui';
 import type { ApiClient } from '../../api/client';
@@ -40,6 +41,7 @@ export function MonthClosePanel({ api, organizationId, readOnly, onDirty }: Prop
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const ticket = useRef(0);
+  useDraftProtection(note.trim() !== '', saving);
   useEffect(() => onDirty(note.trim() !== ''), [note, onDirty]);
 
   const load = useCallback(async () => {
