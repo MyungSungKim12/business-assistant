@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { ServerConfig } from '../../config.js';
 import { ApiFailure } from '../../errors.js';
+import { createRest } from '../../supabase/rest.js';
 import { computeEvidenceHash, embeddedProofSchema, EVIDENCE_ALGORITHM, evidenceInputOf, storedEvidenceOf, verifyEvidence, type EvidenceVerification } from './evidence.js';
 import { createDocumentHttp, type ErrorMessages } from './http.js';
 
@@ -35,9 +36,10 @@ const consentRowSchema = z.object({
 export const consentEventSchema = consentRowSchema.transform(({ proof, ...event }) => ({ ...event, evidence: storedEvidenceOf(proof) }));
 const fileRowSchema = z.object({
   id: z.uuid(), organization_id: z.uuid(), uploaded_by: z.uuid(), storage_path: z.string(), original_name: z.string(), content_type: z.string(),
-  size_bytes: z.number().int(), is_archived: z.boolean(), created_at: z.string(), updated_at: z.string(),
+  size_bytes: z.number().int(), is_archived: z.boolean(), created_at: z.string(), updated_at: z.string(), folder_id:z.uuid().nullable().default(null), tags:z.array(z.string()).max(10).default([]),
 });
 export const fileSchema = fileRowSchema.omit({ storage_path: true });
+const folderSchema=z.object({id:z.uuid(),organization_id:z.uuid(),name:z.string(),created_by:z.uuid(),created_at:z.string()});
 
 export type DocumentTemplate = z.infer<typeof templateSchema>;
 export type DocumentRecord = z.infer<typeof documentSchema>;
@@ -72,6 +74,10 @@ export type DocumentGateway = {
   recordConsentEvent(token: string, scope: TreatmentScope, documentId: string, input: ConsentInput): Promise<ConsentEvent>;
   verifyConsentEvent(token: string, scope: TreatmentScope, documentId: string, eventId: string): Promise<EvidenceVerification>;
   listFiles(token: string, organizationId: string, includeArchived: boolean): Promise<FileAsset[]>;
+  listFileFolders(token:string,organizationId:string):Promise<z.infer<typeof folderSchema>[]>;
+  createFileFolder(token:string,organizationId:string,name:string):Promise<z.infer<typeof folderSchema>>;
+  deleteFileFolder(token:string,organizationId:string,folderId:string):Promise<boolean>;
+  updateFileMetadata(token:string,organizationId:string,fileId:string,folderId:string|null,tags:string[]):Promise<FileAsset|null>;
   createFileUpload(token: string, organizationId: string, input: FileUploadInput): Promise<SignedFile>;
   createFileDownload(token: string, organizationId: string, fileId: string): Promise<SignedFile>;
   archiveFile(token: string, organizationId: string, fileId: string): Promise<FileAsset | null>;
@@ -103,6 +109,9 @@ export function safeFilename(name: string): string {
 
 export function createDocumentGateway(config: ServerConfig, fetcher: typeof fetch = fetch): DocumentGateway {
   const http = createDocumentHttp(config, fetcher);
+  const fileLists = createRest(config, fetcher, fileMessages.unavailable);
+  const issuanceLists = createRest(config, fetcher, issuanceMessages.unavailable);
+  const consentLists = createRest(config, fetcher, consentMessages.unavailable);
 
   function parseRows<T>(rows: unknown, schema: z.ZodType<T>, messages: ErrorMessages): T[] {
     const parsed = z.array(schema).safeParse(rows);
@@ -130,10 +139,11 @@ export function createDocumentGateway(config: ServerConfig, fetcher: typeof fetc
   async function listIssuedRows(token: string, scope: TreatmentScope): Promise<IssuedTreatmentDocument[]> {
     // 접근 불가/불일치 상위 레코드를 빈 이력과 구분한다.
     await requireParent(token, 'treatment_records', { organization_id: eq(scope.organizationId), customer_id: eq(scope.customerId), id: eq(scope.treatmentId) }, scope.treatmentId, issuanceMessages);
-    const rows = await http.request(token, 'GET', '/rest/v1/issued_treatment_documents', issuanceMessages, {
-      query: { organization_id: eq(scope.organizationId), customer_id: eq(scope.customerId), treatment_id: eq(scope.treatmentId), order: 'issued_at.desc,id.desc' }, mapCodes: true,
-    });
-    return inOrganization(parseRows(rows, issuedSchema, issuanceMessages), scope.organizationId, issuanceMessages);
+    const rows = inOrganization(await issuanceLists.selectAll(token, 'issued_treatment_documents', {
+      organization_id: eq(scope.organizationId), customer_id: eq(scope.customerId), treatment_id: eq(scope.treatmentId), order: 'issued_at.desc,id.desc',
+    }, issuedSchema), scope.organizationId, issuanceMessages);
+    if (rows.some(row => row.customer_id !== scope.customerId || row.treatment_id !== scope.treatmentId)) throw new ApiFailure(503, issuanceMessages.unavailable);
+    return rows;
   }
 
   async function getFile(token: string, organizationId: string, fileId: string): Promise<z.infer<typeof fileRowSchema> | null> {
@@ -222,16 +232,11 @@ export function createDocumentGateway(config: ServerConfig, fetcher: typeof fetc
       await requireParent(token, 'issued_treatment_documents', {
         organization_id: eq(scope.organizationId), customer_id: eq(scope.customerId), treatment_id: eq(scope.treatmentId), id: eq(documentId),
       }, documentId, consentMessages);
-      const events: ConsentEvent[] = [];
-      for (;;) {
-        const payload = await http.request(token, 'GET', '/rest/v1/treatment_document_events', consentMessages, {
-          query: { select: eventSelect, organization_id: eq(scope.organizationId), document_id: eq(documentId), order: 'revision.asc', limit: '250', offset: String(events.length) }, mapCodes: true,
-        });
-        const page = inOrganization(parseRows(payload, consentEventSchema, consentMessages), scope.organizationId, consentMessages);
-        if (page.some((event, index) => event.revision !== events.length + index + 1 || event.document_id !== documentId)) throw new ApiFailure(503, consentMessages.unavailable);
-        events.push(...page);
-        if (page.length < 250) return events;
-      }
+      const events = inOrganization(await consentLists.selectAll(token, 'treatment_document_events', {
+        select: eventSelect, organization_id: eq(scope.organizationId), document_id: eq(documentId), order: 'revision.asc,id.asc',
+      }, consentEventSchema), scope.organizationId, consentMessages);
+      if (events.some((event, index) => event.revision !== index + 1 || event.document_id !== documentId)) throw new ApiFailure(503, consentMessages.unavailable);
+      return events;
     },
     async recordConsentEvent(token, scope, documentId, input) {
       const payload = await http.request(token, 'POST', '/rest/v1/rpc/record_treatment_document_event', consentMessages, {
@@ -258,10 +263,27 @@ export function createDocumentGateway(config: ServerConfig, fetcher: typeof fetc
       return verifyEvidence(evidenceInputOf({ ...event, event_id: event.id }), event.evidence);
     },
     async listFiles(token, organizationId, includeArchived) {
-      const query: Record<string, string> = { organization_id: eq(organizationId), order: 'created_at.desc' };
+      const query: Record<string, string> = { organization_id: eq(organizationId), order: 'created_at.desc,id.desc' };
       if (!includeArchived) query.is_archived = 'eq.false';
-      const rows = await http.request(token, 'GET', '/rest/v1/file_assets', fileMessages, { query, badRequestIsInvalid: true });
-      return inOrganization(parseRows(rows, fileRowSchema, fileMessages), organizationId, fileMessages).map(publicFile);
+      const rows = await fileLists.selectAll(token, 'file_assets', query, fileRowSchema);
+      return inOrganization(rows, organizationId, fileMessages).map(publicFile);
+    },
+    async listFileFolders(token,organizationId){
+      const rows=await fileLists.selectAll(token,'file_folders',{organization_id:eq(organizationId),order:'name.asc,id.asc'},folderSchema);
+      return inOrganization(rows,organizationId,fileMessages);
+    },
+    async createFileFolder(token,organizationId,name){
+      const uploadedBy=await http.userId(token,fileMessages);
+      const rows=await http.request(token,'POST','/rest/v1/file_folders',fileMessages,{query:{select:'*'},body:{organization_id:organizationId,name,created_by:uploadedBy},representation:true,badRequestIsInvalid:true});
+      return exactlyOne(inOrganization(parseRows(rows,folderSchema,fileMessages),organizationId,fileMessages),fileMessages);
+    },
+    async deleteFileFolder(token,organizationId,folderId){
+      const rows=await http.request(token,'DELETE','/rest/v1/file_folders',fileMessages,{query:{id:eq(folderId),organization_id:eq(organizationId),select:'id'},representation:true,badRequestIsInvalid:true});
+      return Array.isArray(rows)&&rows.length===1;
+    },
+    async updateFileMetadata(token,organizationId,fileId,folderId,tags){
+      const rows=await http.request(token,'PATCH','/rest/v1/file_assets',fileMessages,{query:{id:eq(fileId),organization_id:eq(organizationId),select:'*'},body:{folder_id:folderId,tags},representation:true,badRequestIsInvalid:true});
+      const parsed=inOrganization(parseRows(rows,fileRowSchema,fileMessages),organizationId,fileMessages);return parsed[0]?publicFile(parsed[0]):null;
     },
     async createFileUpload(token, organizationId, input) {
       const uploadedBy = await http.userId(token, fileMessages);

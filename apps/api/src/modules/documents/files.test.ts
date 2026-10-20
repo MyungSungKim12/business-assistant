@@ -6,6 +6,22 @@ const upload = { original_name: ' 보고서 final.pdf ', content_type: 'applicat
 const post = (app: ReturnType<typeof build>['app'], url: string, payload?: unknown, headers: Record<string, string> = auth) => app.inject({ method: 'POST', url, headers, payload: payload as never });
 
 describe('파일 자료', () => {
+  it('폴더 목록 및 파일 폴더·태그 업데이트는 조직 범위와 검증을 적용한다', async () => {
+    const { app, calls } = build({ respond: (call) => call.url.pathname.endsWith('/file_folders') ? { body: [{ id: FILE, organization_id: ORG, name: '시술 자료', created_by: USER, created_at: '2030-01-01T00:00:00Z' }] } : { body: [{ ...fileRow, folder_id: FILE, tags: ['시술'] }] } });
+    const headers=auth, folders=await app.inject({url:orgPath('file-folders'),headers});
+    expect(folders.statusCode).toBe(200); expect(folders.json()[0].name).toBe('시술 자료');
+    const update=await app.inject({method:'PATCH',url:orgPath(`files/${FILE}/metadata`),headers,payload:{folder_id:FILE,tags:['시술']}});
+    expect(update.statusCode).toBe(200); expect(calls.some(call=>call.method==='PATCH'&&call.url.searchParams.get('organization_id')===`eq.${ORG}`)).toBe(true);
+    expect((await app.inject({method:'PATCH',url:orgPath(`files/${FILE}/metadata`),headers,payload:{folder_id:null,tags:Array.from({length:11},(_,i)=>`t${i}`)}})).statusCode).toBe(422);
+  });
+  it('member는 폴더나 파일 분류를 변경하지 못한다', async () => {
+    const { app, calls } = build({ role: 'member' });
+    const folder = await app.inject({ method: 'POST', url: orgPath('file-folders'), headers: auth, payload: { name: '개인 자료' } });
+    const metadata = await app.inject({ method: 'PATCH', url: orgPath(`files/${FILE}/metadata`), headers: auth, payload: { folder_id: null, tags: [] } });
+    expect(folder.statusCode).toBe(403);
+    expect(metadata.statusCode).toBe(403);
+    expect(calls).toHaveLength(0);
+  });
   it('인증·멤버십·files.basic 이 필요하다', async () => {
     expect((await build().app.inject({ url: orgPath('files') })).statusCode).toBe(401);
     expect((await build().app.inject({ url: orgPath('files'), headers: { authorization: 'Bearer outsider' } })).statusCode).toBe(403);
@@ -18,7 +34,7 @@ describe('파일 자료', () => {
     expect(result.statusCode).toBe(200);
     expect(result.body).not.toContain('storage_path');
     expect(calls[0].url.searchParams.get('is_archived')).toBe('eq.false');
-    expect(calls[0].url.searchParams.get('order')).toBe('created_at.desc');
+    expect(calls[0].url.searchParams.get('order')).toBe('created_at.desc,id.desc');
     await app.inject({ url: `${orgPath('files')}?include_archived=true`, headers: auth });
     expect(calls[1].url.searchParams.has('is_archived')).toBe(false);
     expect((await app.inject({ url: `${orgPath('files')}?include_archived=maybe`, headers: auth })).statusCode).toBe(422);

@@ -21,6 +21,7 @@ const treatmentParams = orgParams.extend({ customerId: z.uuid(), treatmentId: z.
 const issuedParams = treatmentParams.extend({ documentId: z.uuid() });
 const eventParams = issuedParams.extend({ eventId: z.uuid() });
 const fileParams = orgParams.extend({ fileId: z.uuid() });
+const folderParams=orgParams.extend({folderId:z.uuid()});
 
 const trimmedName = z.string().transform((value) => value.trim()).pipe(z.string().min(1).max(200));
 const bigText = z.string().max(TEXT_LIMIT);
@@ -74,6 +75,8 @@ const fileUpload = z.object({
   content_type: z.string().transform((value) => value.trim()).pipe(z.string().min(1).max(255)),
   size_bytes: z.number().int().min(0).max(MAX_FILE_SIZE),
 }).strict();
+const folderCreate=z.object({name:z.string().trim().min(1).max(80)}).strict();
+const fileMetadata=z.object({folder_id:z.uuid().nullable(),tags:z.array(z.string().trim().min(1).max(32)).max(10)}).strict().superRefine((value,ctx)=>{if(new Set(value.tags.map(x=>x.toLocaleLowerCase())).size!==value.tags.length)ctx.addIssue({code:'custom',message:'Duplicate tags'});});
 const archivedFlag = z.string().transform((value) => value.toLowerCase()).pipe(z.enum(['1', 'true', 't', 'yes', 'y', 'on', '0', 'false', 'f', 'no', 'n', 'off', ''])).transform((value) => ['1', 'true', 't', 'yes', 'y', 'on'].includes(value));
 
 export function registerDocumentRoutes(app: FastifyInstance, organizations: OrgAccess | undefined, documents: DocumentGateway | undefined): void {
@@ -189,6 +192,10 @@ export function registerDocumentRoutes(app: FastifyInstance, organizations: OrgA
     await c.organizations.requireAccess(c.token, p.organizationId, FILE_FEATURE);
     return c.documents.listFiles(c.token, p.organizationId, query.include_archived);
   });
+  app.get(`${base}/file-folders`,async request=>{const c=context(request),p=params(request,orgParams);await c.organizations.requireAccess(c.token,p.organizationId,FILE_FEATURE);return c.documents.listFileFolders(c.token,p.organizationId)});
+  app.post(`${base}/file-folders`,async(request,reply)=>{const c=context(request),p=params(request,orgParams),input=parse(folderCreate,request.body,'Invalid folder request');await c.organizations.requireAccess(c.token,p.organizationId,FILE_FEATURE,true);return reply.code(201).send(await c.documents.createFileFolder(c.token,p.organizationId,input.name))});
+  app.delete(`${base}/file-folders/:folderId`,async request=>{const c=context(request),p=params(request,folderParams);await c.organizations.requireAccess(c.token,p.organizationId,FILE_FEATURE,true);if(!(await c.documents.deleteFileFolder(c.token,p.organizationId,p.folderId)))throw new ApiFailure(404,'File folder not found');return{deleted:true}});
+  app.patch(`${base}/files/:fileId/metadata`,async request=>{const c=context(request),p=params(request,fileParams),input=parse(fileMetadata,request.body,'Invalid file metadata');await c.organizations.requireAccess(c.token,p.organizationId,FILE_FEATURE,true);const saved=await c.documents.updateFileMetadata(c.token,p.organizationId,p.fileId,input.folder_id,input.tags);if(!saved)throw new ApiFailure(404,'File not found');return saved});
   app.post(`${base}/files/upload-url`, async (request, reply) => {
     const c = context(request), p = params(request, orgParams), input = parse(fileUpload, request.body, 'Invalid file request');
     await c.organizations.requireAccess(c.token, p.organizationId, FILE_FEATURE);

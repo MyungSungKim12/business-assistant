@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { isPreviewable, previewTypeOf } from './filePreview';
 import { file } from './testkit';
 
-const of = (content_type: string, original_name: string) => previewTypeOf({ content_type, original_name });
+const of = (content_type: string, original_name: string) => previewTypeOf({ ...file, content_type, original_name });
 
 describe('previewTypeOf', () => {
   it.each([

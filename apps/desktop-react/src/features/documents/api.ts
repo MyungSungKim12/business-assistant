@@ -1,9 +1,10 @@
 import type { ApiClient } from '../../api/client';
+import { z } from 'zod';
 import type { BinarySource, Platform } from '../../platform/types';
 import { validateFile } from './fileValidation';
 import { previewTypeOf } from './filePreview';
 import { uploadWithProgress, type UploadOptions } from './uploadProgress';
-import { consentEventSchema, consentEventsSchema, customerOptionsSchema, evidenceVerificationSchema, documentSchema, documentsSchema, fileSchema, filesSchema, issuedListSchema, issuedSchema, previewSchema, signedFileSchema, templateSchema, templatesSchema, templateVersionsSchema, treatmentOptionsSchema } from './schemas';
+import { consentEventSchema, consentEventsSchema, customerOptionsSchema, evidenceVerificationSchema, documentSchema, documentsSchema, fileSchema, filesSchema, fileFoldersSchema, issuedListSchema, issuedSchema, previewSchema, signedFileSchema, templateSchema, templatesSchema, templateVersionsSchema, treatmentOptionsSchema } from './schemas';
 import type { ConsentRequest, Scope, TemplateMutation } from './schemas';
 
 const org = (o: string) => `/organizations/${o}`;
@@ -32,6 +33,10 @@ export type FilePlatform = Platform & { pickFiles?: () => Promise<BinarySource[]
 
 export const fileApi = {
   list: (api: ApiClient, o: string, includeArchived = false) => api.call('GET', `${org(o)}/files${includeArchived ? '?include_archived=true' : ''}`, filesSchema),
+  folders:(api:ApiClient,o:string)=>api.call('GET',`${org(o)}/file-folders`,fileFoldersSchema),
+  createFolder:(api:ApiClient,o:string,name:string)=>api.call('POST',`${org(o)}/file-folders`,fileFoldersSchema.element,{name}),
+  deleteFolder:(api:ApiClient,o:string,id:string)=>api.call('DELETE',`${org(o)}/file-folders/${id}`,z.object({deleted:z.literal(true)})),
+  updateMetadata:(api:ApiClient,o:string,id:string,input:{folder_id:string|null;tags:string[]})=>api.call('PATCH',`${org(o)}/files/${id}/metadata`,fileSchema,input),
   archive: (api: ApiClient, o: string, id: string) => api.call('DELETE', `${org(o)}/files/${id}`, fileSchema),
   downloadUrl: (api: ApiClient, o: string, id: string) => api.call('POST', `${org(o)}/files/${id}/download-url`, signedFileSchema, {}),
   /**

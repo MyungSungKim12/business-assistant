@@ -1,7 +1,10 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FilePage } from './FilePage';
-import { fakeApi, FILE, file, httpError, matches, ORG, renderWithHosts } from './testkit';
+import { fakeApi as baseFakeApi, FILE, file, httpError, matches, ORG, renderWithHosts } from './testkit';
+
+// 기존 파일 시나리오에는 정상적인 빈 폴더 목록을 명시한다.
+const fakeApi: typeof baseFakeApi = (handler, platform = {}) => baseFakeApi(call => matches(call, 'GET', /\/file-folders$/) ? [] : handler(call), platform);
 
 const signed = (extra: Partial<typeof file> = {}) => ({ file: { ...file, ...extra }, signed_url: 'https://storage.example/upload?token=t', expires_in: 600 });
 const picker = () => screen.getByLabelText('업로드할 파일') as HTMLInputElement;
@@ -14,7 +17,40 @@ const sized = (name: string, size: number, type = 'application/pdf') => {
 
 afterEach(() => vi.restoreAllMocks());
 
+it('폴더 조회 실패를 빈 폴더 성공으로 숨기지 않고 재시도로 복구한다', async () => {
+  let failed = true;
+  const { api } = baseFakeApi(call => {
+    if (matches(call, 'GET', /\/file-folders$/)) { if (failed) throw httpError(503); return []; }
+    return [file];
+  });
+  renderWithHosts(<FilePage api={api} organizationId={ORG} readOnly={false} />);
+  expect(await screen.findByText(/파일을 불러오지 못했습니다/)).toBeInTheDocument();
+  expect(screen.queryByText('등록된 파일이 없습니다.')).toBeNull();
+  failed = false;
+  fireEvent.click(screen.getByRole('button', { name: '다시 시도' }));
+  expect(await screen.findByText('가격표.pdf')).toBeInTheDocument();
+});
+
 describe('FilePage', () => {
+  it('폴더를 만들고 파일 태그를 메타데이터로 저장한다', async () => {
+    const folder = { id: '88888888-8888-4888-8888-888888888888', organization_id: ORG, name: '가격표', created_by: '66666666-6666-4666-8666-666666666666', created_at: '2026-10-16T00:00:00Z' };
+    const createdFolder = { ...folder, id: '99999999-9999-4999-8999-999999999999' };
+    const { api, calls } = fakeApi((call) => {
+      if (call.method === 'GET' && call.path.endsWith('/file-folders')) return [];
+      if (call.method === 'POST' && call.path.endsWith('/file-folders')) return createdFolder;
+      if (call.method === 'PATCH' && call.path.endsWith(`/files/${FILE}/metadata`)) return { ...file, folder_id: folder.id, tags: ['신규', '가격표'] };
+      return [file];
+    });
+    renderWithHosts(<FilePage api={api} organizationId={ORG} readOnly={false} />);
+    expect(await screen.findByText('가격표.pdf')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('새 폴더 이름'), { target: { value: '가격표' } });
+    fireEvent.click(screen.getByRole('button', { name: '폴더 추가' }));
+    await waitFor(() => expect(screen.getAllByRole('option', { name: '가격표' })).toHaveLength(2));
+    fireEvent.change(screen.getByLabelText('가격표.pdf 태그'), { target: { value: '신규, 가격표' } });
+    fireEvent.click(screen.getByRole('button', { name: '태그 저장' }));
+    await waitFor(() => expect(calls.some((call) => call.method === 'PATCH' && call.path.endsWith(`/files/${FILE}/metadata`) && call.body && JSON.stringify(call.body).includes('신규'))).toBe(true));
+  });
+
   it('목록을 보여주고 읽기 전용에서는 올리기·보관 버튼을 숨긴다', async () => {
     const { api } = fakeApi(() => [file]);
     renderWithHosts(<FilePage api={api} organizationId={ORG} readOnly />);
@@ -23,6 +59,17 @@ describe('FilePage', () => {
     expect(screen.queryByRole('button', { name: '파일 올리기' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '보관' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '다운로드' })).toBeEnabled();
+  });
+
+  it('파일 태그로 목록을 검색한다', async () => {
+    const tagged = { ...file, tags: ['시술사진', '전후'] };
+    const { api } = fakeApi(() => [tagged]);
+    renderWithHosts(<FilePage api={api} organizationId={ORG} readOnly />);
+    expect(await screen.findByText('가격표.pdf')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('태그 검색'), { target: { value: '전후' } });
+    expect(screen.getByText('가격표.pdf')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('태그 검색'), { target: { value: '동의서' } });
+    expect(screen.queryByText('가격표.pdf')).not.toBeInTheDocument();
   });
 
   it('불러오기에 실패하면 안내와 다시 시도를 보여주고 재시도로 복구한다', async () => {

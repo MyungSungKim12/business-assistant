@@ -11,8 +11,9 @@ export const templateVersionSchema = z.object({
 export const templateVersionsSchema = z.array(templateVersionSchema);
 export const documentSchema = z.object({
   id: z.uuid(), organization_id: z.uuid(), template_id: z.uuid().nullable(), created_by: z.uuid(), title: z.string(), content: z.string(), status: z.string(),
-  created_at: z.string(), updated_at: z.string(),
+  created_at: z.string(), updated_at: z.string(), folder_id:z.uuid().nullable().default(null),tags:z.array(z.string()).max(10).default([]),
 });
+export const fileFoldersSchema=z.array(z.object({id:z.uuid(),organization_id:z.uuid(),name:z.string(),created_by:z.uuid(),created_at:z.string()}));
 export const documentsSchema = z.array(documentSchema);
 export const previewSchema = z.object({
   template_id: z.uuid(), template_version: z.number(), title: z.string(), content: z.string(), source_snapshot: z.record(z.string(), z.unknown()), missing_fields: z.array(z.string()),
@@ -35,7 +36,7 @@ export const evidenceVerificationSchema = z.object({
 export const consentEventsSchema = z.array(consentEventSchema);
 export const fileSchema = z.object({
   id: z.uuid(), organization_id: z.uuid(), uploaded_by: z.uuid(), original_name: z.string(), content_type: z.string(), size_bytes: z.number(), is_archived: z.boolean(),
-  created_at: z.string(), updated_at: z.string(),
+  created_at: z.string(), updated_at: z.string(), folder_id:z.uuid().nullable().default(null),tags:z.array(z.string()).max(10).default([]),
 });
 export const filesSchema = z.array(fileSchema);
 export const signedFileSchema = z.object({ file: fileSchema, signed_url: z.string(), expires_in: z.number() });

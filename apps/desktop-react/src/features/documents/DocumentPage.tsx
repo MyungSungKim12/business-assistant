@@ -1,3 +1,4 @@
+import { useDraftProtection } from '../../app/DraftBoundary';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { confirm, notify } from '@business-assistant/react-ui';
 import type { ApiClient } from '../../api/client';
@@ -61,6 +62,7 @@ function DocumentsTab({ api, organizationId, readOnly, reloadKey }: DocumentPage
 
   const baseline = draftOf(selected);
   const dirty = JSON.stringify(draft) !== JSON.stringify(baseline);
+  useDraftProtection(dirty, saving);
   const rows = useMemo(() => documents.filter((row) => row.title.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())), [documents, query]);
   const published = templates.filter((row) => row.status === 'published');
   const selectable = published.some((row) => row.id === draft.template_id) || !draft.template_id ? published : [...published, ...templates.filter((row) => row.id === draft.template_id)];

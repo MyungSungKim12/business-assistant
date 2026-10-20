@@ -18,7 +18,7 @@ export const orgPath = (rest: string) => `/api/v1/organizations/${ORG}/${rest}`;
 export const treatmentPath = (rest = 'documents') => `/api/v1/organizations/${ORG}/customers/${CUSTOMER}/treatments/${TREATMENT}/${rest}`;
 
 export type Call = { method: string; url: URL; headers: Record<string, string>; body: unknown };
-export type Reply = { status?: number; body?: unknown };
+export type Reply = { status?: number; body?: unknown; headers?: Record<string, string> };
 export type Responder = (call: Call) => Reply | undefined;
 
 export function build(options: { role?: 'owner' | 'admin' | 'member'; features?: string[]; respond?: Responder } = {}) {
@@ -41,7 +41,9 @@ export function build(options: { role?: 'owner' | 'admin' | 'member'; features?:
     const call: Call = { method: init?.method ?? 'GET', url, headers: { ...(init?.headers as Record<string, string>) }, body: init?.body ? JSON.parse(String(init.body)) : undefined };
     calls.push(call);
     const reply = options.respond?.(call) ?? { status: 200, body: [] };
-    return new Response(JSON.stringify(reply.body ?? null), { status: reply.status ?? 200 });
+    const range: Record<string, string> = call.headers.Prefer === 'count=exact' && Array.isArray(reply.body)
+      ? { 'Content-Range': reply.body.length ? `0-${reply.body.length - 1}/${reply.body.length}` : '*/0' } : {};
+    return new Response(JSON.stringify(reply.body ?? null), { status: reply.status ?? 200, headers: { ...range, ...reply.headers } });
   }) as typeof fetch;
   const app: FastifyInstance = Fastify();
   app.setErrorHandler((error, _request, reply) => {

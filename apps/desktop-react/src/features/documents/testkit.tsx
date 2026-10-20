@@ -21,7 +21,7 @@ export const document = { id: DOCUMENT, organization_id: ORG, template_id: null,
 export const issued = { id: DOCUMENT, organization_id: ORG, customer_id: CUSTOMER, treatment_id: TREATMENT, template_id: TEMPLATE, template_version: 2, title: '시술 동의서', content: '안녕하세요 김고객', source_snapshot: { customer: { name: '김고객', phone: '010' }, treatment: { name: '필러', date: '2026-10-13' } }, issued_by: USER, issued_at: stamp };
 export const preview = { template_id: TEMPLATE, template_version: 2, title: '시술 동의서', content: '안녕하세요 김고객', source_snapshot: issued.source_snapshot, missing_fields: [] as string[] };
 export const signEvent = { id: '88888888-8888-4888-8888-888888888888', organization_id: ORG, document_id: DOCUMENT, revision: 1, action: 'sign' as const, values: { signer_name: '김고객', strokes: [[[0, 0], [1, 1]]], confirmed: true }, actor_id: USER, occurred_at: stamp, content_hash: 'a'.repeat(64) };
-export const file = { id: FILE, organization_id: ORG, uploaded_by: USER, original_name: '가격표.pdf', content_type: 'application/pdf', size_bytes: 2048, is_archived: false, created_at: stamp, updated_at: stamp };
+export const file = { id: FILE, organization_id: ORG, uploaded_by: USER, original_name: '가격표.pdf', content_type: 'application/pdf', size_bytes: 2048, is_archived: false, created_at: stamp, updated_at: stamp, folder_id: null, tags: [] as string[] };
 
 export type Call = { method: string; path: string; body: unknown };
 export type Handler = (call: Call) => unknown;

@@ -27,17 +27,18 @@ export function createRest(config: ServerConfig, fetcher: typeof fetch = fetch, 
     return new ApiFailure(503, unavailable);
   }
 
-  async function send(token: string, method: string, path: string, query: Query, body?: unknown, extra: Record<string, string> = {}): Promise<unknown> {
+  async function send(token: string, method: string, path: string, query: Query, body?: unknown, extra: Record<string, string> = {}, options: { onResponse?: (response: Response) => void; signal?: AbortSignal } = {}): Promise<unknown> {
     const url = new URL(path, config.APP_SUPABASE_URL);
     url.search = new URLSearchParams(query).toString();
     try {
       const response = await fetcher(url, {
         method, headers: headers(token, method !== 'GET', extra), body: body === undefined ? undefined : JSON.stringify(body),
-        signal: AbortSignal.timeout(10_000), redirect: 'error',
+        signal: options.signal ?? AbortSignal.timeout(10_000), redirect: 'error',
       });
       const text = await response.text();
       const data: unknown = text ? JSON.parse(text) : null;
       if (!response.ok) throw failure(response.status, data);
+      options.onResponse?.(response);
       return data;
     } catch (error) {
       if (error instanceof ApiFailure) throw error;
@@ -46,6 +47,43 @@ export function createRest(config: ServerConfig, fetcher: typeof fetch = fetch, 
   }
 
   return {
+    /** 기존 배열 계약용 완전 조회. count가 없거나 중간 실패하면 부분 목록을 반환하지 않는다. */
+    async selectAll<T extends { id: string }>(token: string, table: string, query: Query, schema: z.ZodType<T>): Promise<T[]> {
+      const fail = () => new ApiFailure(503, unavailable);
+      // 마지막 정렬 키가 유일해야 같은 시각·이름의 행도 순서가 안정적이다.
+      if (!/(^|,)id\.(asc|desc)$/.test(query.order ?? '') || query.limit !== undefined || query.offset !== undefined) throw fail();
+      const rows: T[] = [], seen = new Set<string>();
+      const deadline = Date.now() + 30_000;
+      let expectedTotal: number | undefined;
+      for (let page = 0; page < 100; page++) {
+        const remaining = deadline - Date.now();
+        if (remaining <= 0) throw fail();
+        let range: string | null = null;
+        const payload = await send(token, 'GET', `/rest/v1/${table}`, { ...query, limit: '250', offset: String(rows.length) }, undefined, { Prefer: 'count=exact' }, {
+          signal: AbortSignal.timeout(Math.min(10_000, remaining)), onResponse: response => { range = response.headers.get('content-range'); },
+        });
+        const parsed = z.array(schema).safeParse(payload);
+        const match = /^(?:(\d+)-(\d+)|\*)\/(\d+)$/.exec(range ?? '');
+        if (!parsed.success || !match) throw fail();
+        const total = Number(match[3]);
+        if (!Number.isSafeInteger(total) || total > 20_000 || (expectedTotal !== undefined && total !== expectedTotal)) throw fail();
+        expectedTotal = total;
+        const batch = parsed.data;
+        if (total === 0) {
+          if (rows.length !== 0 || batch.length !== 0 || match[1] !== undefined) throw fail();
+          return [];
+        }
+        const start = Number(match[1]), end = Number(match[2]);
+        if (!batch.length || batch.length > 250 || start !== rows.length || end !== start + batch.length - 1 || end >= total) throw fail();
+        for (const row of batch) {
+          if (!row.id || seen.has(row.id)) throw fail();
+          seen.add(row.id);
+          rows.push(row);
+        }
+        if (rows.length === total) return rows;
+      }
+      throw fail();
+    },
     /** GET /rest/v1/{table} — 배열 응답을 스키마로 검증한다. */
     async select<T>(token: string, table: string, query: Query, schema: z.ZodType<T>): Promise<T[]> {
       const parsed = z.array(schema).safeParse(await send(token, 'GET', `/rest/v1/${table}`, query));

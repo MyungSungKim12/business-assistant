@@ -40,17 +40,17 @@ describe('동의서 서명·교부·철회', () => {
     expectNoLeak(result.body);
     expect(calls[0].url.pathname).toBe('/rest/v1/issued_treatment_documents');
     expect(calls[0].url.searchParams.get('id')).toBe(`eq.${DOCUMENT}`);
-    expect(calls[1].url.searchParams.get('order')).toBe('revision.asc');
+    expect(calls[1].url.searchParams.get('order')).toBe('revision.asc,id.asc');
     expect(calls[1].url.searchParams.get('document_id')).toBe(`eq.${DOCUMENT}`);
   });
 
   it('250건 단위로 여러 페이지를 읽고 마지막 철회까지 포함한다', async () => {
-    const make = (revision: number) => ({ ...event, revision, action: revision === 251 ? 'revoke' : 'deliver', values: revision === 251 ? revoke : deliver });
+    const make = (revision: number) => ({ ...event, id: `00000000-0000-4000-8000-${String(revision).padStart(12, '0')}`, revision, action: revision === 251 ? 'revoke' : 'deliver', values: revision === 251 ? revoke : deliver });
     const { app, calls } = build({
       respond: (call) => {
         if (call.url.pathname.endsWith('issued_treatment_documents')) return { body: [{ id: DOCUMENT }] };
         const offset = Number(call.url.searchParams.get('offset'));
-        return { body: Array.from({ length: offset === 0 ? 250 : 1 }, (_value, index) => make(offset + index + 1)) };
+        return { body: Array.from({ length: offset === 0 ? 250 : 1 }, (_value, index) => make(offset + index + 1)), headers: { 'Content-Range': offset === 0 ? '0-249/251' : '250-250/251' } };
       },
     });
     const result = await app.inject({ url: path, headers: auth });

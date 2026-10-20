@@ -1,3 +1,4 @@
+import { useDraftProtection } from '../../app/DraftBoundary';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { confirm, notify } from '@business-assistant/react-ui';
 import type { ApiClient } from '../../api/client';
@@ -36,6 +37,7 @@ export function TemplateManager({ api, organizationId, readOnly, onChanged }: { 
   const contentRef = useRef<HTMLTextAreaElement>(null);
 
   const dirty = !viewing && JSON.stringify(fields) !== JSON.stringify(baseline);
+  useDraftProtection(Boolean(dirty || pending), busy || pending !== null);
   const state = record?.status ?? 'draft';
   const unlocked = !busy && pending === null;
   const editable = !readOnly && unlocked && !conflict && !viewing;
