@@ -103,7 +103,18 @@ HTTPS로 `latest.json` 과 설치 파일을 제공하는 아무 정적 서버(Ng
 | OV(조직 인증) 코드 서명 | 비교적 저렴. SmartScreen 평판이 쌓일 때까지(다운로드 수·시간) 경고가 남을 수 있음 |
 | EV(확장 인증) 코드 서명 | 사업자 심사 강화, 보통 하드웨어 토큰/클라우드 HSM. 즉시 SmartScreen 신뢰에 유리 |
 
-사업자 확인이 필요하므로 인증 기관(CA)에서 구매하세요. 최근 CA는 개인키를 하드웨어 토큰·클라우드 HSM에 두도록 요구하는 경우가 많아, `.pfx` 파일을 주지 않으면 아래 시크릿 방식을 그대로 쓸 수 없습니다. 그 경우 CA가 안내하는 클라우드 서명 도구(Tauri `bundle.windows.signCommand` 로 연결)를 `scripts/release/make-release-config.mjs` 에 맞춰 확장해야 합니다.
+사업자 확인이 필요하므로 인증 기관(CA)에서 구매하세요. 최근 CA는 개인키를 하드웨어 토큰·클라우드 HSM에 두도록 요구하는 경우가 많아, `.pfx` 파일을 주지 않으면 아래 시크릿 방식을 그대로 쓸 수 없습니다. 그런 경우에는 Tauri 사용자 지정 서명 명령을 사용할 수 있습니다.
+
+### 하드웨어 토큰·클라우드 서명 도구 사용
+
+릴리스 설정 생성기는 선택 변수 `WINDOWS_SIGN_COMMAND` 를 `bundle.windows.signCommand` 에 전달한다. 명령에는 서명할 파일을 대신할 `%1` 을 정확히 한 번 넣어야 한다. 예를 들어 Tauri가 안내하는 `relic` 구성은 `relic sign --file %1 --key azure --config relic.conf` 형태다. 도구와 인증 수단은 릴리스 runner에 미리 준비한다.
+
+- GitHub Actions **Variables** 에 `WINDOWS_SIGN_COMMAND` 를 넣는다. 암호·토큰·개인키는 명령 문자열에 넣지 않는다. 명령이 OS 사용자 인증이나 runner의 인증된 클라우드 도구를 사용하게 한다.
+- 기본 GitHub 호스팅 runner에는 사용자의 USB 토큰이 연결되어 있지 않다. 하드웨어 토큰은 Windows self-hosted runner에 드라이버·서명 도구·토큰을 준비하고, 변수 `WINDOWS_SIGN_RUNNER` 에 전용 runner 레이블을 지정한다. self-hosted runner는 보호된 릴리스 태그만 실행하도록 제한한다. Azure 같은 클라우드 서명 도구는 해당 도구가 설치되고 인증 가능한 runner를 사용한다.
+- 사용자 지정 명령은 SHA-256 코드 서명과 타임스탬프를 직접 처리해야 한다. `WINDOWS_TIMESTAMP_URL` 및 PFX 변수는 사용자 지정 명령과 함께 사용할 수 없다. `.pfx` 시크릿과 `WINDOWS_SIGN_COMMAND` 를 같이 설정하면 릴리스 설정 생성이 실패한다.
+- 서명 명령은 빌드된 바이너리마다 실행된다. runner에서 해당 명령을 직접 시험하고 나서 릴리스 태그를 실행한다. 자격 증명과 실제 토큰 연결 확인은 이 저장소에서 하지 않았다.
+
+Tauri의 `%1` 치환과 사용자 지정 서명 명령은 [공식 Windows 코드 서명 안내](https://v2.tauri.app/distribute/sign/windows/)를 참고한다.
 
 ### 적용 (`.pfx` 인증서를 받은 경우)
 
@@ -131,6 +142,8 @@ HTTPS로 `latest.json` 과 설치 파일을 제공하는 아무 정적 서버(Ng
 | `WINDOWS_CERTIFICATE` | 시크릿 | 아니오 | 코드 서명 `.pfx`(base64) |
 | `WINDOWS_CERTIFICATE_PASSWORD` | 시크릿 | 인증서가 있으면 | `.pfx` 암호 |
 | `WINDOWS_TIMESTAMP_URL` | 변수 | 아니오 | 코드 서명 타임스탬프 서버 |
+| `WINDOWS_SIGN_COMMAND` | 변수 | 아니오 | HSM/클라우드 사용자 지정 서명 명령(`%1` 한 번 포함, 인증정보 금지). PFX 지문 방식과 함께 쓸 수 없음 |
+| `WINDOWS_SIGN_RUNNER` | 변수 | 아니오 | 사용자 지정 서명 도구를 갖춘 runner 레이블. 기본 `windows-latest` |
 
 ## 5. 릴리스 절차 체크리스트
 
