@@ -133,7 +133,9 @@ nav:
       - 계획 인덱스: product/README.md
       - 단계별 로드맵: product/roadmap.md
       - 개선·추가 작업 목록: product/backlog.md
+      - 프로젝트 현황 점검 (2026-10-20): product/project-status-2026-10-20.md
       - 전체 기능 테스트 흐름: product/functional-test-flows.md
+      - 기능 테스트 방법 가이드: product/functional-test-guide.md
       - 인수인계 (2026-10-13): product/handoff-2026-10-13.md
       - 보류 항목과 결정 사항 (2026-10-14): product/pending-decisions-2026-10-14.md
       - 기능 인수 점검: product/functional-release-check-2026-10-08.md

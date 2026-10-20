@@ -1,8 +1,10 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FilePage } from './FilePage';
-import { fakeApi, FILE, file, httpError, matches, ORG, renderWithHosts, type Call } from './testkit';
+import { fakeApi as baseFakeApi, FILE, file, httpError, matches, ORG, renderWithHosts, type Call } from './testkit';
 
+// 파일 화면은 폴더 목록도 함께 불러오므로 빈 폴더 목록을 명시한다.
+const fakeApi: typeof baseFakeApi = (handler, platform = {}) => baseFakeApi((call) => matches(call, 'GET', /\/file-folders$/) ? [] : handler(call), platform);
 const image = { ...file, id: '99999999-9999-4999-8999-999999999991', original_name: '시술사진.png', content_type: 'image/png' };
 const zip = { ...file, id: '99999999-9999-4999-8999-999999999992', original_name: '백업.zip', content_type: 'application/zip' };
 const signedUpload = { file, signed_url: 'https://storage.example/upload?token=t', expires_in: 600 };

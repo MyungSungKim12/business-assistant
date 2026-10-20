@@ -99,7 +99,9 @@ describe('044_customer_crm_tools.sql', () => {
       }
     }
     const handledElsewhere = new Set(['treatment_sale_drafts']);
-    const body = functionBody('merge_customers');
+    // 044 이후 테이블(예: 056 대기 목록)은 065 에서 다시 정의한 최신 merge_customers 가 옮긴다.
+    const latest = read('065_merge_customers_waitlist.sql').toLowerCase();
+    const body = latest.slice(latest.indexOf('create or replace function public.merge_customers('), latest.lastIndexOf('\n$$;'));
     expect(referencing.size).toBeGreaterThanOrEqual(10);
     for (const table of referencing) {
       if (handledElsewhere.has(table)) {
