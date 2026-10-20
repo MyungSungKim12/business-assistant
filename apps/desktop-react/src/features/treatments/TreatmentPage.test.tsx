@@ -80,6 +80,27 @@ const change = (label: string, value: string) => fireEvent.change(screen.getByLa
 const openRecord = async (name = '수분 관리') => { fireEvent.click(await screen.findByText(name)); await waitFor(() => expect(screen.getByLabelText('시술명 *')).toHaveValue(name)); };
 
 describe('TreatmentPage', () => {
+  it('예약에서 다시 열면 연결된 개별 시술을 선택하고 입력 중 연결 창은 막는다',async()=>{
+    const {api,calls}=setup({records:[treatment(t1,{appointment_id:doc,visit_id:t2})]});
+    render(<TreatmentPage api={api} organizationId={org} readOnly={false} initialCustomerId={cust} initialAppointmentId={doc}/>);
+    await waitFor(()=>expect(screen.getByLabelText('시술명 *')).toHaveValue('수분 관리'));
+    expect(screen.getByText(`연결 예약 ID: ${doc} · 방문 ID: ${t2}`)).toBeInTheDocument();
+    expect(calls.every(call=>call.method==='GET')).toBe(true);
+    change('시술명 *','작성 중');expect(screen.getByRole('button',{name:'예약·방문 연결'})).toBeDisabled();
+  });
+  it('예약에서 전달한 고객의 시술 이력을 선택하고 자동 시술 생성은 하지 않는다',async()=>{
+    const {api,calls}=setup({records:[]});
+    render(<TreatmentPage api={api} organizationId={org} readOnly={false} initialCustomerId={other}/>);
+    await waitFor(()=>expect(calls.some(call=>call.path===`/organizations/${org}/customers/${other}/treatments`)).toBe(true));
+    expect(calls.some(call=>call.path===`/organizations/${org}/customers/${cust}/treatments`)).toBe(false);
+    expect(calls.every(call=>call.method==='GET')).toBe(true);
+  });
+  it('요청한 고객이 없을 때 목록 첫 고객으로 대체하지 않는다',async()=>{
+    const {api,calls}=setup();
+    render(<TreatmentPage api={api} organizationId={org} readOnly={false} initialCustomerId={doc}/>);
+    expect(await screen.findByRole('alert')).toHaveTextContent('요청한 고객을 찾지 못했습니다');
+    expect(calls.some(call=>call.path.endsWith('/treatments'))).toBe(false);
+  });
   it('loads the first customer, shows cautions and history, and fills the editor from a selected record', async () => {
     const { view, calls } = setup();
     view();
@@ -90,6 +111,19 @@ describe('TreatmentPage', () => {
     expect(screen.getByLabelText('예정 금액')).toHaveValue('15000.50');
     expect(screen.getByText(/준비 · 버전 1/)).toBeInTheDocument();
     expect(screen.getByText('전체 1건 중 1건')).toBeInTheDocument();
+  });
+
+  it('opens preflight without modifying the record and protects an unsaved draft', async () => {
+    const { view, calls } = setup({ handler: ({ method, path }) => method === 'GET' && path.endsWith('/documents') ? [] : undefined });
+    view(); await openRecord();
+    click('시술 전 확인');
+    expect(await screen.findByRole('dialog', { name: '시술 전 확인' })).toBeInTheDocument();
+    expect(await screen.findByText('이 시술에 발행한 문서가 없습니다.')).toBeInTheDocument();
+    expect(pick(calls, '/mutations')).toHaveLength(0);
+    fireEvent.click(screen.getByText('닫기', { selector: 'button' }));
+    change('시술명 *', '변경 중인 시술명');
+    expect(screen.getByRole('button', { name: '시술 전 확인' })).toBeDisabled();
+    expect(screen.getByLabelText('시술명 *')).toHaveValue('변경 중인 시술명');
   });
 
   it('filters the history by text and category and reports an invalid date range', async () => {

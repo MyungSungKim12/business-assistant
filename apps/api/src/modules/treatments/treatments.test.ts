@@ -18,7 +18,7 @@ describe('treatment list and create', () => {
     expect(calls[0].url.pathname).toBe('/rest/v1/treatment_records');
     expect(calls[0].url.searchParams.get('organization_id')).toBe(`eq.${organizationId}`);
     expect(calls[0].url.searchParams.get('customer_id')).toBe(`eq.${customerId}`);
-    expect(calls[0].url.searchParams.get('order')).toBe('treatment_date.desc');
+    expect(calls[0].url.searchParams.get('order')).toBe('treatment_date.desc,id.desc');
     expect(calls[0].url.searchParams.get('select')).toContain('cautions_acknowledged_at');
     expect(calls[0].headers.Authorization).toBe('Bearer access');
     expect(access).toEqual([{ feature: 'crm.basic', write: false }]);

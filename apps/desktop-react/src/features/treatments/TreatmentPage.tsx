@@ -1,4 +1,5 @@
 import { usePrivacy } from '../../lib/privacy';
+import { useDraftProtection } from '../../app/DraftBoundary';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { DataGrid, DateField, ErrorState, LoadingState, Modal, Select, confirm, notify, type Column } from '@business-assistant/react-ui';
 import type { ApiClient } from '../../api/client';
@@ -6,6 +7,8 @@ import type { Customer } from '../../api/schemas';
 import { treatmentApi } from './api';
 import { useStable } from './useStable';
 import { ConsultationDialog } from './ConsultationDialog';
+import { TreatmentPreflight } from './TreatmentPreflight';
+import { TreatmentVisitLink } from './TreatmentVisitLink';
 import { EventsDialog } from './EventsDialog';
 import { SaleDraftDialog } from './SaleDraftDialog';
 import { TemplateManagerDialog } from './TemplateManagerDialog';
@@ -25,13 +28,15 @@ export type TreatmentPageProps = {
   api: ApiClient; organizationId: string; readOnly: boolean;
   /** 고객관리 등에서 특정 고객으로 열 때 지정한다. */
   initialCustomerId?: string;
+  initialAppointmentId?: string;
+  focusNonce?: number;
   /** 작성 중인 내용이 있는지 알려 메뉴 이동 보호에 쓴다. */
   onDirtyChange?: (dirty: boolean) => void;
   /** 문서 발행·이력 화면(다른 모듈)을 연결하면 '문서 발행·이력' 버튼이 나타난다. */
   documentsPanel?: (context: DocumentsPanelContext) => ReactNode;
 };
 type Message = { tone: 'info' | 'error'; text: string };
-type Dialog = null | 'consult' | 'events' | 'sale' | 'documents' | 'cancel';
+type Dialog = null | 'consult' | 'events' | 'sale' | 'documents' | 'cancel' | 'preflight' | 'visit-link';
 
 const columns: Column<Treatment>[] = [
   { key: 'date', header: '시술일', value: (r) => r.treatment_date, width: 96 },
@@ -45,10 +50,11 @@ async function confirmLeave(dirty: boolean): Promise<boolean> {
   return confirm({ title: '작성 중인 시술 기록', message: '저장하지 않은 변경 내용이 있습니다. 버리고 이동하시겠습니까?', confirmLabel: '버리고 이동', tone: 'danger' });
 }
 
-export function TreatmentPage({ api, organizationId, readOnly, initialCustomerId, onDirtyChange, documentsPanel }: TreatmentPageProps) {
+export function TreatmentPage({ api, organizationId, readOnly, initialCustomerId, initialAppointmentId, focusNonce, onDirtyChange, documentsPanel }: TreatmentPageProps) {
   const privacy = usePrivacy();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [customersState, setCustomersState] = useState<'loading' | 'ready' | 'error'>('loading');
+  const customersGeneration=useRef(0);
   const [customerQuery, setCustomerQuery] = useState('');
   const [customerId, setCustomerId] = useState<string | null>(null);
   const [records, setRecords] = useState<Treatment[]>([]);
@@ -84,6 +90,7 @@ export function TreatmentPage({ api, organizationId, readOnly, initialCustomerId
   const record = records.find((item) => item.id === recordId);
   const locked = isLocked(record);
   const dirty = writable && (formDirty(form, baseline) || correcting);
+  useDraftProtection(dirty,saving||opening);
   const busy = saving || recordsState === 'loading' || opening;
   const fieldsReadOnly = !writable || (locked && !correcting);
   const reportDirty = useStable((value: boolean) => onDirtyChange?.(value));
@@ -106,7 +113,7 @@ export function TreatmentPage({ api, organizationId, readOnly, initialCustomerId
       if (current !== generation.current) return;
       setRecords(rows);
       resetEditor();
-      const kept = rows.find((item) => item.id === keepRecordId);
+      const kept = keepRecordId ? rows.find(item => item.id === keepRecordId) : initialAppointmentId && targetCustomer === initialCustomerId ? rows.find(item => item.appointment_id === initialAppointmentId) : undefined;
       setRecordId(kept?.id ?? null);
       populate(kept ? formFromRecord(kept) : emptyForm());
       setRecordsState('ready');
@@ -116,7 +123,7 @@ export function TreatmentPage({ api, organizationId, readOnly, initialCustomerId
       setRecordsState('error');
       setMessage({ tone: 'error', text: '조회 실패 · 새로고침으로 재시도하세요.' });
     }
-  }, [api, organizationId, populate, resetEditor]);
+  }, [api, organizationId, populate, resetEditor, initialAppointmentId, initialCustomerId]);
 
   const selectCustomer = useCallback((id: string) => {
     setCustomerId(id);
@@ -125,16 +132,19 @@ export function TreatmentPage({ api, organizationId, readOnly, initialCustomerId
   }, [loadRecords, populate, resetEditor]);
 
   const loadCustomers = useCallback(async () => {
+    const ticket=++customersGeneration.current;
     setCustomersState('loading');
     try {
       const rows = await api.listCustomers(organizationId);
+      if(ticket!==customersGeneration.current)return;
       setCustomers(rows);
       setCustomersState('ready');
-      const first = rows.find((item) => item.id === initialCustomerId) ?? rows[0];
+      const first = initialCustomerId ? rows.find((item) => item.id === initialCustomerId) : rows[0];
+      if(initialCustomerId&&!first){setCustomerId(null);setRecordId(null);setRecords([]);populate(emptyForm());setMessage({tone:'error',text:'요청한 고객을 찾지 못했습니다. 고객 정보와 조회 권한을 확인한 뒤 다시 선택하세요.'});return;}
       if (first) selectCustomer(first.id);
-    } catch { setCustomersState('error'); }
-  }, [api, organizationId, initialCustomerId, selectCustomer]);
-  useEffect(() => { void loadCustomers(); return () => { generation.current += 1; }; }, [loadCustomers]);
+    } catch { if(ticket===customersGeneration.current)setCustomersState('error'); }
+  }, [api, organizationId, initialCustomerId, focusNonce, selectCustomer, populate]);
+  useEffect(() => { void loadCustomers(); return () => { generation.current += 1; customersGeneration.current++; }; }, [loadCustomers]);
   useEffect(() => { void resourceApi.listServiceDetails(api, organizationId).then(setServices).catch(() => setServices([])); }, [api, organizationId]);
 
   const openCustomer = async (id: string) => {
@@ -318,6 +328,8 @@ export function TreatmentPage({ api, organizationId, readOnly, initialCustomerId
         <span className="treatment-lifecycle__state">{stateText}</span>
         <div className="row-actions">
           {record && <label>적용 서비스 <Select aria-label="시술 적용 서비스" value={record.appointment_service_id ?? ''} disabled={!ready || dirty || !['draft', 'in_progress'].includes(status)} onChange={(value) => void linkService(value)} options={[{ value: '', label: '연결 안 함' }, ...services.filter((service) => service.is_active).map((service) => ({ value: service.id, label: service.name }))]} /></label>}
+          <button type="button" disabled={!record || busy || dirty} onClick={() => setDialog('visit-link')}>예약·방문 연결</button>
+          <button type="button" disabled={!record || busy || dirty} onClick={() => setDialog('preflight')}>시술 전 확인</button>
           <button type="button" disabled={!record || busy} onClick={() => void openConsultation()}>상담 기록</button>
           {documentsPanel && <button type="button" disabled={!record || busy || dirty} onClick={() => !blockedByDraft('문서를 열어주세요.') && setDialog('documents')}>문서 발행·이력</button>}
           <button type="button" disabled={!record || busy || !locked || correcting || dirty} onClick={() => setDialog('sale')}>결제 초안</button>
@@ -331,6 +343,8 @@ export function TreatmentPage({ api, organizationId, readOnly, initialCustomerId
         </div>
       </div>
 
+      {record && <p className="muted">연결 예약 ID: {record.appointment_id || '미연결'} · 방문 ID: {record.visit_id || '미연결'}</p>}
+      {initialAppointmentId && customerId === initialCustomerId && <p className="muted">예약에서 열었습니다. 기존 시술을 선택하거나 새 기록을 저장한 뒤 ‘예약·방문 연결’에서 연결을 확인하세요.</p>}
       <div className="treatment-layout">
         <aside className="data-surface treatment-customers">
           <h2>고객 선택</h2>
@@ -392,6 +406,8 @@ export function TreatmentPage({ api, organizationId, readOnly, initialCustomerId
 
       {message && <p role={message.tone === 'error' ? 'alert' : 'status'} className={message.tone === 'error' ? 'form-error' : 'muted'}>{message.text}</p>}
 
+      {dialog === 'preflight' && record && customerId && <TreatmentPreflight api={api} organizationId={organizationId} customerId={customerId} treatmentId={record.id} onClose={closeDialog} onConsultation={() => { setDialog(null); void openConsultation(); }} onDocuments={documentsPanel ? () => setDialog('documents') : undefined} />}
+      {dialog === 'visit-link' && record && customerId && <TreatmentVisitLink api={api} organizationId={organizationId} customerId={customerId} record={record} preferredAppointmentId={customerId === initialCustomerId ? initialAppointmentId : undefined} readOnly={!writable} onSaved={saved => applySaved(saved, '예약·방문 연결을 저장했습니다.')} onClose={closeDialog} />}
       {dialog === 'consult' && consultation && (
         <ConsultationDialog api={api} organizationId={organizationId} templates={templates} customer={consultation.customer} record={consultation.record} readOnly={!writable} onSaved={consultationSaved} onClose={closeDialog} />
       )}

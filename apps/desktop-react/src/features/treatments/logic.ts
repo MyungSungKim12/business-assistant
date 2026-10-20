@@ -3,9 +3,11 @@ import type { Treatment, TreatmentEvent, TreatmentValues } from './schemas';
 
 export const STATUS_LABELS: Record<string, string> = { legacy: '기존 기록', draft: '준비', in_progress: '진행 중', completed: '완료', cancelled: '중단' };
 export const ACTION_LABELS: Record<string, string> = {
+  visit_link: '예약·방문 연결', service_link: '서비스 연결',
   consult: '상담 기록·주의 확인', edit: '기록 수정', correct: '기록 정정', start: '시술 시작', complete: '시술 완료', cancel: '시술 중단',
 };
 export const FIELD_LABELS: Record<string, string> = {
+  appointment_id: '연결 예약 ID', visit_id: '연결 방문 ID', appointment_service_id: '적용 서비스 ID',
   consultation_goal: '상담 목표', consultation_plan: '예정 관리 내용', cautions_snapshot: '확인한 고객 주의정보', cautions_acknowledged_by: '주의 확인자',
   cautions_acknowledged_at: '주의 확인 시각', treatment_name: '시술명', treatment_date: '시술일', category: '분류', practitioner: '담당자', notes: '시술 내용',
   amount: '예정 금액', next_visit_date: '다음 방문일', status: '상태', version: '버전', started_at: '시작 시각', ended_at: '종료 시각',

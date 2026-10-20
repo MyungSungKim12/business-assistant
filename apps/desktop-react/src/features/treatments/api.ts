@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { ApiClient } from '../../api/client';
+import { treatmentContextSchema, type VisitLinkInput } from './visitContext';
 import {
   issuedDocumentsSchema, saleDraftSchema, saleDraftsSchema, salePreviewSchema, treatmentEventsSchema, treatmentSchema, treatmentsSchema,
   type MutationBody, type SalePreview, type SaleValues, type TreatmentValues,
@@ -22,6 +23,8 @@ export type TreatmentPhotoInput = { treatment_id: string; storage_path: string; 
 export const treatmentKeys = { customer: (organizationId: string, customerId: string) => ['organizations', organizationId, 'customers', customerId, 'treatments'] as const };
 
 export const treatmentApi = {
+  contextOptions:(api:ApiClient,organizationId:string,customerId:string)=>api.call('GET',`${customerBase(organizationId,customerId)}/treatment-context-options`,treatmentContextSchema),
+  linkVisit:(api:ApiClient,organizationId:string,customerId:string,treatmentId:string,input:VisitLinkInput)=>api.call('PUT',`${treatmentBase(organizationId,customerId,treatmentId)}/visit-link`,treatmentSchema,input),
   list: (api: ApiClient, organizationId: string, customerId: string) => api.call('GET', `${customerBase(organizationId, customerId)}/treatments`, treatmentsSchema),
   create: (api: ApiClient, organizationId: string, customerId: string, values: TreatmentValues) => api.call('POST', `${customerBase(organizationId, customerId)}/treatments`, treatmentSchema, values),
   /** 수정·정정·상담·시작·완료·중단 모두 낙관적 잠금(expected_version)과 멱등 키(operation_id)를 쓰는 변이 API. */

@@ -5,6 +5,7 @@ import { bearerToken } from '../../routes/organizations.js';
 import type { SaleDraftGateway } from './sale-drafts.js';
 import type { TreatmentGateway } from './gateway.js';
 import { treatmentMessages } from './gateway.js';
+import { visitLinkRequest } from './visit-link.js';
 import { id, mutationRequest, photoPatch, photoRequest, saleCreateRequest, salePreviewRequest, treatmentRequest, treatmentUpdateRequest, type TreatmentMutation } from './schemas.js';
 
 export type OrgAccess = Pick<{ requireAccess(token: string, id: string, feature: string, write?: boolean): Promise<string> }, 'requireAccess'>;
@@ -32,6 +33,21 @@ export function registerTreatmentRoutes(app: FastifyInstance, organizations: Org
     if (!organizations) throw new ApiFailure(503, treatmentMessages[503]);
     return { token, organizations };
   }
+
+  app.get(`${customerBase}/treatment-context-options`, async (request) => {
+    const { token, organizations: org } = access(request);
+    const params = parse(customerParams, request.params, 'Invalid treatment context');
+    await org.requireAccess(token, params.organizationId, 'crm.basic');
+    return gateway.contextOptions(token, params.organizationId, params.customerId);
+  });
+
+  app.put(`${scoped}/visit-link`, async (request) => {
+    const { token, organizations: org } = access(request);
+    const params = parse(treatmentParams, request.params, 'Invalid treatment context');
+    const input = parse(visitLinkRequest, request.body, 'Invalid treatment context');
+    await org.requireAccess(token, params.organizationId, 'crm.basic', true);
+    return gateway.linkVisit(token, params.organizationId, params.customerId, params.treatmentId, input);
+  });
 
   app.get(`${customerBase}/treatments`, async (request) => {
     const { token, organizations: org } = access(request);

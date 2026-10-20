@@ -3,6 +3,7 @@ import type { ServerConfig } from '../../config.js';
 import { ApiFailure } from '../../errors.js';
 import { assertOrganization, createRest } from '../../supabase/rest.js';
 import { treatmentErrorCodes, withMessages, withPgErrorCodes } from './pg-errors.js';
+import { contextAppointment, contextVisit, type VisitLinkRequest } from './visit-link.js';
 import { eventRow, photoRow, treatmentRow, type TreatmentEvent, type TreatmentMutation, type TreatmentPhoto, type TreatmentRow, type TreatmentValues } from './schemas.js';
 
 export const treatmentMessages = {
@@ -11,7 +12,7 @@ export const treatmentMessages = {
 } as const;
 const unavailable = treatmentMessages[503];
 
-const treatmentSelect = 'id,organization_id,customer_id,treatment_date,treatment_name,category,practitioner,notes,amount,next_visit_date,status,version,started_at,ended_at,consultation_goal,consultation_plan,cautions_snapshot,cautions_acknowledged_by,cautions_acknowledged_at,appointment_service_id';
+const treatmentSelect = 'id,organization_id,customer_id,treatment_date,treatment_name,category,practitioner,notes,amount,next_visit_date,status,version,started_at,ended_at,consultation_goal,consultation_plan,cautions_snapshot,cautions_acknowledged_by,cautions_acknowledged_at,appointment_service_id,appointment_id,visit_id';
 const photoSelect = 'id,organization_id,customer_id,treatment_id,storage_path,thumbnail_path,phase,content_type,caption,sort_order,taken_at';
 const eventSelect = 'id,actor_id,action,reason,occurred_at,before_data,after_data';
 
@@ -24,8 +25,29 @@ export function createTreatmentGateway(config: ServerConfig, fetcher: typeof fet
   const scope = (organizationId: string, customerId: string) => ({ organization_id: `eq.${organizationId}`, customer_id: `eq.${customerId}` });
 
   return {
-    list: (token: string, organizationId: string, customerId: string): Promise<TreatmentRow[]> => guard(async () => assertOrganization(
-      await rest.select(token, 'treatment_records', { select: treatmentSelect, ...scope(organizationId, customerId), order: 'treatment_date.desc' }, treatmentRow), organizationId, unavailable)),
+    contextOptions: (token:string,organizationId:string,customerId:string)=>guard(async()=>{
+      const customer=await rest.select(token,'customers',{id:`eq.${customerId}`,organization_id:`eq.${organizationId}`,select:'id'},z.object({id:z.uuid()}));
+      if(customer.length!==1 || customer[0].id!==customerId)throw new ApiFailure(404,treatmentMessages[404]);
+      const [appointments,visits]=await Promise.all([
+        rest.selectAll(token,'appointments',{...scope(organizationId,customerId),select:'id,organization_id,customer_id,service_name_snapshot,start_at,status',order:'start_at.desc,id.desc'},contextAppointment),
+        rest.selectAll(token,'customer_visits',{...scope(organizationId,customerId),select:'id,organization_id,customer_id,appointment_id,opened_at,status',order:'opened_at.desc,id.desc'},contextVisit),
+      ]);
+      if([...appointments,...visits].some(row=>row.organization_id!==organizationId || row.customer_id!==customerId))throw new ApiFailure(503,unavailable);
+      return {appointments,visits};
+    }),
+    linkVisit: (token:string,organizationId:string,customerId:string,treatmentId:string,input:VisitLinkRequest):Promise<TreatmentRow>=>guard(async()=>{
+      const rows=await rest.rpc(token,'set_treatment_visit_link',{
+        p_organization_id:organizationId,p_customer_id:customerId,p_treatment_id:treatmentId,
+        p_appointment_id:input.appointment_id,p_visit_id:input.visit_id,p_expected_version:input.expected_version,p_operation_id:input.operation_id,p_reason:input.reason,
+      },z.array(treatmentRow));
+      if(rows.length!==1 || rows[0].organization_id!==organizationId || rows[0].customer_id!==customerId || rows[0].id!==treatmentId)throw new ApiFailure(503,unavailable);
+      return rows[0];
+    }),
+    list: (token: string, organizationId: string, customerId: string): Promise<TreatmentRow[]> => guard(async () => {
+      const rows=assertOrganization(await rest.selectAll(token, 'treatment_records', { select: treatmentSelect, ...scope(organizationId, customerId), order: 'treatment_date.desc,id.desc' }, treatmentRow), organizationId, unavailable);
+      if(rows.some(row=>row.customer_id!==customerId))throw new ApiFailure(503,unavailable);
+      return rows;
+    }),
 
     create: (token: string, organizationId: string, customerId: string, values: TreatmentValues): Promise<TreatmentRow> => guard(async () => {
       const row = await rest.insert(token, 'treatment_records', { organization_id: organizationId, customer_id: customerId, ...values }, treatmentRow);

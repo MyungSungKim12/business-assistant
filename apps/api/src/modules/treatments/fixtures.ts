@@ -21,7 +21,7 @@ export const treatmentRowJson = {
 export const treatmentValues = { treatment_date: '2026-09-18', treatment_name: '수분 관리', category: '피부', practitioner: '김담당', notes: '보습 위주', amount: '15000.50', next_visit_date: '2026-10-01' };
 
 export type Call = { method: string; url: URL; body: unknown; headers: Record<string, string> };
-export type Provider = (call: Call) => { status?: number; body?: unknown; raw?: string };
+export type Provider = (call: Call) => { status?: number; body?: unknown; raw?: string; headers?: Record<string,string> };
 
 export function json(body: unknown, status = 200): ReturnType<Provider> { return { status, body }; }
 
@@ -47,7 +47,8 @@ export function build(options: { role?: string | null; features?: string[]; prov
     calls.push(call);
     const result = provider(call);
     const text = result.raw ?? (result.body === undefined ? '' : JSON.stringify(result.body));
-    return new Response(text, { status: result.status ?? 200, headers: { 'content-type': 'application/json' } });
+    const range:Record<string,string>=call.headers.Prefer==='count=exact' && Array.isArray(result.body) ? {'Content-Range':result.body.length?`0-${result.body.length-1}/${result.body.length}`:'*/0'} : {};
+    return new Response(text, { status: result.status ?? 200, headers: { 'content-type': 'application/json',...range,...result.headers } });
   }) as typeof fetch;
   const app = Fastify();
   app.setErrorHandler((error, _request, reply) => reply.code(error instanceof ApiFailure ? error.status : 500).send({ detail: error instanceof ApiFailure ? error.detail : 'Internal server error' }));

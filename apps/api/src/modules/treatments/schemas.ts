@@ -137,6 +137,7 @@ export const treatmentRow = z.object({
   cautions_snapshot: z.record(z.string(), z.unknown()).default({}),
   cautions_acknowledged_by: id.nullable().default(null), cautions_acknowledged_at: z.string().nullable().default(null),
   appointment_service_id: id.nullable().default(null),
+  appointment_id: id.nullable().optional(), visit_id: id.nullable().optional(),
 });
 export type TreatmentRow = z.infer<typeof treatmentRow>;
 
