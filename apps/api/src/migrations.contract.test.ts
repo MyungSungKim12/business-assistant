@@ -330,6 +330,16 @@ describe('migrations contract', () => {
     has(m, 'execute function private.prevent_task_tenant_change()');
   });
 
+  it('test_task_appointment_link_is_tenant_scoped_and_keeps_task_on_appointment_delete', () => {
+    const m = readLower('055_task_appointment_link.sql');
+    has(m, 'alter table public.tasks add column if not exists appointment_id uuid');
+    has(m, 'foreign key (organization_id, appointment_id) references public.appointments (organization_id, id)');
+    has(m, 'on delete set null (appointment_id)');
+    has(m, 'before insert or update of organization_id, appointment_id, customer_id on public.tasks');
+    has(m, 'where a.organization_id = new.organization_id and a.id = new.appointment_id');
+    has(m, 'new.customer_id');
+  });
+
   it('test_documents_schema_is_tenant_scoped_and_indexed', () => {
     const m = readLower('007_documents.sql');
     for (const t of ['document_templates', 'documents']) {
@@ -417,5 +427,22 @@ describe('migrations contract', () => {
     has(m, "'consult'");
     has(m, "'service_link'");
     has(catalog, 'create trigger immutable before update or delete on public.catalog_stock_ledger');
+  });
+
+  it('APT-13 waitlist booking is retry-safe, tenant-scoped, and atomic', () => {
+    const m = readLower('059_waitlist_idempotent_booking.sql');
+    for (const token of [
+      'create unique index if not exists appointment_waitlist_operation_once',
+      'create or replace function public.create_appointment_waitlist',
+      'operation_fingerprint', 'create function public.update_appointment_waitlist_status',
+      'create function public.book_appointment_from_waitlist',
+      'private.assert_appointment_role(p_organization_id,false)',
+      'for update', 'public.save_appointment_with_resources',
+      "set status='booked',version=version+1", 'appointment_waitlist_conversions',
+      'revoke insert,update,delete on public.appointment_waitlist from authenticated',
+      'grant execute on function public.book_appointment_from_waitlist',
+    ]) has(m, token);
+    has(m, "prior.fingerprint<>fp");
+    has(m, "prior.operation_id<>p_operation_id");
   });
 });
