@@ -29,6 +29,16 @@ const byRpc = (map: Record<string, unknown>) => (call: FakeCall): FakeReply => (
 const createBody = (change: Record<string, unknown> = {}) => ({ ...VALUES, operation_id: OP, ...change });
 
 describe('카탈로그 생성·수정', () => {
+  it('공급처 등록과 발주 초안 생성을 관리자만 조직 RPC로 수행한다', async () => {
+    const supplier={id:WALLET,organization_id:ORG,name:'공급처A',contact_name:'',phone:'',email:'',note:'',is_active:true,version:1,created_by:CUSTOMER,created_at:'2026-10-01T00:00:00Z',updated_at:'2026-10-01T00:00:00Z'};
+    const order={id:VISIT,organization_id:ORG,supplier_id:WALLET,status:'draft',ordered_at:null,note:'',version:1,created_by:CUSTOMER,created_at:'2026-10-01T00:00:00Z',updated_at:'2026-10-01T00:00:00Z',lines:[{id:LINE,organization_id:ORG,order_id:VISIT,product_id:PRODUCT,quantity_ordered:3,quantity_received:0,unit_cost:'1200',note:'',created_at:'2026-10-01T00:00:00Z'}]};
+    const {send,calls}=setup(byRpc({create_catalog_supplier:supplier,create_catalog_purchase_order:order}));
+    const s=await send('POST','catalog-suppliers',{name:'공급처A'});expect(s.statusCode).toBe(201);
+    const body={supplier_id:WALLET,operation_id:OP,note:'',lines:[{product_id:PRODUCT,quantity_ordered:3,unit_cost:'1200',note:''}]};
+    const po=await send('POST','catalog-purchase-orders',body);expect(po.statusCode).toBe(201);expect(calls.at(-1)?.url.pathname).toBe('/rest/v1/rpc/create_catalog_purchase_order');expect(calls.at(-1)?.body).toMatchObject({p_organization_id:ORG,p_supplier_id:WALLET,p_operation_id:OP});
+    expect((await setup(byRpc({create_catalog_purchase_order:order}),'member').send('POST','catalog-purchase-orders',body)).statusCode).toBe(403);
+    expect((await setup(byRpc({create_catalog_purchase_order:order})).send('POST','catalog-purchase-orders',{...body,lines:[]})).statusCode).toBe(422);
+  });
   it('생성 시 조직·멱등 키·값을 RPC로 넘기고 201을 돌려준다', async () => {
     const { send, calls } = setup(byRpc({ save_catalog_product: ROW }));
     const response = await send('POST', 'catalog-products', createBody());

@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { ApiFailure } from '../../errors.js';
 import { bearerToken } from '../../routes/organizations.js';
-import type { CatalogGateway } from './gateway.js';
+import { purchaseLineSchema, purchaseOrderSchema, supplierSchema, type CatalogGateway } from './gateway.js';
 
 export type OrgAccess = Pick<{ requireAccess(token: string, id: string, feature: string, write?: boolean): Promise<string> }, 'requireAccess'>;
 
@@ -13,6 +13,10 @@ const nonnegativeMoney = z.string().regex(/^(0|[1-9][0-9]{0,11})$/);
 const text = (max: number) => z.string().max(max).transform((value) => value.trim()).pipe(z.string().min(1));
 const version = z.number().int().min(1);
 const operationId = z.uuid();
+const supplierInput=z.object({name:text(160),contact_name:z.string().max(120).default(''),phone:z.string().max(40).default(''),email:z.string().max(254).default(''),note:z.string().max(2000).default(''),is_active:z.boolean().default(true)}).strict();
+const purchaseCreate=z.object({supplier_id:z.uuid(),operation_id:operationId,note:z.string().max(2000).default(''),lines:z.array(z.object({product_id:z.uuid(),quantity_ordered:z.number().int().min(1).max(999999),unit_cost:z.string().regex(/^(0|[1-9][0-9]{0,11})$/),note:z.string().max(500).default('')}).strict()).min(1).max(100)}).strict();
+const purchaseStatus=z.object({status:z.enum(['ordered','canceled']),expected_version:version}).strict();
+const purchaseReceipt=z.object({quantity:z.number().int().min(1).max(999999),operation_id:operationId}).strict();
 
 const productShape = {
   operation_id: operationId,
@@ -89,6 +93,13 @@ export function registerCatalogRoutes(app: FastifyInstance, organizations: OrgAc
     sku: input.sku, name: input.name, kind: input.kind, unit_name: input.unit_name, sale_price: input.sale_price,
     benefit_money: input.benefit_money, benefit_count: input.benefit_count, valid_days: input.valid_days, is_active: input.is_active,
   });
+
+  app.get(`${base}/catalog-suppliers`,async request=>{const c=context(request);await authorize(c.token,c.params.organizationId,false);return c.gateway.listSuppliers(c.token,c.params.organizationId)});
+  app.post(`${base}/catalog-suppliers`,async(request,reply)=>{const c=context(request),input=supplierInput.safeParse(request.body);if(!input.success)throw new ApiFailure(422,'Invalid supplier');await authorize(c.token,c.params.organizationId,true);return reply.code(201).send(await c.gateway.createSupplier(c.token,c.params.organizationId,input.data))});
+  app.get(`${base}/catalog-purchase-orders`,async request=>{const c=context(request);await authorize(c.token,c.params.organizationId,false);return c.gateway.listPurchaseOrders(c.token,c.params.organizationId)});
+  app.post(`${base}/catalog-purchase-orders`,async(request,reply)=>{const c=context(request),input=purchaseCreate.safeParse(request.body);if(!input.success)throw new ApiFailure(422,'Invalid purchase order');await authorize(c.token,c.params.organizationId,true);return reply.code(201).send(await c.gateway.createPurchaseOrder(c.token,c.params.organizationId,input.data))});
+  app.patch(`${base}/catalog-purchase-orders/:orderId`,async request=>{const c=context(request,{orderId:z.uuid()}),input=purchaseStatus.safeParse(request.body);if(!input.success)throw new ApiFailure(422,'Invalid purchase order');await authorize(c.token,c.params.organizationId,true);return c.gateway.updatePurchaseOrder(c.token,c.params.organizationId,c.params.orderId,input.data)});
+  app.post(`${base}/catalog-purchase-orders/:orderId/lines/:lineId/receipts`,async request=>{const c=context(request,{orderId:z.uuid(),lineId:z.uuid()}),input=purchaseReceipt.safeParse(request.body);if(!input.success)throw new ApiFailure(422,'Invalid receipt');await authorize(c.token,c.params.organizationId,true);return c.gateway.receivePurchaseOrderLine(c.token,c.params.organizationId,c.params.orderId,c.params.lineId,input.data)});
 
   app.get(`${base}/catalog-products`, async (request) => {
     const c = context(request);

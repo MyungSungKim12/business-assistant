@@ -37,7 +37,7 @@ export function fakeOrganizations(role: Role, features: string[]) {
 }
 
 export type FakeCall = { url: URL; method: string; headers: Record<string, string>; body: unknown };
-export type FakeReply = { status?: number; body: unknown };
+export type FakeReply = { status?: number; body: unknown; headers?:Record<string,string> };
 /** 호출을 기록하고 handler가 정한 응답을 돌려주는 가짜 fetch. handler가 배열 없이 단일 응답을 돌려주면 모든 호출에 같은 응답. */
 export function fakeFetch(handler: (call: FakeCall) => FakeReply) {
   const calls: FakeCall[] = [];
@@ -45,7 +45,8 @@ export function fakeFetch(handler: (call: FakeCall) => FakeReply) {
     const call: FakeCall = { url: new URL(String(input)), method: init?.method ?? 'GET', headers: { ...(init?.headers as Record<string, string>) }, body: init?.body ? JSON.parse(String(init.body)) : undefined };
     calls.push(call);
     const reply = handler(call);
-    return new Response(reply.body === undefined ? null : JSON.stringify(reply.body), { status: reply.status ?? 200, headers: { 'content-type': 'application/json' } });
+    const range:Record<string,string>=call.headers.Prefer==='count=exact'&&Array.isArray(reply.body)?{'Content-Range':reply.body.length?`0-${reply.body.length-1}/${reply.body.length}`:'*/0'}:{};
+    return new Response(reply.body === undefined ? null : JSON.stringify(reply.body), { status: reply.status ?? 200, headers: { 'content-type': 'application/json',...range,...reply.headers } });
   }) as typeof fetch;
   return { fetcher, calls };
 }

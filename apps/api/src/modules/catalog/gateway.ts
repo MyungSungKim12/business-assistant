@@ -26,10 +26,14 @@ export const productSchema = z.object({
   low_stock_threshold: z.number().int().min(0).max(1_000_000_000).nullable().optional(),
 });
 export type CatalogProduct = z.infer<typeof productSchema>;
+export const supplierSchema=z.object({id:z.uuid(),organization_id:z.uuid(),name:z.string(),contact_name:z.string(),phone:z.string(),email:z.string(),note:z.string(),is_active:z.boolean(),version:z.number().int(),created_by:z.uuid(),created_at:z.string(),updated_at:z.string()});
+export const purchaseLineSchema=z.object({id:z.uuid(),organization_id:z.uuid(),order_id:z.uuid(),product_id:z.uuid(),quantity_ordered:z.number().int(),quantity_received:z.number().int(),unit_cost:wholeMoney,note:z.string(),created_at:z.string()});
+export const purchaseOrderSchema=z.object({id:z.uuid(),organization_id:z.uuid(),supplier_id:z.uuid(),status:z.enum(['draft','ordered','received','canceled']),ordered_at:z.string().nullable(),note:z.string(),version:z.number().int(),created_by:z.uuid(),created_at:z.string(),updated_at:z.string()});
+export const purchaseOrderBundleSchema=purchaseOrderSchema.extend({lines:z.array(purchaseLineSchema)});
 
 export const stockMovementSchema = z.object({
   id: z.uuid(), organization_id: z.uuid(), product_id: z.uuid(),
-  movement_kind: z.enum(['receipt', 'sale', 'refund', 'customer_return', 'supplier_return', 'disposal', 'stocktake']),
+  movement_kind: z.enum(['receipt', 'purchase_order_receipt', 'sale', 'refund', 'customer_return', 'supplier_return', 'disposal', 'stocktake','treatment_use','adjustment']),
   quantity: z.number().int().refine((value) => value !== 0, 'Stock movement quantity cannot be zero'),
   reason: z.string(), created_by: z.uuid(), created_at: z.string(),
 });
@@ -98,6 +102,25 @@ export function createCatalogGateway(config: ServerConfig, fetcher: typeof fetch
   };
 
   return {
+    async listSuppliers(token:string,organizationId:string){const rows=await rest.selectAll(token,'catalog_suppliers',{organization_id:`eq.${organizationId}`,order:'name.asc,id.asc'},supplierSchema);if(rows.some(r=>r.organization_id!==organizationId))throw fail();return rows;},
+    async createSupplier(token:string,organizationId:string,input:{name:string;contact_name:string;phone:string;email:string;note:string;is_active:boolean}){const row=await call(token,'create_catalog_supplier',organizationId,{p_values:input},supplierSchema);if(row.organization_id!==organizationId)throw fail();return row;},
+    async listPurchaseOrders(token: string, organizationId: string) {
+      const [orders, lines] = await Promise.all([
+        rest.selectAll(token, 'catalog_purchase_orders', { organization_id: `eq.${organizationId}`, order: 'created_at.desc,id.desc' }, purchaseOrderSchema),
+        rest.selectAll(token, 'catalog_purchase_order_lines', { organization_id: `eq.${organizationId}`, order: 'created_at.asc,id.asc' }, purchaseLineSchema),
+      ]);
+      if (orders.some(row => row.organization_id !== organizationId) || lines.some(row => row.organization_id !== organizationId)) throw fail();
+      const byOrder = new Map(orders.map(order => [order.id, { ...order, lines: [] as z.infer<typeof purchaseLineSchema>[] }]));
+      for (const line of lines) {
+        const order = byOrder.get(line.order_id);
+        if (!order) throw fail();
+        order.lines.push(line);
+      }
+      return [...byOrder.values()];
+    },
+    async createPurchaseOrder(token:string,organizationId:string,input:{supplier_id:string;operation_id:string;note:string;lines:Array<{product_id:string;quantity_ordered:number;unit_cost:string;note:string}>}){const result=await call(token,'create_catalog_purchase_order',organizationId,{p_supplier_id:input.supplier_id,p_operation_id:input.operation_id,p_note:input.note,p_lines:input.lines},purchaseOrderBundleSchema);if(result.organization_id!==organizationId)throw fail();return result;},
+    async updatePurchaseOrder(token:string,organizationId:string,orderId:string,input:{status:'ordered'|'canceled';expected_version:number}){const saved=await call(token,'update_catalog_purchase_order',organizationId,{p_order_id:orderId,p_status:input.status,p_expected_version:input.expected_version},purchaseOrderSchema);if(saved.organization_id!==organizationId)throw fail();return saved;},
+    async receivePurchaseOrderLine(token:string,organizationId:string,orderId:string,lineId:string,input:{quantity:number;operation_id:string}){return rest.rpc(token,'receive_catalog_purchase_order_line',{p_organization_id:organizationId,p_order_id:orderId,p_line_id:lineId,p_quantity:input.quantity,p_operation_id:input.operation_id},z.object({receipt_id:z.uuid(),order_id:z.uuid(),line_id:z.uuid(),quantity:z.number().int(),replayed:z.boolean()}));},
     async listProducts(token: string, organizationId: string) {
       const rows = await call(token, 'list_catalog_products', organizationId, {}, z.array(productSchema));
       rows.forEach((row) => product(row, organizationId));
