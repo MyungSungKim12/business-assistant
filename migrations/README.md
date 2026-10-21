@@ -1,8 +1,20 @@
 # 인증·조직·구독 마이그레이션
 
-현재 최신 순번은 **065**입니다. 059~064는 사용자가 실행 완료했다고 보고했습니다. **065는 새로 추가되어 아직 적용 전**입니다. 원격 DB에 접속해 독립 확인하지 않았으므로 적용 사실은 사용자 보고 기준이며, 실제 업무 왕복은 별도 검증 대상입니다.
+2026-10-21 원격 확인: 저장소 최신 migration은 **099**이며, Supabase `business-assistant` migration 이력에서 066~099 적용을 확인했습니다. 아래 번호별 적용 안내는 작성 당시의 기록을 보존한 것으로, “적용 대기” 문구는 현재 적용 상태를 나타내지 않습니다. 최신 보안 점검은 [감사 기록](../docs/product/audits/2026-10-21-supabase-migration-and-security.md)을 참고하세요.
+
+현재 실행 절차: 이미 066~099가 적용되어 있으므로 이 구간을 다시 실행하지 마세요. 다음 DB 변경이 필요하면 새 순번 migration을 적용하고, 기능별 격리 테스트와 실환경 인수는 별도로 진행합니다.
 
 064까지 적용했다면 **065_merge_customers_waitlist.sql 하나를 추가 실행**합니다. 고객 병합 함수가 예약 대기 목록을 대표 고객으로 옮기도록 교체합니다(자세한 내용은 아래 065 항목). 적용 후 API와 앱을 재시작합니다.
+
+065까지 적용했다면 **066_inventory_lots_fefo.sql 하나를 추가 실행**합니다. 재고 로트·유통기한, FEFO 출고 배분, 임박·경과 상태 조회와 입고 시 로트 입력을 추가합니다. 기존 수량은 유통기한 미등록의 `기존 재고` 로트로 옮겨지며, 자동 추정하지 않습니다. 적용 후 API와 앱을 재시작합니다. [INV-003 적용·검증·제한](../docs/product/audits/2026-10-20-inventory-lots-fefo.md).
+
+066까지 적용했다면 **067_catalog_category_barcode.sql**을 실행합니다. 상품 분류·조직 내 고유 바코드와 관리자 저장 RPC를 추가합니다. 적용 후 API와 앱을 재시작합니다.
+
+083까지 적용했다면 **084_purchase_unit_conversion.sql**을 실행합니다. 상품의 매입 단위와 단위당 재고 환산 수량, 발주 시점 환산값 스냅샷, 소수점 6자리 기준 재고 원가를 추가합니다. 066~083을 아직 실행하지 않았다면 번호 순서대로 먼저 적용해야 합니다. [INV-11 구현·검증·제한](../docs/product/audits/2026-10-20-purchase-unit-conversion.md).
+
+084까지 적용했다면 **085_appointment_series_reschedule.sql**을 실행합니다. 반복 예약에서 선택한 미래 회차를 기준으로 주기·날짜·자원을 바꾸고 예약 충돌을 원자적으로 검사합니다. 066~084를 아직 적용하지 않았다면 먼저 번호 순서대로 실행합니다. [APT-16 범위와 검증](../docs/product/audits/2026-10-20-appointment-series.md).
+
+090까지 적용했다면 **091_inventory_lot_expiry_alerts.sql**을 실행합니다. 재고 화면에 조직 전체의 기한 경과 및 30일 이내 로트 알림을 추가하고, 200건 단위 페이지 탐색(최대 5,000건)을 제공합니다. 066~090을 아직 적용하지 않았다면 먼저 순서대로 실행합니다. [INV-11 구현·검증·제한](../docs/product/audits/2026-10-20-inventory-lots-fefo.md).
 
 063까지 적용했다면 **064_treatment_visit_link.sql 하나를 추가 실행**합니다. 개별 시술의 예약·방문 연결 컬럼·범위 검사·감사 RPC를 추가하며 기존 기록은 자동 연결하지 않습니다. 적용 후 API와 앱을 재시작합니다. [적용·검증·제한](../docs/product/audits/2026-10-20-treatment-visit-link.md).
 
@@ -266,3 +278,115 @@
 - 검증: API 계약 테스트(`migrations.customers044.contract.test.ts`)가 `customer_id`를 가진 모든 테이블이 최신 `merge_customers`에서 이동되는지 검사한다. 격리 DB에서 실제 병합을 수행하는 테스트는 `npm run test:customer-merge-065 --prefix scripts/db-tests`다(아래 검증 항목). 실제 Supabase 적용은 사용자 몫이다.
 - 고객 병합은 되돌릴 수 없다. 065 적용 전에는 대기 목록이 있는 고객을 병합하지 않는다.
 - `scripts/db-tests/customer-merge-065.mjs`는 065의 실제 함수를 격리 DB에서 실행해 모든 `customer_id` 테이블(대기 목록 포함)의 이동·건수 기록, 다른 고객/조직 행 불변, 보조 고객 보관, 필드 병합, 같은 요청 재시도/충돌, 이미 병합된 고객·결제 인계 기록 거절, 구성원·익명 권한 거절을 확인한다. 새 마이그레이션이 `customer_id` 테이블을 추가하면 이 테스트가 실패해 병합 함수 갱신을 강제한다. 065 적용은 사용자 보고(실행 완료)이며 실계정 병합 확인은 별도다.
+
+## 066 재고 로트·유통기한·FEFO
+
+- `066_inventory_lots_fefo.sql`: 기존 재고 수량을 기한 미등록 `기존 재고` 로트로 보존하고, 이후 양수 원장 이벤트는 로트를 만든다. 발주/수기 입고 RPC에 로트 번호·유통기한 입력을 추가한다.
+- 판매·시술 소모·거래처 반품·폐기 등 음수 원장 이벤트는 만료되지 않은 로트에서 FEFO 순서(가까운 유통기한 → 입고 순 → ID 순)로 자동 차감한다. 날짜 없는 재고는 날짜가 있는 로트 뒤에 차감한다. 만료 로트만으로는 출고하지 않으며 원장 기록도 트랜잭션과 함께 롤백된다.
+- `list_catalog_inventory_lots`는 잔여 로트와 `expired`, `expiring_soon`(30일 이내), `ok` 상태를 반환한다. 읽기는 조직 구성원, 입고·재고 변경은 기존 owner/admin RPC 권한을 사용한다.
+- 적용: **065 → 066 → API 재시작 → 앱 재시작**. 이미 적용한 065는 다시 실행하지 않는다. 기존 상품 재고의 실제 유통기한은 자동으로 추정되지 않는다.
+- 격리 테스트: `npm run test:purchase-orders --prefix scripts/db-tests`. 실 Supabase 적용은 아직이며, `066`은 신규 미적용이다.
+
+## 067 상품 분류·바코드
+
+- `067_catalog_category_barcode.sql`: 기존 상품은 `기타` 분류와 빈 바코드(null)로 보존한다. 바코드는 조직 안에서 중복될 수 없다. 상품 수정은 전용 버전 검사·멱등 RPC를 사용한다.
+- 상품 분류와 바코드는 목록에 표시하고 검색할 수 있으며, 분류 필터를 제공한다. 상품 이미지 업로드·저장은 포함하지 않는다.
+- 적용: **066 → 067 → API 재시작 → 앱 재시작**. DB 격리 검증은 `npm run test:purchase-orders --prefix scripts/db-tests`, API 검증은 catalog test다. 067은 신규 미적용이다.
+
+## 068~070 원가·수당 규칙·관리 원가
+
+- `068_inventory_cost_basis.sql`: 매입 단가를 입고 로트에 저장하고 판매/시술 소모 때 출고 배분별 원가를 불변 스냅샷으로 남긴다. 수기 입고에서도 단가를 입력할 수 있고, 모르면 NULL로 둔다. 환불 재입고는 원래 판매 로트 원가를 복원한다. 이전 입고·기초 재고는 추정하지 않는다.
+- `069_staff_commission_rules.sql`: owner/admin만 시행일이 있는 정률 수당 규칙을 등록·조회·종료할 수 있다. 직원·서비스·상품·회원권 대상, `net_paid` 계산 기준, 기간 중복 거절을 저장한다. 계산 명세·확정 원장과 직원별 접근 화면은 후속 TEAM-11 작업이다.
+- `070_management_cost_basis.sql`: 경영 미리보기에 상품 판매 및 시술 소모의 원가, 환불 재입고 원가, 원가 미확인 출고 수량을 더한다. 미확인 수량이 있으면 원가 반영 운영 잔액을 표시하지 않으며, 직원 수당·세금이 빠져 있으므로 최종 손익은 계속 false다.
+- 적용 순서: **066 → 067 → 068 → 069 → 070 → API 재시작 → 앱 재시작**. 이전 SQL을 이미 적용한 환경은 적용 번호 다음부터 실행한다. 본 작업 기준 066~070은 새 SQL이며 Supabase에는 아직 적용되지 않았다.
+- 격리 DB 검증: `npm run test:purchase-orders --prefix scripts/db-tests`, `npm run test:catalog-sales --prefix scripts/db-tests`. 원가 적용 및 기간 보고 테스트 포함. API/React 집중 테스트 및 빌드 결과는 `docs/product/audits/2026-10-20-cost-foundation-and-report.md`에 기록한다.
+
+## 071 반복 예약 시리즈
+
+- `071_appointment_series.sql`: 주/월 주기 예약 시리즈와 회차 연결, 예외 날짜, 충돌 회차 결과를 저장한다. 회차 생성은 기존 예약 RPC를 재사용해 고객·직원·서비스·자원 충돌 검사를 적용한다. 같은 `operation_id`와 입력 재시도는 저장된 결과를 반환한다. 개별 예약 이동·담당/서비스/자원 변경 시 해당 회차를 예외로 표시하고 취소는 예약 상태 이력에 남긴다.
+- 새 예약 폼에서 2~52회, 주/월 간격, 최대 52개 예외일을 선택할 수 있다. 충돌 회차는 건너뛰고, 성공 회차가 하나도 없으면 전체 요청을 롤백한다. 기존 예약의 시리즈 일괄 수정, 시리즈 전용 조회 화면, 다중 지점 반복은 포함하지 않는다.
+- 적용: **기존 적용 완료 번호 → 071 → API 재시작 → 앱 재시작**. 이 기능 테스트는 `node scripts/db-tests/appointments.mjs --series`, API는 `pnpm --filter @business-assistant/api test -- src/routes/appointments.test.ts`, 화면은 `pnpm --filter @business-assistant/desktop-react test -- src/features/appointments/AppointmentFormAvailability.test.tsx`다. SQL은 Supabase에 아직 적용되지 않았다.
+
+## 072 예약 대기 제안
+
+- `072_waitlist_ranked_offers.sql`: 대기 항목별 후보 시각을 최대 10개까지 순위로 저장한다. 제안 만료는 5분 초과~48시간 이내다. 새 후보 묶음은 이전 활성 묶음을 대체하고, 수락·닫기·만료·대체 이력을 보존한다. 후보는 내부 제안이며 고객에게 자동 발송하지 않는다.
+- 제안 수락은 기존 `book_appointment_from_waitlist`를 같은 트랜잭션에서 호출하여 담당자·시간·공간·장비 충돌을 다시 검사하고, 성공하면 대기 건과 나머지 후보를 함께 갱신한다. 실패하면 제안은 살아 있어 다른 시간을 고를 수 있다. 자동 위약금·수수료 없음.
+- 적용: **071 → 072 → API 재시작 → 앱 재시작**. 격리 DB는 `npm run test:appointments --prefix scripts/db-tests`로 실행한다. API 집중 검증은 예약 route 테스트, 화면은 `WaitlistDialog.test.tsx`다. SQL 072는 Supabase 적용 대기다.
+# 2026-10 추가 기능 묶음 (066 이후)
+
+066~091은 각각 순서대로 적용한다. 특히 073~074는 지점 기반 예약 데이터 모델을, 077은 직원과 조직 계정 연결을, 080~085는 상품 이미지·반복 예약 조회/변경 기능을, 086은 경영 보고의 기록 세금 분리를, 091은 조직 전체 유통기한 알림을 추가한다.
+
+- `073_organization_branches.sql`: 조직 지점 테이블, 기존 조직의 본점 생성, 지점 조회·생성 RPC. 조직 구성원은 조회하고 owner/admin만 생성한다.
+- `074_appointment_branch_scope.sql`: 직원·공간·장비·예약에 `branch_id`를 추가하고 기존 행을 본점에 연결한다. 신규 직원·자원은 본점에 배정된다. 예약 지점은 담당자 지점과 같아야 하며 공간·장비 충돌은 같은 지점 안에서만 계산한다. 지점 이동은 owner/admin RPC로만 가능하고, 예정된 예약을 먼저 재배정해야 한다.
+- 검증: `npm run test:appointment-branches --prefix scripts/db-tests`는 격리 PostgreSQL에서 두 마이그레이션의 재실행, 기본 지점, 조직 접근 격리, 직원 지점 변경, 예약 귀속을 검사한다. 실제 Supabase 적용/화면 인수는 별도다.
+- 순서: 073 적용 → 074 적용 → API 재시작 → 앱 갱신. 사용자에게 두 SQL 파일을 같은 순서로 실행하도록 안내한다.
+- `075_wallet_transfer.sql`: 사용 이력·환불 이력이 없고 활성 상태인 회원권만 동일 조직의 활성 고객에게 양도한다. 사유·관리자·이전/새 고객과 버전을 불변 원장에 기록하고 요청 ID 재시도를 지원한다. **029 결제 환불, 035 회원권 수명주기 이후**에 적용한다.
+- 검증: `npm run test:wallet-transfer --prefix scripts/db-tests`로 미사용 양도, 사용/환불된 회원권 차단, 역할·고객 검증, 재시도 및 이전 고객 목록에서 빠지는 동작을 격리 DB에서 검사한다. 사용된 회원권의 부분 환불 금액 산정은 별도 정책이 없어 아직 지원하지 않는다.
+- `076_file_asset_versions.sql`: 기존 파일을 버전 1로 이관하고 파일별 불변 버전 이력 및 최신 버전 게시 RPC를 추가한다. 새 Storage 업로드를 완료한 후에만 현재 파일 포인터를 바꾸며 이전 객체는 보존한다. 파일별 50MB 제한은 유지한다. 조직 전체 용량 할당량은 요금제별 수치와 실제 객체 용량을 검증할 정책이 없어 포함하지 않았다.
+- 검증: `npm run test:file-versions --prefix scripts/db-tests`로 기존 경로 보존, 버전 증가와 낙관적 잠금, 다른 조직 접근 차단, 이력 변경 차단을 확인한다. UI는 버전 목록·이전 버전 다운로드·새 버전 업로드를 제공한다. 적용 순서는 **075 → 076 → API 재시작 → 앱 갱신**이다.
+- `077_staff_account_link.sql`: 직원 레코드에 같은 조직의 기존 로그인 구성원 계정을 선택적으로 연결한다. 조직당 계정 1개는 직원 한 명에만 연결되며, 연결 해제도 지원한다. 역할 권한은 계속 `memberships`가 결정하고 연결 여부 자체로 권한을 부여하지 않는다.
+- 검증: `npm run test:staff-account --prefix scripts/db-tests`에서 조직 구성원만 연결, 중복 연결·다른 조직·일반 구성원·익명 호출 차단, 버전·멱등 재시도와 연결 해제를 확인한다. API는 appointment-resources 테스트, 화면은 `StaffProfileDialog.test.tsx`다. 적용 순서는 **현재까지 적용한 최신 SQL → 077 → API 재시작 → 앱 갱신**이다.
+- `078_staff_time_off_requests.sql`: 연결된 활성 직원이 휴무를 신청하고 owner/admin이 승인·반려하도록 한다. 승인된 신청만 기존 휴무 원장에 생성되어 예약 가능 시간 계산을 막는다. 대기 신청은 예약 슬롯을 차단하지 않는다. 요청·검토·철회 이벤트는 변경/삭제할 수 없으며 직원은 자기 요청만 조회·철회한다.
+- 검증: `npm run test:staff-leave --prefix scripts/db-tests`는 연결 직원, 중복 기간, 승인 후 예약 차단, 반려·철회, 재시도·버전·역할·조직 경계를 확인한다. API 테스트는 `appointment-resources.test.ts`, React 테스트는 `appointment-resources.test.tsx`다. 적용 순서는 **077 → 078 → API 재시작 → 앱 갱신**이다. 이번 구현에서 077·078은 실 Supabase에 미적용 상태다.
+- `079_staff_commission_settlements.sql`: 날짜가 지난 수납·회원권 사용·환불을 항목별로 배분해 직원 수당을 미리보고 확정 원장으로 고정한다. 항목 할인은 비례 배분하며 원 단위 잔액은 마지막 항목에 맞춘다. 수당 규칙은 거래일 기준 직원별 규칙을 우선한다. 환불은 환불 발생일의 음수 조정으로 기록한다. 수당 미지정·규칙 누락은 확정을 막는다. 관리자만 미리보기·확정할 수 있고, 직원은 연결된 본인 항목만 조회한다. 실제 급여·세금 계산은 포함하지 않는다.
+- 적용 순서: **현재 적용한 최신 SQL → 079 → API 재시작 → 앱 갱신**. 집중 검증은 `npm run test:commission-settlements --prefix scripts/db-tests`, API는 `pnpm --filter @business-assistant/api test -- management.test.ts`, React는 `pnpm --filter @business-assistant/desktop-react build`다. SQL 079는 실 Supabase 적용 대기다.
+- `080_catalog_product_images.sql`: 상품에 같은 조직의 private 파일을 이미지로 연결한다. JPEG/PNG/WebP만 허용하고 최대 5 MiB를 DB에서 확인한다. 연결 해제는 파일을 지우지 않으며, 연결된 파일의 보관 처리는 차단한다.
+- 적용 순서: **079 → 080 → API 재시작 → 앱 갱신**. PGlite 정책 검증은 `npm run test:catalog-product-images --prefix scripts/db-tests`, API는 catalog.test.ts, 화면은 catalog.test.tsx다. SQL 080은 Supabase 적용 대기다.
+- `081_appointment_series_list.sql`: 예약 구성원에게 최근 반복 예약 시리즈와 회차/예외 목록을 반환하는 조직 범위 조회 RPC를 추가한다. limit은 1~100으로 제한한다. 회차 개별 수정·취소는 기존 예약 동선에서 하며 해당 회차만 예외로 기록된다.
+- 적용 순서: **080 → 081 → API 재시작 → 앱 갱신**. 격리 DB 검증은 `node scripts/db-tests/appointments.mjs --series`, API는 `pnpm --filter @business-assistant/api test -- src/routes/appointments.test.ts`, 화면은 `pnpm --filter @business-assistant/desktop-react test -- src/features/appointments/AppointmentPage.test.tsx`다. SQL 081은 Supabase 적용 대기다.
+- `082_appointment_series_future_cancel.sql`: owner/admin만 시리즈의 시작일 이후, 현재 예약/확정 상태인 회차를 한 번에 취소한다. 실제 예약 시각 기준 KST 날짜를 사용하고 방문·완료·취소 상태와 시작일 이전 예약은 유지한다. 취소는 기존 예약 상태 전이/감사 이력을 재사용하며, 여러 회차 작업은 하나의 트랜잭션으로 처리한다. 사유·멱등 키를 요구한다.
+- 적용 순서: **081 → 082 → 083 → API 재시작 → 앱 갱신**. 같은 `node scripts/db-tests/appointments.mjs --series`, API 예약 라우트 테스트, React `AppointmentPage.test.tsx`에서 범위·권한·재시도를 검증한다. SQL 082는 Supabase 적용 대기다.
+- `083_appointment_series_future_update.sql`: owner/admin이 미래의 예약·확정 상태이며 개별 수정되지 않은 회차에 담당자와 시술을 함께 적용한다. 기존 회차의 개별 예외·취소·방문은 유지한다. 시술 시간 변경에 따른 예약 충돌이나 다른 사용자 변경이 있으면 트랜잭션 전체를 롤백하며 operation_id 재시도를 지원한다.
+- 적용 순서: **082 → 083 → API 재시작 → 앱 갱신**. 격리 DB에서 충돌 뒤 선행 회차 롤백, 멱등 재시도, 예외 회차 보존, 역할 차단을 확인한다. SQL 083은 Supabase 적용 대기다.
+- `084_purchase_unit_conversion.sql`: 상품의 매입 단위·단위당 재고 수량을 저장하고, 발주 품목에 당시 값을 스냅샷한다. 입고 때 발주 단위 수량을 재고 기본 단위로 환산하며 원가를 소수점 6자리로 보존한다. 기존 자료는 1:1로 초기화한다.
+- 적용 순서: **083 → 084 → API 재시작 → 앱 갱신**. 격리 DB는 `node scripts/db-tests/purchase-orders.mjs`, API는 catalog.test.ts, 화면은 catalog.test.tsx와 PurchaseOrdersDialog.test.tsx에서 확인한다. SQL 084는 Supabase 적용 대기다.
+- `085_appointment_series_reschedule.sql`: owner/admin이 선택한 미래 회차부터 개별 예외가 없는 예약·확정 회차의 날짜, 반복 간격, 자원을 재계산한다. 회차 번호 간격을 유지하며 각 변경은 기존 예약·자원 충돌 검사 RPC로 수행한다. 충돌·최신 버전 변경·권한 오류는 전체 롤백하고 작업 키 재시도를 보장한다.
+- 적용 순서: **084 → 085 → API 재시작 → 앱 갱신**. `node scripts/db-tests/appointments.mjs --series`, API 예약 라우트 테스트, React `AppointmentPage.test.tsx`를 사용한다. SQL 085는 Supabase 적용 대기다.
+- `086_management_recorded_tax.sql`: 경영 보고에서 `세금`/`tax` 분류로 실제 입력된 지출을 따로 합산한다. 기존 지출 합계에 이미 포함된 금액이므로 세전 잔액 계산 시 한 번만 분리하고, 확정 수당 차감 후 기록 세금 반영 잔액을 별도 제공한다. 신고 세액 계산·미기록 세금 판정은 하지 않으며 `is_final_profit`은 계속 false다.
+- 적용 순서: **085 → 086 → API 재시작 → 앱 갱신**. `node scripts/db-tests/management-recorded-tax.mjs`는 격리 PGlite에서 세금 분류 범위, 세전/수당/기록 세금 합계, 미확정 수당 시 계산 보류, 권한 거절을 확인한다. 실제 Supabase 적용 전이다.
+- `087_wallet_partial_refunds.sql`: 판매 할인 후 금액과 금액권 발급액이 같은 활성·미만료 금액권의 실제 외부 환불 완료분을 잔액 한도 내에서 기록한다. 횟수 혜택·복합 혜택·판매가와 발급 금액이 다른 회원권은 잔여 가치를 추정하지 않고 거절한다. 환불액은 지갑 잔액과 재무 지출에서 차감되고 불변 이벤트에 기록되며, 환불일의 수당 미리보기에는 원 판매 항목의 음수 거래로 추가된다. 잔액 0원은 `refunded` 종료 상태다. 외부 카드/현금 환불 자체는 수행하지 않는다.
+- 적용 순서: **현재 적용한 최신 SQL → 087 → API 재시작 → 앱 갱신**. 집중 검증은 `node scripts/db-tests/wallet-usage.mjs --refund`, API `pnpm --filter @business-assistant/api test -- src/modules/catalog/catalog.test.ts`, React `pnpm --filter @business-assistant/desktop-react test -- src/features/catalog/catalog.test.tsx`다. 이 테스트는 기존 금액권/복합권 회귀도 같이 실행한다. SQL 087은 Supabase 적용 전이며 적용 이후 실제 조직에서 잔액·재무·환불일 수당 검산이 필요하다.
+
+- `088_file_storage_quotas.sql`: 조직별 기본 5 GiB 저장 용량, 실제 `business-files` Storage 객체 크기 집계, 30분 업로드 예약, 최초 업로드 완료 검증과 파일 버전 업로드의 예약 크기 일치를 강제한다. 파일당 50 MiB 제한은 그대로다. 조직별 한도 값은 DB에서 조정할 수 있으나 요금제 연동/관리 UI는 없다. 미완료 예약은 만료되며 고아 Storage 객체 정리는 별도 운영 절차다.
+- 적용 순서: **현재 적용한 최신 SQL → 누락된 066~088 순서 적용 → 089 → 090 → API 재시작 → 앱 갱신**. 집중 검증은 `node scripts/db-tests/file-versions.mjs`, API `pnpm --filter @business-assistant/api test -- src/modules/documents/files.test.ts`, React `pnpm --filter @business-assistant/desktop-react test -- src/features/documents/FilePage.test.tsx src/features/documents/FileUploadPreview.test.tsx src/features/catalog/catalog.test.tsx`다. 현재 사용자가 보고한 최신 적용 SQL은 065이며 066~089는 원격 적용 확인 전이다.
+
+- `089_management_profit_finalization.sql`: owner/admin이 과거 기간의 기록 손익을 관리자 확인과 함께 불변 revision 스냅샷으로 확정한다. 재고 원가 미확인 수량이 0이고 기간 전체 수당 정산·기록 손익 계산이 가능해야 한다. 수정 확정은 사유와 새 revision을 남기며 감사 이벤트를 추가한다. 원장 입력 완전성은 관리자가 확인하며 공식 회계·세무 신고 자료로 표현하지 않는다.
+- 적용 순서: **현재 적용한 최신 SQL → 누락된 066~088 순서 적용 → 089 → 090 → API 재시작 → 앱 갱신**. 집중 검증은 `node scripts/db-tests/management-profit-finalization.mjs`, API `pnpm --filter @business-assistant/api test -- src/modules/management/management.test.ts`, React `pnpm --filter @business-assistant/desktop-react test -- src/features/management/ManagementPage.test.tsx`다. 사용자가 보고한 최신 적용 SQL은 065이며 066~090은 Supabase 적용 대기다.
+
+
+당시 최신 순번: **092_wallet_manual_refunds.sql** — 할인·횟수·복합 회원권 환불에서 실제 외부 환불액과 제거할 혜택을 별도로 기록합니다. [WAL-11 환불 감사 기록](../docs/product/audits/2026-10-20-wallet-partial-refund.md).
+
+- `093_staff_commission_attribution.sql`: 수당 미리보기에서 담당 직원이 누락된 판매 항목을 점주/관리자가 사유와 함께 직원에게 귀속한다. 원 판매 라인은 보존하며 현재 보정 version과 작업자·이유가 담긴 불변 이벤트를 추가한다. finance 관리자 전용 직원 목록 RPC를 제공한다. 기존 수당 규칙과 순수납 배분으로 다시 계산하고, 확정된 정산 라인은 변경할 수 없다.
+- 적용 순서: **현재 적용된 최신 SQL → 누락된 SQL 066~092 → 093 → API 재시작 → 앱 갱신**. 사용자는 기존 최신 적용 번호를 065라고 보고했으므로 현재 환경에서는 066부터 순서대로 적용해야 한다. 검증은 `node scripts/db-tests/commission-settlements.mjs`, API `pnpm --filter @business-assistant/api test -- src/modules/management/management.test.ts`, React `pnpm --filter @business-assistant/desktop-react test -- src/features/management/ManagementPage.test.tsx`다. 격리 DB/API/React 테스트만 통과했으며 실 Supabase 적용이나 운영 테스트는 하지 않았다.
+
+당시 최신 순번: **093_staff_commission_attribution.sql** — 담당 누락 수당 항목에 관리자 사유형 귀속 보정을 추가합니다. [수당 정산·귀속 보정 감사 기록](../docs/product/audits/2026-10-20-staff-commission-settlement.md).
+
+- `094_staff_commission_splits.sql`: 장바구니 판매 항목마다 같은 조직의 활성 직원 최대 10명에게 정수 basis point로 배분한다. 합계 10,000을 DB 지연 제약으로 확인하고, 기본 담당자 100%는 기존 수당 계산을 유지한다. 순수납 이벤트 금액을 직원별 비율로 나눈 뒤 직원별 유효 규칙을 적용하고, 마지막 직원이 원 단위 반올림 잔액을 받는다. 결제 후 배분 변경은 장바구니 버전/상태 잠금으로 차단한다.
+- 적용 순서: **현재 적용한 최신 SQL → 누락된 066~093 → 094 → API 재시작 → 앱 갱신**. 사용자는 065까지 실행했다고 보고했으므로 현재 환경에서는 066부터 순서대로 적용해야 한다. 격리 DB는 `node scripts/db-tests/commission-settlements.mjs`, API는 `pnpm --filter @business-assistant/api test -- --run src/modules/sales/carts.test.ts`, 화면은 `pnpm --filter @business-assistant/desktop-react test -- --run src/features/sales/SalesPage.test.tsx`다. 이 검증은 통과했으며 실 Supabase 적용 및 운영 인수는 미확인이다. [복수 담당자 배분 감사](../docs/product/audits/2026-10-20-staff-commission-splits.md).
+
+당시 최신 순번: **094_staff_commission_splits.sql** — TEAM-11 판매 항목의 복수 담당자 수당 배분을 추가합니다.
+
+- `095_crm14_block_customer_erasure.sql`: D-10 보관·법정 예외·법적 보류 정책이 결정되기 전 고객 테이블의 authenticated 사용자 DELETE 권한과 관리자 RLS DELETE 정책을 제거한다. 보관/복원은 UPDATE 권한을 유지한다.
+- 적용 순서: **현재 적용한 최신 SQL → 빠진 SQL 066~094 → 095 → API 재시작 → 앱 갱신**. 사용자는 065까지 적용했다고 보고했으므로 이 환경에서는 066부터 차례로 적용한다. SQL 095는 정책 확정 이후 별도 안전 설계를 거쳐 재검토한다.
+
+당시 최신 순번: **095_crm14_block_customer_erasure.sql** — D-10 정책 결정 전 고객 영구 삭제를 차단합니다.
+
+- `096_plan_file_storage_quotas.sql`: 요금제에 선택형 GiB 상한(최대 1,024 GiB)을 두고, 활성/체험 구독과 조직별 요청 한도 중 낮은 값으로 업로드를 제한한다. 값을 임의로 시드하지 않는다. Storage 객체 전체 사용량과 예약을 계속 포함하며, 초과 데이터는 보존하고 새 업로드만 차단한다. 요금제 전환과 예약은 조직 단위 advisory lock으로 직렬화한다.
+- 적용 순서: **현재 최신 SQL → 096 → 관리자 API와 사용자 API 재시작 → 앱 갱신**. 앞 단계 적용 상태가 065라면 누락된 066~095를 먼저 차례로 적용한 뒤 096을 실행한다. 격리 DB 검증은 `pnpm --dir scripts/db-tests test:file-storage-plan-quota-096`이다. 적용 후 플랫폼 관리자 메뉴에서 각 플랜 용량을 설정할 수 있다. 공유 링크는 D-21 결정 대기다.
+
+당시 최신 순번: **096_plan_file_storage_quotas.sql** — FILE-11 요금제별 저장 용량 상한을 추가합니다.
+
+- `097_customer_retention_controls.sql`: CRM-014 조직별 데이터 분류 보유기간 설정(미설정은 NULL), 고객 관계 종료/재개 상태, 고객별 법적 보류 및 불변 이벤트를 추가한다. owner/admin만 전용 RPC로 변경할 수 있고 정책 버전 충돌을 막는다. 이 migration은 고객·거래·동의·사진·Storage 파일을 삭제하지 않으며 파기 RPC도 제공하지 않는다.
+- 적용 순서: **현재 최신 SQL → 누락된 SQL 066~096 → 097 → API 재시작 → 앱 갱신**. 사용자가 예전에 065까지 적용했다고 보고했으며, 066~096의 원격 적용 여부는 이 작업에서 확인하지 않았다. 격리 DB는 `pnpm --dir scripts/db-tests test:customer-retention-097`, API는 고객 라우트 집중 테스트, 화면은 `CustomerRetentionDialog.test.tsx`를 실행한다. 실제 Supabase 적용 전 CRM 정책값 검토와 운영 인수가 남아 있다.
+
+당시 최신 순번: **097_customer_retention_controls.sql** — CRM-014의 조직별 보유 정책·관계 종료·법적 보류 기반을 추가합니다.
+
+- `098_supabase_security_advisor_hardening.sql`: anon/authenticated의 `public.rls_auto_enable()` 실행 권한을 회수하고, RPC 전용 내부 테이블 9개에 직접 클라이언트 접근 차단 정책을 추가한다. event trigger는 postgres 소유로 유지한다.
+- 원격 적용을 2026-10-21 확인했다. 직접 권한 조회, 차단 정책 9개, event-trigger 자동 RLS smoke check가 통과했다. 재실행은 멱등적이다. 남은 advisor 경고와 한계는 [보안 감사](../docs/product/audits/2026-10-21-supabase-migration-and-security.md)에 기록한다.
+
+당시 최신 순번: **098_supabase_security_advisor_hardening.sql** — 직접 DB 권한 경계를 강화합니다.
+
+- `099_scope_organization_existence_to_membership.sql`: 로그인 사용자에게 임의 조직 UUID의 존재 여부가 노출되지 않도록 `organization_exists(uuid)`를 현재 사용자의 조직 멤버십 검사로 제한한다. 인증 사용자에게만 실행을 허용한다.
+- 원격 적용은 2026-10-21 확인했다. owner 정상 멤버십은 `true`, 비회원이 실제 조직 UUID를 확인하면 `false`이며, 무JWT RPC/비회원 조직 RPC 거부는 롤백 트랜잭션으로 검사했다.
+
+현재 최신 순번: **099_scope_organization_existence_to_membership.sql** — 조직 접근 존재 조회를 멤버십 범위로 한정합니다.
