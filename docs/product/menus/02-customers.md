@@ -32,6 +32,7 @@
 | CRM-009 | P1 | planned | 필드별 변경 감사·행위자·정정 사유 |
 | CRM-010 | P1 | planned | 고객과의 약속·후속 기한·담당자·리마인더 |
 | CRM-011 | P1 | in-progress | 고객 사진 업로드·저장·조회 연결 및 예약·잔액·동의·시술 사진 원천 연결 |
+| CRM-014 | P3 | in-progress | 조직별 데이터 분류 보유기간, 명시적 관계 종료, 법적 보류·관리자 감사 기반. 최종 파기는 연관 원장/사진/Storage/백업 분리 설계와 검증이 끝날 때까지 잠금 |
 
 ## 필드 계약과 규칙
 
@@ -108,3 +109,17 @@
 ## 2026-10-16 감사 후 보완
 
 [예약 상세·운영 안전성 보완 결과](../audits/2026-10-16-appointment-hardening-followup.md)에 이번 수정, 집중 검증과 미완료 범위를 기록했다. 기존 날짜별 검증은 당시 기록으로 보존하며, 실 Supabase와 설치본 확인을 대신하지 않는다.
+
+## 2026-10-20 CRM-014 정책 게이트 보완
+
+코드 점검에서 화면에는 연결되지 않았지만 `DELETE /customers/:customerId` API가 실제 고객 행을 삭제하는 경로를 발견했다. D-10은 보관 기간·법정 예외·법적 보류·Storage/백업 범위가 정해지기 전 파기 기능을 만들지 않도록 하므로, API는 CRM 권한 검사를 마친 뒤 409로 중단하고 고객 삭제 게이트웨이의 실제 DELETE 호출을 제거했다. 보관/복원은 기존 상태 변경 API를 계속 사용한다.
+
+검증: `pnpm --dir scripts/db-tests exec node customer-erasure-095.mjs`에서 authenticated 직접 삭제 권한 차단과 SQL 재실행 안전성을 확인했다. API 감사/고객 라우트 테스트 40건과 API 빌드를 통과했다. SQL 095는 원격 Supabase에 미적용이며, 직접 Data API 삭제 차단은 095 실행 후에만 보장된다. 실 Supabase와 UI의 영구 삭제 인수는 하지 않았다. CRM-014는 D-10 정책 및 감사/보류/파기 범위 결정 전까지 `planned`로 유지한다.
+
+## 2026-10-21 CRM-014 보유 정책·관계 종료·법적 보류 기반
+
+사용자가 권고 제품 방향을 채택했다. SQL 097에서 조직별 분류 기간(기본값 없음), 명시적 관계 종료/재개, 고객별 법적 보류 이력과 변경 이벤트를 추가했고 API와 고객관리의 `보유·파기 정책` 대화상자에서 관리할 수 있다. 관리자 설정은 버전 충돌을 검사하며 member·다른 조직은 DB RPC에서 거부한다. 보류 해제와 관계 상태 변경은 사유를 요구하고 기록한다. 대화상자는 미설정 기간과 파기 잠금 이유를 보여 준다.
+
+검증: `node scripts/db-tests/customer-retention-097.mjs` 통과. `pnpm --filter @business-assistant/api test -- src/routes/customers.test.ts` 19건 통과. `pnpm --filter @business-assistant/desktop-react test -- src/features/customers/CustomerRetentionDialog.test.tsx` 2건 통과. 실 Supabase SQL 적용과 Windows 앱/실조직 인수는 하지 않았다.
+
+제한: 이 단계는 고객 테이블의 실제 삭제를 하지 않는다. 보유기간 입력 후에도 영구 파기는 잠겨 있다. 예약·매출·회원권·발급 문서·동의 증빙·시술/고객 사진 Storage 객체, 감사 로그와 백업의 최소 보존/분리, 비동기 삭제·재시도·완료 증거를 다음 단계에서 다뤄야 한다. 분류별 기간 값은 매장별 검토 후 입력해야 한다. 상세 계약은 [CRM-014 설계](../../superpowers/specs/2026-10-21-customer-retention-and-erasure-design.md), [구현 감사](../audits/2026-10-21-customer-retention-and-erasure.md).

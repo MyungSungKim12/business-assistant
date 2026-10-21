@@ -40,3 +40,12 @@
 - 서비스 담당 매핑의 기존 최대 100명 설정 계약과 별도 조회는 유지한다. 모든 제품 목록을 한 묶음 RPC나 서버 커서로 전환한 것은 아니다.
 
 다음은 남은 업무 연결 중 시술 시작 전 고객 주의사항·동의 증빙 안내를 점검한다. 실사용·배포 인수는 기존 요청대로 후속으로 유지한다.
+
+
+## 2026-10-20 후속 — APT-015 추천 근거 표시
+
+다중 일자 추천의 이유 문구가 모든 슬롯을 “가장 이른 시간”이라고 잘못 설명하던 문제를 고쳤다. 정렬한 첫 슬롯만 가장 이른 추천으로 표시하고 이후 슬롯은 후속 추천으로 구분한다. 각 추천에 시술 소요·여유, 담당 가능 인원, 필요한 공간/장비 수량과 자원 조건 통과를 함께 표시한다. 개별 자원 배정은 예약 저장 흐름에서 다시 검증하며, 추천 자체가 자원을 예약하지 않는다.
+
+- API `pnpm --filter @business-assistant/api test -- src/modules/appointment-resources/availability.test.ts`: 27개 통과.
+- React `pnpm --filter @business-assistant/desktop-react test -- src/features/appointments/AvailabilitySearch.test.tsx`: 1개 통과.
+- 실제 예약 저장·운영 자원 동시성은 실 Supabase/앱에서 확인하지 않았다.

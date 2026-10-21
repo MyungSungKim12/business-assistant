@@ -1,6 +1,6 @@
 # 외부 연동
 
-갱신일: 2026-09-18 · 상태: planned
+갱신일: 2026-10-21 · 상태: in-progress
 
 ## 목적·진입점
 
@@ -14,6 +14,8 @@
 | INT-002 | P0 | planned | 마지막 동기화 시각·지연·실패 내역 |
 | INT-003 | P1 | planned | 외부 ID 매핑·중복 이벤트·순서 역전 처리 |
 | INT-004 | P1 | planned | 연결 해제·키 갱신·실패 재처리 |
+| INT-005 | P1 | in-progress | 로그인 조직 한정 최소 고객 전화번호부·정확 일치 조회·전화 상담 메모 API 및 고객관리 수동 메모 UI. 서버/React 집중 검증 완료, 모바일 패키지 인수 대기 |
+| INT-006 | P1 | planned | Android CallScreeningService·iOS Call Directory 네이티브 연결, 로컬 보안 전화번호부 동기화/삭제와 앱 복귀. SDK/Xcode 환경에서 구현·검증 |
 
 ## 데이터 계약
 
@@ -31,6 +33,6 @@ connection_id, provider, scope, external_id, cursor, last_success_at, event_id, 
 
 ## 단계·검증 기록
 
-소비 메뉴의 P0 흐름에 필요한 최소 기능부터 제공하고, 확장 기능은 별도 검증한다. 2026-09-18 문서 작성; 실환경 검증 없음. 기존 범용 API 존재는 이 문서의 전체 기능 완료 증거가 아니다. 상태 변경 시 [변경 이력](../changelog.md)에 증거와 제한을 기록한다.
+소비 메뉴의 P0 흐름에 필요한 최소 기능부터 제공하고, 확장 기능은 별도 검증한다. 모바일 전화 연동 설계는 [설계 문서](../../superpowers/specs/2026-10-21-mobile-phone-companion-design.md), 실행 순서는 [계획](../../superpowers/plans/2026-10-21-mobile-phone-companion.md)을 참조한다. 2026-09-18 문서 작성; 모바일 연동 실환경 검증 없음. 기존 범용 API 존재는 이 문서의 전체 기능 완료 증거가 아니다. 상태 변경 시 [변경 이력](../changelog.md)에 증거와 제한을 기록한다.
 
 [전체 계획](../README.md) · [품질 게이트](../quality-gates.md)
