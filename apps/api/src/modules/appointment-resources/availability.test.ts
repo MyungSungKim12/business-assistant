@@ -194,7 +194,8 @@ function setup(handler = reply(), features = ['task.basic']) {
   const organizations = fakeOrganizations('member', features);
   app = buildApp((instance) => registerAppointmentResourceModule(instance, organizations, testConfig, fetcher));
   const get = (query: string) => app.inject({ method: 'GET', url: `/api/v1/organizations/${ORG}/appointment-availability?${query}`, headers: auth });
-  return { get, calls, organizations };
+  const getSearch=(query:string)=>app.inject({method:'GET',url:`/api/v1/organizations/${ORG}/appointment-availability-search?${query}`,headers:auth});
+  return { get, getSearch,calls, organizations };
 }
 
 describe('GET appointment-availability', () => {
@@ -254,4 +255,24 @@ describe('GET appointment-availability', () => {
     expect((await get(`service_id=0b9c39fd-8e8c-4df8-a623-1f23a3a936bd&date=${DATE}`)).statusCode).toBe(404);
     expect((await get(`service_id=${SERVICE}&date=${DATE}&staff_id=0b9c39fd-8e8c-4df8-a623-1f23a3a936bd`)).statusCode).toBe(404);
   });
+});
+
+describe('GET appointment-availability-search',()=>{
+ it('여러 날의 가장 이른 추천과 조건 근거를 반환하고 구성원 읽기 권한을 사용한다',async()=>{
+  const {getSearch,calls,organizations}=setup();
+  const result=await getSearch(`service_id=${SERVICE}&from_date=${DATE}&days=3`);
+  expect(result.statusCode).toBe(200);
+  expect(result.json()).toMatchObject({service_id:SERVICE,from_date:DATE,to_date:'2026-12-16'});
+  expect(result.json().recommendations[0]).toMatchObject({date:DATE,start:'09:00',available_staff_count:1,duration_minutes:60,reason:expect.stringContaining('근무·휴무·예약')});
+  expect(result.json().recommendations[0].reason).toContain('가장 이른');
+  expect(result.json().recommendations[1].reason).toContain('이후');
+  expect(calls.every(call=>call.method==='GET')).toBe(true);
+  expect(organizations.calls).toEqual([{feature:'task.basic',write:false}]);
+ });
+ it('탐색 기간은 최대 14일이고 구성원과 기능 권한을 확인한다',async()=>{
+  const {getSearch,calls}=setup(reply(),[]);
+  expect((await getSearch(`service_id=${SERVICE}&from_date=${DATE}&days=15`)).statusCode).toBe(422);
+  expect((await getSearch(`service_id=${SERVICE}&from_date=${DATE}&days=7`)).statusCode).toBe(403);
+  expect(calls).toHaveLength(0);
+ });
 });

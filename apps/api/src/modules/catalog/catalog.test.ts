@@ -8,8 +8,8 @@ const VISIT = '2a9c39fd-8e8c-4df8-a623-1f23a3a936bd';
 const CUSTOMER = '3a9c39fd-8e8c-4df8-a623-1f23a3a936bd';
 const WALLET = '4a9c39fd-8e8c-4df8-a623-1f23a3a936bd';
 const LINE = '5a9c39fd-8e8c-4df8-a623-1f23a3a936bd';
-const VALUES = { sku: 'SKU-1', name: '보습 크림', kind: 'product', unit_name: '개', sale_price: '30000', benefit_money: '0', benefit_count: 0, valid_days: null, is_active: true };
-const ROW = { id: PRODUCT, organization_id: ORG, ...VALUES, version: 1, stock_quantity: 0 };
+const VALUES = { sku: 'SKU-1', name: '보습 크림', kind: 'product', unit_name: '개', purchase_unit_name: '개', units_per_purchase_unit: 1, sale_price: '30000', benefit_money: '0', benefit_count: 0, valid_days: null, is_active: true };
+const ROW = { id: PRODUCT, organization_id: ORG, ...VALUES, version: 1, stock_quantity: 0, category:'기타', barcode:null, image_file_id:null };
 const WALLET_ROW = { id: WALLET, organization_id: ORG, customer_id: CUSTOMER, product_id: PRODUCT, sale_line_id: LINE, name_snapshot: '회원권', money_balance: '100', count_balance: 1, valid_from: '2026-10-01', expires_on: '2026-12-31', source_snapshot: {}, created_at: '2026-10-01T00:00:00Z', lifecycle_status: 'paused', paused_on: '2026-10-08', lifecycle_version: 2 };
 const BUNDLE = { visit: { id: VISIT, organization_id: ORG, customer_id: CUSTOMER, status: 'open' }, cart: { id: '6a9c39fd-8e8c-4df8-a623-1f23a3a936bd', organization_id: ORG, visit_id: VISIT, customer_id: CUSTOMER, version: 3 }, lines: [] };
 const PAYMENTS = { visit_id: VISIT, outstanding_amount: '0', payments: [] };
@@ -29,6 +29,24 @@ const byRpc = (map: Record<string, unknown>) => (call: FakeCall): FakeReply => (
 const createBody = (change: Record<string, unknown> = {}) => ({ ...VALUES, operation_id: OP, ...change });
 
 describe('카탈로그 생성·수정', () => {
+  it('상품 카테고리·바코드를 버전/멱등 키와 함께 조직 RPC에 저장한다', async () => {
+    const updated={...ROW,category:'스킨케어',barcode:'8801234567890',version:2};
+    const {send,calls}=setup(byRpc({set_catalog_product_metadata:updated}));
+    const body={category:'스킨케어',barcode:'8801234567890',expected_version:1,operation_id:OP};
+    expect((await send('PUT',`catalog-products/${PRODUCT}/metadata`,body)).statusCode).toBe(200);
+    expect(calls[0].body).toEqual({p_organization_id:ORG,p_product_id:PRODUCT,p_category:'스킨케어',p_barcode:'8801234567890',p_expected_version:1,p_operation_id:OP});
+    expect((await setup(byRpc({set_catalog_product_metadata:updated}),'member').send('PUT',`catalog-products/${PRODUCT}/metadata`,body)).statusCode).toBe(403);
+    expect((await send('PUT',`catalog-products/${PRODUCT}/metadata`,{...body,barcode:'x'.repeat(81)})).statusCode).toBe(422);
+  });
+  it('상품 이미지는 관리자만 조직 RPC에 버전과 멱등 키를 전달해 연결한다',async()=>{
+    const image='7a9c39fd-8e8c-4df8-a623-1f23a3a936bd',updated={...ROW,image_file_id:image,version:2};
+    const {send,calls}=setup(byRpc({set_catalog_product_image:updated}));
+    const body={image_file_id:image,expected_version:1,operation_id:OP};
+    expect((await send('PUT',`catalog-products/${PRODUCT}/image`,body)).statusCode).toBe(200);
+    expect(calls[0].body).toEqual({p_organization_id:ORG,p_product_id:PRODUCT,p_image_file_id:image,p_expected_version:1,p_operation_id:OP});
+    expect((await setup(byRpc({set_catalog_product_image:updated}),'member').send('PUT',`catalog-products/${PRODUCT}/image`,body)).statusCode).toBe(403);
+    expect((await send('PUT',`catalog-products/${PRODUCT}/image`,{...body,image_file_id:'bad'})).statusCode).toBe(422);
+  });
   it('공급처 등록과 발주 초안 생성을 관리자만 조직 RPC로 수행한다', async () => {
     const supplier={id:WALLET,organization_id:ORG,name:'공급처A',contact_name:'',phone:'',email:'',note:'',is_active:true,version:1,created_by:CUSTOMER,created_at:'2026-10-01T00:00:00Z',updated_at:'2026-10-01T00:00:00Z'};
     const order={id:VISIT,organization_id:ORG,supplier_id:WALLET,status:'draft',ordered_at:null,note:'',version:1,created_by:CUSTOMER,created_at:'2026-10-01T00:00:00Z',updated_at:'2026-10-01T00:00:00Z',lines:[{id:LINE,organization_id:ORG,order_id:VISIT,product_id:PRODUCT,quantity_ordered:3,quantity_received:0,unit_cost:'1200',note:'',created_at:'2026-10-01T00:00:00Z'}]};
@@ -135,15 +153,39 @@ describe('카탈로그 조회 응답 검증', () => {
 describe('재고', () => {
   it('입고는 수량·사유를 검증하고 member 쓰기를 거부한다', async () => {
     const path = `catalog-products/${PRODUCT}/stock-receipts`;
-    const body = { operation_id: OP, quantity: 3, reason: '신규 입고' };
+    const body = { operation_id: OP, quantity: 3, reason: '신규 입고', expires_on: '2026-12-31', lot_code:'LOT-1', unit_cost:'1200' };
     const { send, calls } = setup(byRpc({ receive_catalog_stock: ROW }));
     expect((await send('POST', path, body)).statusCode).toBe(200);
-    expect(calls[0].body).toEqual({ p_organization_id: ORG, p_product_id: PRODUCT, p_quantity: 3, p_reason: '신규 입고', p_operation_id: OP });
+    expect(calls[0].body).toEqual({ p_organization_id: ORG, p_product_id: PRODUCT, p_quantity: 3, p_reason: '신규 입고', p_operation_id: OP, p_expires_on:'2026-12-31', p_lot_code:'LOT-1', p_unit_cost:'1200' });
     expect((await setup(byRpc({ receive_catalog_stock: ROW }), 'member').send('POST', path, body)).statusCode).toBe(403);
-    for (const change of [{ quantity: 0 }, { quantity: true }, { reason: ' ' }, { quantity: 1_000_000 }]) {
+    for (const change of [{ quantity: 0 }, { quantity: true }, { reason: ' ' }, { quantity: 1_000_000 },{expires_on:'2026-13-40'},{lot_code:'x'.repeat(121)},{unit_cost:'-1'},{unit_cost:'1000000000000'}]) {
       expect((await send('POST', path, { ...body, ...change })).statusCode).toBe(422);
     }
     expect(calls).toHaveLength(1);
+  });
+
+  it('로트와 유통기한 알림은 member가 상품 범위로 조회한다', async () => {
+    const lot={id:OP,organization_id:ORG,product_id:PRODUCT,lot_code:'A',received_quantity:4,remaining_quantity:3,expires_on:'2026-11-01',unit_cost:'1200',received_at:'2026-10-20T00:00:00Z',alert_status:'expiring_soon'};
+    const {send,calls}=setup(byRpc({list_catalog_inventory_lots:[lot]}),'member');
+    expect((await send('GET',`catalog-products/${PRODUCT}/lots`)).json()).toEqual([lot]);
+    const preciseLot={...lot,unit_cost:'333.333333'};
+    expect((await setup(byRpc({list_catalog_inventory_lots:[preciseLot]}),'member').send('GET',`catalog-products/${PRODUCT}/lots`)).json()).toEqual([preciseLot]);
+    expect(calls[0].url.pathname).toBe('/rest/v1/rpc/list_catalog_inventory_lots');
+    for(const bad of [{...lot,organization_id:OTHER_ORG},{...lot,product_id:OTHER_ORG}]) expect((await setup(byRpc({list_catalog_inventory_lots:[bad]}),'member').send('GET',`catalog-products/${PRODUCT}/lots`)).statusCode).toBe(503);
+  });
+
+  it('조직 전체의 만료 임박 로트를 한 번에 조회하고 다른 조직 응답을 거부한다',async()=>{
+    const alert={id:OP,organization_id:ORG,product_id:PRODUCT,product_name:'보습 크림',lot_code:'LOT-A',received_quantity:4,remaining_quantity:3,expires_on:'2026-11-01',unit_cost:'1200.000000',received_at:'2026-10-20T00:00:00Z',alert_status:'expiring_soon'};
+    const {send,calls}=setup(byRpc({list_catalog_inventory_lot_alerts:[alert]}),'member');
+    expect((await send('GET','catalog-inventory-lot-alerts?within_days=30')).json()).toEqual([alert]);
+    expect(calls[0].url.pathname).toBe('/rest/v1/rpc/list_catalog_inventory_lot_alerts');
+    expect(calls[0].body).toEqual({p_organization_id:ORG,p_expiring_within_days:30,p_limit:200,p_offset:0});
+    expect((await send('GET','catalog-inventory-lot-alerts?within_days=30&offset=200&limit=100')).statusCode).toBe(200);
+    expect(calls[1].body).toEqual({p_organization_id:ORG,p_expiring_within_days:30,p_limit:100,p_offset:200});
+    expect((await setup(byRpc({list_catalog_inventory_lot_alerts:[{...alert,organization_id:OTHER_ORG}]}),'member').send('GET','catalog-inventory-lot-alerts?within_days=30')).statusCode).toBe(503);
+    expect((await send('GET','catalog-inventory-lot-alerts?within_days=366')).statusCode).toBe(422);
+    expect((await send('GET','catalog-inventory-lot-alerts?offset=5001')).statusCode).toBe(422);
+    expect((await send('GET','catalog-inventory-lot-alerts?limit=201')).statusCode).toBe(422);
   });
 
   it('재고 조정은 expected_version이 필수이고 관리자만 쓴다', async () => {
@@ -237,6 +279,35 @@ describe('고객 회원권', () => {
       expect((await send('POST', path, { ...body, ...change })).statusCode).toBe(422);
     }
     expect((await setup(byRpc({ manage_customer_wallet: { ...WALLET_ROW, organization_id: OTHER_ORG } })).send('POST', path, body)).statusCode).toBe(503);
+  });
+  it('회원권 양도는 관리자만 허용하고 새 소유자와 버전을 확인한다', async () => {
+    const target = '7a9c39fd-8e8c-4df8-a623-1f23a3a936bd';
+    const path = `customers/${CUSTOMER}/wallets/${WALLET}/transfer`;
+    const body = { to_customer_id: target, expected_owner_version: 1, reason: '양도 요청', operation_id: OP };
+    const { send, calls } = setup(byRpc({ transfer_customer_wallet: { ...WALLET_ROW, customer_id: target, owner_version: 2 } }));
+    const response = await send('POST', path, body);
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ customer_id: target, owner_version: 2 });
+    expect(calls[0].body).toEqual({ p_organization_id: ORG, p_from_customer_id: CUSTOMER, p_to_customer_id: target, p_wallet_id: WALLET, p_expected_owner_version: 1, p_reason: '양도 요청', p_operation_id: OP });
+    expect((await setup(byRpc({ transfer_customer_wallet: WALLET_ROW }), 'member').send('POST', path, body)).statusCode).toBe(403);
+    expect((await setup(byRpc({ transfer_customer_wallet: { ...WALLET_ROW, customer_id: OTHER_ORG } })).send('POST', path, body)).statusCode).toBe(503);
+  });
+  it('금액권 환불 한도는 관리자만 확인하고 환불 기록은 확인·사유·잔액 버전을 요구한다',async()=>{
+    const previewPath=`customers/${CUSTOMER}/wallets/${WALLET}/refund-preview`;
+    const preview={organization_id:ORG,customer_id:CUSTOMER,wallet_id:WALLET,refund_cap:'100',money_balance:'100',count_balance:3,balance_version:2,purchase_amount:'100',currency:'KRW'};
+    const previewSetup=setup(byRpc({preview_wallet_purchase_refund_benefits:preview}));
+    expect((await previewSetup.send('GET',previewPath)).statusCode).toBe(200);
+    expect(previewSetup.calls[0].body).toEqual({p_organization_id:ORG,p_customer_id:CUSTOMER,p_wallet_id:WALLET});
+    expect((await setup(byRpc({preview_wallet_purchase_refund_benefits:preview}),'member').send('GET',previewPath)).statusCode).toBe(403);
+    const result={organization_id:ORG,customer_id:CUSTOMER,wallet_id:WALLET,amount:'25',money_removed:'10',count_removed:1,previous_balance:'100',new_balance:'90',previous_count_balance:3,new_count_balance:2,balance_version:3,transaction_date:'2026-10-20',finance_transaction_id:LINE,reason:'환불 요청',lifecycle_status:'active',created_by:CUSTOMER};
+    const path=`customers/${CUSTOMER}/wallets/${WALLET}/refunds`;
+    const body={operation_id:OP,cash_refund_amount:'25',remove_money_amount:'10',remove_count_amount:1,expected_balance_version:2,reason:'환불 요청',confirmed:true};
+    const {send,calls}=setup(byRpc({refund_wallet_purchase_benefits:result}));
+    expect((await send('POST',path,body)).statusCode).toBe(200);
+    expect(calls[0].body).toEqual({p_organization_id:ORG,p_customer_id:CUSTOMER,p_wallet_id:WALLET,p_cash_refund_amount:'25',p_remove_money_amount:'10',p_remove_count_amount:1,p_reason:'환불 요청',p_expected_balance_version:2,p_operation_id:OP,p_confirmed:true});
+    expect((await setup(byRpc({refund_wallet_purchase_benefits:result}),'member').send('POST',path,body)).statusCode).toBe(403);
+    for(const change of [{cash_refund_amount:'0'},{cash_refund_amount:25},{remove_money_amount:'-1'},{remove_count_amount:-1},{remove_money_amount:'0',remove_count_amount:0},{reason:' '},{expected_balance_version:0},{confirmed:false}]) expect((await send('POST',path,{...body,...change})).statusCode).toBe(422);
+    expect((await setup(byRpc({refund_wallet_purchase:{...result,wallet_id:OTHER_ORG}})).send('POST',path,body)).statusCode).toBe(503);
   });
   it('충돌은 409로 돌려준다', async () => {
     const { send } = setup(() => ({ status: 400, body: { code: 'P0001' } }));

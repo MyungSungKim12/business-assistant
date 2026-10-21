@@ -10,6 +10,7 @@ const DOCUMENT_FEATURE = 'document.template';
 const CRM_FEATURE = 'crm.basic';
 const FILE_FEATURE = 'files.basic';
 const MAX_FILE_SIZE = 50 * 1024 * 1024;
+const MAX_ORGANIZATION_FILE_QUOTA = 1_099_511_627_776;
 const TEXT_LIMIT = 100_000;
 const base = '/api/v1/organizations/:organizationId';
 
@@ -21,6 +22,7 @@ const treatmentParams = orgParams.extend({ customerId: z.uuid(), treatmentId: z.
 const issuedParams = treatmentParams.extend({ documentId: z.uuid() });
 const eventParams = issuedParams.extend({ eventId: z.uuid() });
 const fileParams = orgParams.extend({ fileId: z.uuid() });
+const fileVersionParams = fileParams.extend({ version: z.coerce.number().int().positive() });
 const folderParams=orgParams.extend({folderId:z.uuid()});
 
 const trimmedName = z.string().transform((value) => value.trim()).pipe(z.string().min(1).max(200));
@@ -192,6 +194,8 @@ export function registerDocumentRoutes(app: FastifyInstance, organizations: OrgA
     await c.organizations.requireAccess(c.token, p.organizationId, FILE_FEATURE);
     return c.documents.listFiles(c.token, p.organizationId, query.include_archived);
   });
+  app.get(`${base}/file-storage/usage`,async request=>{const c=context(request),p=params(request,orgParams);await c.organizations.requireAccess(c.token,p.organizationId,FILE_FEATURE);return c.documents.fileStorageUsage(c.token,p.organizationId)});
+  app.post(`${base}/file-storage/quota`,async request=>{const c=context(request),p=params(request,orgParams),input=parse(z.object({quota_bytes:z.number().int().min(0).max(MAX_ORGANIZATION_FILE_QUOTA)}).strict(),request.body,'Invalid file storage quota');await c.organizations.requireAccess(c.token,p.organizationId,FILE_FEATURE,true);return c.documents.setFileStorageQuota(c.token,p.organizationId,input.quota_bytes)});
   app.get(`${base}/file-folders`,async request=>{const c=context(request),p=params(request,orgParams);await c.organizations.requireAccess(c.token,p.organizationId,FILE_FEATURE);return c.documents.listFileFolders(c.token,p.organizationId)});
   app.post(`${base}/file-folders`,async(request,reply)=>{const c=context(request),p=params(request,orgParams),input=parse(folderCreate,request.body,'Invalid folder request');await c.organizations.requireAccess(c.token,p.organizationId,FILE_FEATURE,true);return reply.code(201).send(await c.documents.createFileFolder(c.token,p.organizationId,input.name))});
   app.delete(`${base}/file-folders/:folderId`,async request=>{const c=context(request),p=params(request,folderParams);await c.organizations.requireAccess(c.token,p.organizationId,FILE_FEATURE,true);if(!(await c.documents.deleteFileFolder(c.token,p.organizationId,p.folderId)))throw new ApiFailure(404,'File folder not found');return{deleted:true}});
@@ -201,10 +205,34 @@ export function registerDocumentRoutes(app: FastifyInstance, organizations: OrgA
     await c.organizations.requireAccess(c.token, p.organizationId, FILE_FEATURE);
     return reply.code(201).send(await c.documents.createFileUpload(c.token, p.organizationId, input));
   });
+  app.post(`${base}/files/:fileId/complete-upload`,async request=>{const c=context(request),p=params(request,fileParams),input=parse(z.object({reservation_id:z.uuid()}).strict(),request.body,'Invalid upload completion');await c.organizations.requireAccess(c.token,p.organizationId,FILE_FEATURE);return c.documents.completeFileUpload(c.token,p.organizationId,p.fileId,input.reservation_id)});
+  app.delete(`${base}/file-storage/uploads/:operationId`,async request=>{const c=context(request),p=params(request,z.object({organizationId:z.uuid(),operationId:z.uuid()}));await c.organizations.requireAccess(c.token,p.organizationId,FILE_FEATURE);return{released:await c.documents.releaseFileUpload(c.token,p.organizationId,p.operationId)}});
   app.post(`${base}/files/:fileId/download-url`, async (request) => {
     const c = context(request), p = params(request, fileParams);
     await c.organizations.requireAccess(c.token, p.organizationId, FILE_FEATURE);
     return c.documents.createFileDownload(c.token, p.organizationId, p.fileId);
+  });
+  app.get(`${base}/files/:fileId/versions`, async request => {
+    const c = context(request), p = params(request, fileParams);
+    await c.organizations.requireAccess(c.token, p.organizationId, FILE_FEATURE);
+    return c.documents.listFileVersions(c.token, p.organizationId, p.fileId);
+  });
+  app.post(`${base}/files/:fileId/versions/upload-url`, async request => {
+    const c = context(request), p = params(request, fileParams);
+    const input = parse(fileUpload.extend({ expected_version:z.number().int().min(1) }).strict(), request.body, 'Invalid file version request');
+    await c.organizations.requireAccess(c.token, p.organizationId, FILE_FEATURE);
+    return c.documents.createFileVersion(c.token, p.organizationId, p.fileId, input.expected_version, input);
+  });
+  app.post(`${base}/files/:fileId/versions/commit`, async request => {
+    const c = context(request), p = params(request, fileParams);
+    const input = parse(fileUpload.extend({ expected_version:z.number().int().min(1), version_upload_path:z.string().min(1).max(512), version_operation_id:z.uuid() }).strict(), request.body, 'Invalid file version request');
+    await c.organizations.requireAccess(c.token, p.organizationId, FILE_FEATURE);
+    return c.documents.commitFileVersion(c.token, p.organizationId, p.fileId, input.expected_version, input.version_operation_id, input.version_upload_path, input);
+  });
+  app.post(`${base}/files/:fileId/versions/:version/download-url`, async request => {
+    const c = context(request), p = params(request, fileVersionParams);
+    await c.organizations.requireAccess(c.token, p.organizationId, FILE_FEATURE);
+    return c.documents.createFileVersionDownload(c.token, p.organizationId, p.fileId, p.version);
   });
   app.delete(`${base}/files/:fileId`, async (request) => {
     const c = context(request), p = params(request, fileParams);

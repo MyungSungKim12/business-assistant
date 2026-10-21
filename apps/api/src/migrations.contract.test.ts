@@ -211,6 +211,20 @@ describe('migrations contract', () => {
     has(h, 'grant execute on function public.organization_exists(uuid) to authenticated');
   });
 
+  it('test_099_scopes_organization_existence_rpc_to_current_membership', () => {
+    const m = readLower('099_scope_organization_existence_to_membership.sql');
+    has(m, 'create or replace function public.organization_exists(target_organization_id uuid)');
+    has(m, 'security definer');
+    has(m, "set search_path = ''");
+    has(m, "if (select auth.uid()) is null then");
+    has(m, 'from public.memberships');
+    has(m, 'where organization_id = target_organization_id');
+    has(m, 'and user_id = (select auth.uid())');
+    has(m, 'revoke all on function public.organization_exists(uuid) from public');
+    has(m, 'revoke all on function public.organization_exists(uuid) from anon');
+    has(m, 'grant execute on function public.organization_exists(uuid) to authenticated');
+  });
+
   it('test_admin_subscription_rpc_is_atomic_and_service_role_only', () => {
     const m = readLower('004_admin_subscription_rpc.sql');
     has(m, 'create function public.replace_organization_subscription');

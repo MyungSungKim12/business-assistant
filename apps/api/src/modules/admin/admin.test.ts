@@ -114,3 +114,66 @@ describe('플랫폼 관리자 목록', () => {
     expect(platformAdminIds({ ...testConfig }, {}).size).toBe(0);
   });
 });
+
+describe('요금제별 파일 용량 관리', () => {
+  const quotas = [{ code: 'BASIC', name: '베이직', file_storage_quota_bytes: null }];
+
+  it('플랫폼 관리자만 플랜 용량 목록을 서비스 키로 조회한다', async () => {
+    const { calls } = setup(configured, call => call.url.pathname === '/rest/v1/plans' ? { body: quotas } : { status: 200, body: null });
+    const denied = await app.inject({ method: 'GET', url: '/api/v1/admin/plans/storage-quotas', headers: { authorization: 'Bearer user' } });
+    expect(denied.statusCode).toBe(403);
+    expect(calls.some(call => call.url.pathname === '/rest/v1/plans')).toBe(false);
+  });
+
+  it('목록 응답에서 정책 미설정(null)과 저장 용량을 구별한다', async () => {
+    const { calls } = setup(configured, call => call.url.pathname === '/rest/v1/plans' ? { body: quotas } : { status: 200, body: null });
+    const response = await app.inject({ method: 'GET', url: '/api/v1/admin/plans/storage-quotas', headers: { authorization: 'Bearer admin' } });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual([{ plan_code: 'BASIC', plan_name: '베이직', quota_bytes: null }]);
+    const request = calls.find(call => call.url.pathname === '/rest/v1/plans')!;
+    expect(request.headers.apikey).toBe('server-secret');
+    expect(request.url.searchParams.get('select')).toBe('code,name,file_storage_quota_bytes');
+  });
+
+  it('유효한 용량을 저장하고 감사 이벤트를 남긴다', async () => {
+    const updated = { code: 'BASIC', name: '베이직', file_storage_quota_bytes: 5368709120 };
+    const { calls } = setup(configured, call => {
+      if (call.url.pathname === '/rest/v1/plans') return { body: [updated] };
+      if (call.url.pathname === '/rest/v1/audit_events') return { status: 201, body: null };
+      return { status: 200, body: null };
+    });
+    const response = await app.inject({ method: 'PATCH', url: '/api/v1/admin/plans/BASIC/storage-quota', headers: { authorization: 'Bearer admin' }, payload: { quota_bytes: 5368709120 } });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ plan_code: 'BASIC', plan_name: '베이직', quota_bytes: 5368709120 });
+    const update = calls.find(call => call.url.pathname === '/rest/v1/plans' && call.method === 'PATCH')!;
+    expect(update.body).toEqual({ file_storage_quota_bytes: 5368709120 });
+    const audit = calls.find(call => call.url.pathname === '/rest/v1/audit_events')!;
+    expect(audit.body).toMatchObject({ action: 'plan.file_storage_quota_update', target_type: 'plan', target_id: 'BASIC', organization_id: null });
+  });
+
+  it('null로 저장하면 플랜 상한을 비우고 조직별 한도로 되돌린다', async () => {
+    const { calls } = setup(configured, call => {
+      if (call.url.pathname === '/rest/v1/plans') return { body: [{ code: 'BASIC', name: '베이직', file_storage_quota_bytes: null }] };
+      if (call.url.pathname === '/rest/v1/audit_events') return { status: 201, body: null };
+      return { status: 200, body: null };
+    });
+    const response = await app.inject({ method: 'PATCH', url: '/api/v1/admin/plans/BASIC/storage-quota', headers: { authorization: 'Bearer admin' }, payload: { quota_bytes: null } });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ plan_code: 'BASIC', quota_bytes: null });
+    expect(calls.find(call => call.url.pathname === '/rest/v1/plans' && call.method === 'PATCH')?.body).toEqual({ file_storage_quota_bytes: null });
+  });
+
+  it('일반 구성원은 변경 API에서 거부한다', async () => {
+    const { calls } = setup();
+    const response = await app.inject({ method: 'PATCH', url: '/api/v1/admin/plans/BASIC/storage-quota', headers: { authorization: 'Bearer user' }, payload: { quota_bytes: 5368709120 } });
+    expect(response.statusCode).toBe(403);
+    expect(calls.some(call => call.url.pathname === '/rest/v1/plans' && call.method === 'PATCH')).toBe(false);
+  });
+
+  it.each([-1, 1099511627777, 2.5, '5'])('잘못된 용량 %s는 DB 변경 전에 422로 거부한다', async quota => {
+    const { calls } = setup();
+    const response = await app.inject({ method: 'PATCH', url: '/api/v1/admin/plans/BASIC/storage-quota', headers: { authorization: 'Bearer admin' }, payload: { quota_bytes: quota } });
+    expect(response.statusCode).toBe(422);
+    expect(calls.some(call => call.url.pathname === '/rest/v1/plans' && call.method === 'PATCH')).toBe(false);
+  });
+});

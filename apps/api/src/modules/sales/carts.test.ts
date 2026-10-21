@@ -101,6 +101,23 @@ describe('방문 장바구니 API', () => {
     expect(calls).toEqual([]);
   });
 
+  it('수당 배분은 합계 100%와 서로 다른 직원만 RPC에 전달한다', async () => {
+    const { send, calls } = sandbox(answer(bundle()));
+    const allocations = [{ staff_id: userId, share_basis_points: 6000 }, { staff_id: draftId, share_basis_points: 4000 }];
+    const response = await send('PATCH', `${CART}/lines/${lineId}`, { expected_version: 1, operation_id: op, staff_id: userId, staff_name: '주 담당', commission_allocations: allocations });
+    expect(response.statusCode).toBe(200);
+    expect(calls[0].body).toMatchObject({ p_values: { commission_allocations: allocations } });
+    for (const commission_allocations of [
+      [{ staff_id: userId, share_basis_points: 6000 }],
+      [{ staff_id: userId, share_basis_points: 6000 }, { staff_id: userId, share_basis_points: 4000 }],
+      Array.from({ length: 11 }, (_, index) => ({ staff_id: `${String(index + 1).padStart(8, '0')}-0000-4000-8000-000000000000`, share_basis_points: index === 10 ? 0 : 1000 })),
+    ]) {
+      calls.length = 0;
+      expect((await send('PATCH', `${CART}/lines/${lineId}`, { expected_version: 1, operation_id: op, commission_allocations })).statusCode).toBe(422);
+      expect(calls).toEqual([]);
+    }
+  });
+
   it('수동 할인은 확인·유효한 값·관리자를 요구한다', async () => {
     const body = { kind: 'percent', value: '15', reason: '첫 방문', expected_version: 2, operation_id: op, confirmed: true };
     const { send, calls } = sandbox(answer(bundle()));

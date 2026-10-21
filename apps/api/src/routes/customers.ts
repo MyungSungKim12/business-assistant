@@ -40,6 +40,18 @@ const tagName = z.string().trim().min(1).max(50);
 const tagRename = z.object({ from: tagName, to: tagName }).strict();
 const tagMerge = z.object({ from: z.array(tagName).min(1).max(30), to: tagName }).strict();
 const tagDelete = z.object({ tag: tagName }).strict();
+const retentionPolicyInput = z.object({
+  expected_version: z.number().int().min(0),
+  profile_days: z.number().int().min(1).max(36500).nullable(),
+  sensitive_notes_days: z.number().int().min(1).max(36500).nullable(),
+  treatment_photos_days: z.number().int().min(1).max(36500).nullable(),
+  consent_records_days: z.number().int().min(1).max(36500).nullable(),
+  transaction_records_days: z.number().int().min(1).max(36500).nullable(),
+  dispute_records_days: z.number().int().min(1).max(36500).nullable(),
+  audit_events_days: z.number().int().min(1).max(36500).nullable(),
+}).strict();
+const retentionActionInput = z.object({ reason: z.string().trim().min(1).max(300) }).strict();
+const relationshipEndInput = retentionActionInput.extend({ ended_at: z.iso.datetime({ offset: true }).nullable() }).strict();
 const mergeInput = z.object({
   secondary_id: z.uuid(), operation_id: z.uuid(),
   resolved: z.object({
@@ -69,6 +81,52 @@ export function registerCustomerRoutes(app: FastifyInstance, organizations: Pick
     await current.organizations.requireAccess(current.token,current.organizationId,'crm.basic');
     if(!current.customers.visitFacts)throw new ApiFailure(503,'Customer visit facts unavailable');
     return current.customers.visitFacts(current.token,current.organizationId,parsed.data.customer_ids);
+  });
+  app.get('/api/v1/organizations/:organizationId/customer-retention-policy', async request => {
+    const current = service(request);
+    await current.organizations.requireAccess(current.token, current.organizationId, 'crm.basic');
+    if (!current.customers.getRetentionPolicy) throw new ApiFailure(503, 'Customer retention policy unavailable');
+    return { policy: await current.customers.getRetentionPolicy(current.token, current.organizationId), purge_enabled: false,
+      reason: '관련 예약·거래·동의·사진·저장소의 분리 및 파기 검증이 끝나지 않았습니다.' };
+  });
+  app.put('/api/v1/organizations/:organizationId/customer-retention-policy', async request => {
+    const current = service(request);
+    const body = retentionPolicyInput.safeParse(request.body);
+    if (!body.success) throw new ApiFailure(422, 'Invalid customer retention policy');
+    if (!current.customers.saveRetentionPolicy) throw new ApiFailure(503, 'Customer retention policy unavailable');
+    await current.organizations.requireAccess(current.token, current.organizationId, 'crm.basic', true);
+    const { expected_version, ...policy } = body.data;
+    const saved = await current.customers.saveRetentionPolicy(current.token, current.organizationId, policy, expected_version);
+    await audit?.record(current.token, { organizationId: current.organizationId, action: 'customer.retention_policy_update', targetType: 'customer_retention_policy', requestId: request.id, ip: request.ip,
+      metadata: { version: saved.version, configured_categories: Object.values(policy).filter(value => value !== null).length } });
+    return saved;
+  });
+  app.get('/api/v1/organizations/:organizationId/customers/:customerId/retention-status', async request => {
+    const current = service(request);
+    const params = z.object({ customerId: z.uuid() }).safeParse(request.params);
+    if (!params.success || !current.customers.retentionStatus) throw new ApiFailure(422, 'Invalid customer retention request');
+    await current.organizations.requireAccess(current.token, current.organizationId, 'crm.basic');
+    return current.customers.retentionStatus(current.token, current.organizationId, params.data.customerId);
+  });
+  app.put('/api/v1/organizations/:organizationId/customers/:customerId/relationship-end', async request => {
+    const current = service(request);
+    const params = z.object({ customerId: z.uuid() }).safeParse(request.params);
+    const body = relationshipEndInput.safeParse(request.body);
+    if (!params.success || !body.success || !current.customers.setRelationshipEnd) throw new ApiFailure(422, 'Invalid customer relationship status');
+    await current.organizations.requireAccess(current.token, current.organizationId, 'crm.basic', true);
+    const endedAt = await current.customers.setRelationshipEnd(current.token, current.organizationId, params.data.customerId, body.data.ended_at, body.data.reason);
+    await audit?.record(current.token, { organizationId: current.organizationId, action: endedAt ? 'customer.relationship_end' : 'customer.relationship_reopen', targetType: 'customer', targetId: params.data.customerId, requestId: request.id, ip: request.ip, metadata: {} });
+    return { relationship_ended_at: endedAt };
+  });
+  app.put('/api/v1/organizations/:organizationId/customers/:customerId/legal-hold', async request => {
+    const current = service(request);
+    const params = z.object({ customerId: z.uuid() }).safeParse(request.params);
+    const body = z.object({ active: z.boolean(), reason: z.string().trim().min(1).max(300) }).strict().safeParse(request.body);
+    if (!params.success || !body.success || !current.customers.setLegalHold) throw new ApiFailure(422, 'Invalid customer legal hold');
+    await current.organizations.requireAccess(current.token, current.organizationId, 'crm.basic', true);
+    await current.customers.setLegalHold(current.token, current.organizationId, params.data.customerId, body.data.active, body.data.reason);
+    await audit?.record(current.token, { organizationId: current.organizationId, action: body.data.active ? 'customer.legal_hold_create' : 'customer.legal_hold_release', targetType: 'customer', targetId: params.data.customerId, requestId: request.id, ip: request.ip, metadata: {} });
+    return { active: body.data.active };
   });
   /** 서버 검색·페이지. 응답 `{items, total, next_cursor}`. 기존 목록 경로는 그대로 둔다. */
   app.get('/api/v1/organizations/:organizationId/customers/search', async request => {
@@ -165,14 +223,12 @@ export function registerCustomerRoutes(app: FastifyInstance, organizations: Pick
     if (!saved) throw new ApiFailure(404, 'Customer not found');
     return saved;
   });
-  app.delete('/api/v1/organizations/:organizationId/customers/:customerId', async (request, reply) => {
+  app.delete('/api/v1/organizations/:organizationId/customers/:customerId', async request => {
     const current = service(request);
     const params = z.object({ customerId: z.uuid() }).safeParse(request.params);
     if (!params.success) throw new ApiFailure(422, 'Invalid customer ID');
     await current.organizations.requireAccess(current.token, current.organizationId, 'crm.basic', true);
-    // 영구 삭제는 되돌릴 수 없으므로 감사 기록이 먼저 성공해야 진행한다(fail-closed).
-    await audit?.recordRequired(current.token, { organizationId: current.organizationId, action: 'customer.delete', targetType: 'customer', targetId: params.data.customerId, requestId: request.id, ip: request.ip });
-    if (!(await current.customers.remove(current.token, current.organizationId, params.data.customerId))) throw new ApiFailure(404, 'Customer not found');
-    return reply.code(204).send();
+    // Policies and holds are now configurable; deletion stays blocked until linked records, Storage and backups have a verified purge path.
+    throw new ApiFailure(409, 'Customer erasure is disabled until linked records, storage objects and backups have a verified retention and purge workflow');
   });
 }

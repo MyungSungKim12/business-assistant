@@ -35,7 +35,6 @@ function fixture() {
     list: async () => [customer],
     create: async (_token: string, _organizationId: string, input: { name: string }) => ({ ...customer, ...input }),
     update: async (_token: string, _organizationId: string, id: string, patch: { name?: string }) => id === customerId ? { ...customer, ...patch } : null,
-    remove: async (_token: string, _organizationId: string, id: string) => id === customerId,
   };
   return { app: createApp({ organizations: access as never, customers }), accessCalls };
 }
@@ -72,14 +71,13 @@ describe('customer HTTP flow', () => {
     await app.close();
   });
 
-  it('deletes a customer only for managers and reports a missing customer', async () => {
+  it('blocks customer erasure until retention policy is approved and validates IDs', async () => {
     const { app, accessCalls } = fixture();
     const base = `/api/v1/organizations/${organizationId}/customers`;
-    const deleted = await app.inject({ method: 'DELETE', url: `${base}/${customerId}`, headers: { authorization: 'Bearer access' } });
-    expect(deleted.statusCode).toBe(204);
+    const blocked = await app.inject({ method: 'DELETE', url: `${base}/${customerId}`, headers: { authorization: 'Bearer access' } });
+    expect(blocked.statusCode).toBe(409);
+    expect(blocked.json().detail).toMatch(/linked records.*storage objects.*backups/i);
     expect(accessCalls.at(-1)).toBe(true);
-    const missing = await app.inject({ method: 'DELETE', url: `${base}/b9cc39fd-8e8c-4df8-a623-1f23a3a936bd`, headers: { authorization: 'Bearer access' } });
-    expect(missing.statusCode).toBe(404);
     expect((await app.inject({ method: 'DELETE', url: `${base}/not-a-uuid`, headers: { authorization: 'Bearer access' } })).statusCode).toBe(422);
     await app.close();
   });
@@ -97,7 +95,7 @@ function toolsFixture(overrides: Record<string, unknown> = {}, audit?: unknown) 
   const accessCalls: boolean[] = [];
   const access = { requireAccess: async (_token: string, _id: string, _feature: string, write = false) => { accessCalls.push(write); return 'owner'; } };
   const customers = {
-    list: async () => [customer], create: async () => customer, update: async () => customer, remove: async () => true,
+    list: async () => [customer], create: async () => customer, update: async () => customer,
     search: record('search', { items: [customer], total: 120 }),
     listTags: record('listTags', [{ tag: '재방문', count: 3 }]),
     renameTag: record('renameTag', { updated: 2 }),
@@ -264,6 +262,38 @@ describe('customer marketing consent (047)', () => {
     const { app } = fixture();
     const result = await app.inject({ method: 'PATCH', url: `/api/v1/organizations/${organizationId}/customers/${customerId}`, headers, payload: { ...customer, created_at: '2026-10-01T00:00:00Z' } });
     expect(result.statusCode).toBe(422);
+    await app.close();
+  });
+});
+
+describe('customer retention controls (CRM-014)', () => {
+  it('requires organization CRM access, validates explicit periods and never exposes a purge action', async () => {
+    const policy = { organization_id: organizationId, profile_days: null, sensitive_notes_days: null, treatment_photos_days: null, consent_records_days: null, transaction_records_days: null, dispute_records_days: null, audit_events_days: null, version: 1, updated_by: customerId, updated_at: '2026-10-21T00:00:00Z' };
+    const { app, accessCalls } = toolsFixture({ getRetentionPolicy: async () => null, saveRetentionPolicy: async (_t: string, _o: string, value: object) => ({ ...policy, ...value }) });
+    const result = await app.inject({ url: `${apiBase}/customer-retention-policy`, headers: auth });
+    expect(result.statusCode).toBe(200);
+    expect(result.json()).toMatchObject({ policy: null, purge_enabled: false });
+    const payload = { expected_version: 0, profile_days: null, sensitive_notes_days: null, treatment_photos_days: null, consent_records_days: null, transaction_records_days: null, dispute_records_days: null, audit_events_days: null };
+    const saved = await app.inject({ method: 'PUT', url: `${apiBase}/customer-retention-policy`, headers: auth, payload });
+    expect(saved.statusCode).toBe(200);
+    expect(saved.json().profile_days).toBeNull();
+    expect(accessCalls).toEqual([false, true]);
+    expect((await app.inject({ method: 'PUT', url: `${apiBase}/customer-retention-policy`, headers: auth, payload: { ...payload, profile_days: 0 } })).statusCode).toBe(422);
+    await app.close();
+  });
+
+  it('routes relationship end and legal hold through manager-checked gateways with reason required', async () => {
+    const { app, calls, accessCalls } = toolsFixture({
+      setRelationshipEnd: async (_t: string, _o: string, id: string, endedAt: string | null, reason: string) => { calls.push({ name: 'end', args: [id, endedAt, reason] }); return endedAt; },
+      setLegalHold: async (_t: string, _o: string, id: string, active: boolean, reason: string) => { calls.push({ name: 'hold', args: [id, active, reason] }); return operationId; },
+    });
+    const ended = await app.inject({ method: 'PUT', url: `${apiBase}/customers/${customerId}/relationship-end`, headers: auth, payload: { ended_at: '2026-10-01T00:00:00Z', reason: '운영 종료' } });
+    expect(ended.statusCode).toBe(200);
+    const held = await app.inject({ method: 'PUT', url: `${apiBase}/customers/${customerId}/legal-hold`, headers: auth, payload: { active: true, reason: '분쟁 중' } });
+    expect(held.statusCode).toBe(200);
+    expect(calls.map(call => call.name)).toEqual(['end', 'hold']);
+    expect(accessCalls).toEqual([true, true]);
+    expect((await app.inject({ method: 'PUT', url: `${apiBase}/customers/${customerId}/legal-hold`, headers: auth, payload: { active: false, reason: ' ' } })).statusCode).toBe(422);
     await app.close();
   });
 });

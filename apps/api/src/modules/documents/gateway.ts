@@ -36,9 +36,12 @@ const consentRowSchema = z.object({
 export const consentEventSchema = consentRowSchema.transform(({ proof, ...event }) => ({ ...event, evidence: storedEvidenceOf(proof) }));
 const fileRowSchema = z.object({
   id: z.uuid(), organization_id: z.uuid(), uploaded_by: z.uuid(), storage_path: z.string(), original_name: z.string(), content_type: z.string(),
-  size_bytes: z.number().int(), is_archived: z.boolean(), created_at: z.string(), updated_at: z.string(), folder_id:z.uuid().nullable().default(null), tags:z.array(z.string()).max(10).default([]),
+  size_bytes: z.number().int(), version_number: z.number().int().positive().default(1), is_archived: z.boolean(), created_at: z.string(), updated_at: z.string(), folder_id:z.uuid().nullable().default(null), tags:z.array(z.string()).max(10).default([]),
 });
 export const fileSchema = fileRowSchema.omit({ storage_path: true });
+export const fileVersionSchema = z.object({ id:z.uuid(),organization_id:z.uuid(),file_id:z.uuid(),version_number:z.number().int().positive(),original_name:z.string(),content_type:z.string(),size_bytes:z.number().int(),uploaded_by:z.uuid(),created_at:z.string() });
+export const fileStorageUsageSchema=z.object({organization_id:z.uuid(),used_bytes:z.number().int().nonnegative(),reserved_bytes:z.number().int().nonnegative(),organization_quota_bytes:z.number().int().nonnegative(),plan_quota_bytes:z.number().int().nonnegative().nullable(),quota_bytes:z.number().int().nonnegative(),available_bytes:z.number().int().nonnegative()});
+const storedFileVersionSchema = fileVersionSchema.extend({ storage_path:z.string() });
 const folderSchema=z.object({id:z.uuid(),organization_id:z.uuid(),name:z.string(),created_by:z.uuid(),created_at:z.string()});
 
 export type DocumentTemplate = z.infer<typeof templateSchema>;
@@ -49,6 +52,7 @@ export type IssuedTreatmentDocument = z.infer<typeof issuedSchema>;
 export type ConsentEvent = z.infer<typeof consentEventSchema>;
 export type FileAsset = z.infer<typeof fileSchema>;
 export type SignedFile = { file: FileAsset; signed_url: string; expires_in: number };
+export type SignedUploadFile = SignedFile & { reservation_id:string };
 
 export type TemplateMutationInput = { operation_id: string; expected_revision: number; action: 'create' | 'save' | 'publish' | 'revise' | 'retire'; values: { name: string; description: string; content: string } | null };
 export type DocumentCreateInput = { title: string; content: string; template_id: string | null; status: 'draft' | 'final' | 'archived' };
@@ -74,11 +78,19 @@ export type DocumentGateway = {
   recordConsentEvent(token: string, scope: TreatmentScope, documentId: string, input: ConsentInput): Promise<ConsentEvent>;
   verifyConsentEvent(token: string, scope: TreatmentScope, documentId: string, eventId: string): Promise<EvidenceVerification>;
   listFiles(token: string, organizationId: string, includeArchived: boolean): Promise<FileAsset[]>;
+  fileStorageUsage(token:string,organizationId:string):Promise<z.infer<typeof fileStorageUsageSchema>>;
+  setFileStorageQuota(token:string,organizationId:string,quotaBytes:number):Promise<z.infer<typeof fileStorageUsageSchema>>;
   listFileFolders(token:string,organizationId:string):Promise<z.infer<typeof folderSchema>[]>;
   createFileFolder(token:string,organizationId:string,name:string):Promise<z.infer<typeof folderSchema>>;
   deleteFileFolder(token:string,organizationId:string,folderId:string):Promise<boolean>;
   updateFileMetadata(token:string,organizationId:string,fileId:string,folderId:string|null,tags:string[]):Promise<FileAsset|null>;
-  createFileUpload(token: string, organizationId: string, input: FileUploadInput): Promise<SignedFile>;
+  createFileUpload(token: string, organizationId: string, input: FileUploadInput): Promise<SignedUploadFile>;
+  completeFileUpload(token:string,organizationId:string,fileId:string,operationId:string):Promise<FileAsset>;
+  releaseFileUpload(token:string,organizationId:string,operationId:string):Promise<boolean>;
+  listFileVersions(token: string, organizationId: string, fileId: string): Promise<z.infer<typeof fileVersionSchema>[]>;
+  createFileVersion(token: string, organizationId: string, fileId: string, expectedVersion: number, input: FileUploadInput): Promise<SignedFile & { version_upload_path: string; version_operation_id: string }>;
+  commitFileVersion(token: string, organizationId: string, fileId: string, expectedVersion: number, operationId: string, path: string, input: FileUploadInput): Promise<FileAsset>;
+  createFileVersionDownload(token: string, organizationId: string, fileId: string, version: number): Promise<SignedFile>;
   createFileDownload(token: string, organizationId: string, fileId: string): Promise<SignedFile>;
   archiveFile(token: string, organizationId: string, fileId: string): Promise<FileAsset | null>;
 };
@@ -268,6 +280,14 @@ export function createDocumentGateway(config: ServerConfig, fetcher: typeof fetc
       const rows = await fileLists.selectAll(token, 'file_assets', query, fileRowSchema);
       return inOrganization(rows, organizationId, fileMessages).map(publicFile);
     },
+    async fileStorageUsage(token,organizationId){
+      const payload=await http.request(token,'POST','/rest/v1/rpc/get_file_storage_usage',fileMessages,{body:{p_organization_id:organizationId},mapCodes:true});
+      const parsed=fileStorageUsageSchema.safeParse(payload);if(!parsed.success||parsed.data.organization_id!==organizationId)throw new ApiFailure(503,fileMessages.unavailable);return parsed.data;
+    },
+    async setFileStorageQuota(token,organizationId,quotaBytes){
+      const payload=await http.request(token,'POST','/rest/v1/rpc/set_organization_file_storage_quota',fileMessages,{body:{p_organization_id:organizationId,p_quota_bytes:quotaBytes},mapCodes:true});
+      const parsed=fileStorageUsageSchema.safeParse(payload);if(!parsed.success||parsed.data.organization_id!==organizationId||parsed.data.organization_quota_bytes!==quotaBytes)throw new ApiFailure(503,fileMessages.unavailable);return parsed.data;
+    },
     async listFileFolders(token,organizationId){
       const rows=await fileLists.selectAll(token,'file_folders',{organization_id:eq(organizationId),order:'name.asc,id.asc'},folderSchema);
       return inOrganization(rows,organizationId,fileMessages);
@@ -288,26 +308,75 @@ export function createDocumentGateway(config: ServerConfig, fetcher: typeof fetc
     async createFileUpload(token, organizationId, input) {
       const uploadedBy = await http.userId(token, fileMessages);
       const id = randomUUID();
+      const reservationId=randomUUID();
       const path = `${organizationId}/${id}-${safeFilename(input.original_name)}`;
-      const rows = await http.request(token, 'POST', '/rest/v1/file_assets', fileMessages, {
-        query: { select: '*' }, representation: true, badRequestIsInvalid: true,
-        body: { id, storage_path: path, original_name: input.original_name, content_type: input.content_type, size_bytes: input.size_bytes, organization_id: organizationId, uploaded_by: uploadedBy },
-      });
-      const row = exactlyOne(inOrganization(parseRows(rows, fileRowSchema, fileMessages), organizationId, fileMessages).slice(0, 1), fileMessages);
+      await http.request(token,'POST','/rest/v1/rpc/reserve_file_storage_upload',fileMessages,{body:{p_organization_id:organizationId,p_operation_id:reservationId,p_storage_path:path,p_size_bytes:input.size_bytes},mapCodes:true,badRequestIsInvalid:true});
       try {
+        const rows = await http.request(token, 'POST', '/rest/v1/file_assets', fileMessages, {
+          query: { select: '*' }, representation: true, badRequestIsInvalid: true,
+          body: { id, storage_path: path, original_name: input.original_name, content_type: input.content_type, size_bytes: input.size_bytes, organization_id: organizationId, uploaded_by: uploadedBy },
+        });
+        const row = exactlyOne(inOrganization(parseRows(rows, fileRowSchema, fileMessages), organizationId, fileMessages).slice(0, 1), fileMessages);
         const url = await http.signedUrl(token, `object/upload/sign/${config.APP_FILE_BUCKET}/${path.split('/').map(encodeURIComponent).join('/')}`, {}, fileMessages);
-        return { file: publicFile(row), signed_url: url, expires_in: UPLOAD_EXPIRES_IN };
+        return { file: publicFile(row), signed_url: url, expires_in: UPLOAD_EXPIRES_IN, reservation_id:reservationId };
       } catch (error) {
         // 업로드 URL을 못 받았으면 방금 만든 메타데이터 행을 보관 처리해 고아 행이 목록에 남지 않게 한다.
         await http.request(token, 'PATCH', '/rest/v1/file_assets', fileMessages, { query: { id: eq(id), organization_id: eq(organizationId) }, body: { is_archived: true } }).catch(() => undefined);
+        await http.request(token,'POST','/rest/v1/rpc/release_file_storage_upload',fileMessages,{body:{p_organization_id:organizationId,p_operation_id:reservationId},mapCodes:true}).catch(()=>undefined);
         throw error;
       }
+    },
+    async completeFileUpload(token,organizationId,fileId,operationId){
+      const payload=await http.request(token,'POST','/rest/v1/rpc/complete_file_upload',fileMessages,{body:{p_organization_id:organizationId,p_file_id:fileId,p_operation_id:operationId},mapCodes:true});
+      const parsed=fileRowSchema.safeParse(payload);if(!parsed.success||parsed.data.organization_id!==organizationId||parsed.data.id!==fileId)throw new ApiFailure(503,fileMessages.unavailable);return publicFile(parsed.data);
+    },
+    async releaseFileUpload(token,organizationId,operationId){
+      const payload=await http.request(token,'POST','/rest/v1/rpc/release_file_storage_upload',fileMessages,{body:{p_organization_id:organizationId,p_operation_id:operationId},mapCodes:true});
+      if(typeof payload!=='object'||payload===null||typeof (payload as {released?:unknown}).released!=='boolean')throw new ApiFailure(503,fileMessages.unavailable);return(payload as {released:boolean}).released;
     },
     async createFileDownload(token, organizationId, fileId) {
       const row = await getFile(token, organizationId, fileId);
       if (!row || row.is_archived) throw new ApiFailure(404, 'File not found');
       const url = await http.signedUrl(token, `object/sign/${config.APP_FILE_BUCKET}/${row.storage_path.split('/').map(encodeURIComponent).join('/')}`, { expiresIn: DOWNLOAD_EXPIRES_IN }, fileMessages);
       return { file: publicFile(row), signed_url: url, expires_in: DOWNLOAD_EXPIRES_IN };
+    },
+    async listFileVersions(token, organizationId, fileId) {
+      const file = await getFile(token, organizationId, fileId);
+      if (!file) throw new ApiFailure(404, 'File not found');
+      const rows = await fileLists.selectAll(token, 'file_asset_versions', { organization_id:eq(organizationId), file_id:eq(fileId), order:'version_number.desc,id.asc' }, fileVersionSchema);
+      if (rows.some(row => row.organization_id !== organizationId || row.file_id !== fileId)) throw new ApiFailure(503, fileMessages.unavailable);
+      return rows;
+    },
+    async createFileVersion(token, organizationId, fileId, expectedVersion, input) {
+      const current = await getFile(token, organizationId, fileId);
+      if (!current || current.is_archived) throw new ApiFailure(404, 'File not found');
+      if (current.version_number !== expectedVersion) throw new ApiFailure(409, 'File version changed');
+      const operationId = randomUUID();
+      const path = `${organizationId}/${operationId}-${safeFilename(input.original_name)}`;
+      await http.request(token,'POST','/rest/v1/rpc/reserve_file_storage_upload',fileMessages,{body:{p_organization_id:organizationId,p_operation_id:operationId,p_storage_path:path,p_size_bytes:input.size_bytes},mapCodes:true,badRequestIsInvalid:true});
+      try{
+        const url = await http.signedUrl(token, `object/upload/sign/${config.APP_FILE_BUCKET}/${path.split('/').map(encodeURIComponent).join('/')}`, {}, fileMessages);
+        return { file:publicFile(current), signed_url:url, expires_in:UPLOAD_EXPIRES_IN, version_upload_path:path, version_operation_id:operationId };
+      }catch(error){await http.request(token,'POST','/rest/v1/rpc/release_file_storage_upload',fileMessages,{body:{p_organization_id:organizationId,p_operation_id:operationId},mapCodes:true}).catch(()=>undefined);throw error;}
+    },
+    async commitFileVersion(token, organizationId, fileId, expectedVersion, operationId, path, input) {
+      if (!path.startsWith(`${organizationId}/${operationId}-`) || !/^([0-9a-f-]{36})-[A-Za-z0-9._-]+$/.test(path.slice(organizationId.length + 1))) throw new ApiFailure(422, 'Invalid file version path');
+      // A signed download URL can only be created for a completed Storage object. This prevents publishing a version before upload succeeds.
+      await http.signedUrl(token, `object/sign/${config.APP_FILE_BUCKET}/${path.split('/').map(encodeURIComponent).join('/')}`, { expiresIn:60 }, fileMessages);
+      const payload = await http.request(token, 'POST', '/rest/v1/rpc/create_file_asset_version', fileMessages, { body:{p_organization_id:organizationId,p_file_id:fileId,p_expected_version:expectedVersion,p_operation_id:operationId,p_storage_path:path,p_original_name:input.original_name,p_content_type:input.content_type,p_size_bytes:input.size_bytes}, mapCodes:true, badRequestIsInvalid:true });
+      const parsed = fileRowSchema.safeParse(payload);
+      if (!parsed.success || parsed.data.organization_id !== organizationId || parsed.data.id !== fileId || parsed.data.version_number !== expectedVersion + 1) throw new ApiFailure(503, fileMessages.unavailable);
+      return publicFile(parsed.data);
+    },
+    async createFileVersionDownload(token, organizationId, fileId, version) {
+      const parent = await getFile(token, organizationId, fileId);
+      if (!parent || parent.is_archived) throw new ApiFailure(404, 'File not found');
+      const rows = await fileLists.select(token, 'file_asset_versions', { organization_id:eq(organizationId), file_id:eq(fileId), version_number:eq(String(version)), limit:'2' }, storedFileVersionSchema);
+      if (rows.some(row => row.organization_id !== organizationId || row.file_id !== fileId)) throw new ApiFailure(503, fileMessages.unavailable);
+      const row = rows[0];
+      if (!row || rows.length !== 1) throw new ApiFailure(404, 'File version not found');
+      const url = await http.signedUrl(token, `object/sign/${config.APP_FILE_BUCKET}/${row.storage_path.split('/').map(encodeURIComponent).join('/')}`, { expiresIn:DOWNLOAD_EXPIRES_IN }, fileMessages);
+      return { file:{id:row.file_id,organization_id:row.organization_id,uploaded_by:row.uploaded_by,original_name:row.original_name,content_type:row.content_type,size_bytes:row.size_bytes,version_number:row.version_number,is_archived:false,created_at:row.created_at,updated_at:row.created_at,folder_id:null,tags:[]}, signed_url:url, expires_in:DOWNLOAD_EXPIRES_IN };
     },
     async archiveFile(token, organizationId, fileId) {
       const rows = await http.request(token, 'PATCH', '/rest/v1/file_assets', fileMessages, {

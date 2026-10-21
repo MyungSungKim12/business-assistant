@@ -171,43 +171,24 @@ describe('성공한 민감 작업 뒤 감사 기록 훅', () => {
   });
 });
 
-describe('고객 영구 삭제 감사(fail-closed)', () => {
-  const customers = () => ({ remove: vi.fn(async () => true) });
-
-  it('감사 기록이 성공한 뒤에만 삭제하고 기록 순서가 삭제보다 앞선다', async () => {
-    const order: string[] = [];
-    const store = customers();
-    store.remove.mockImplementation(async () => { order.push('remove'); return true; });
-    const recorder: AuditRecorder = { record: async () => {}, recordRequired: async (_token, event) => { order.push(`audit:${event.action}:${event.targetId}`); } };
-    app = createApp({ organizations: fakeOrganizations('owner', ['crm.basic']) as never, customers: store as never, audit: recorder });
+describe('고객 영구 삭제 정책 차단', () => {
+  it('D-10 보관 정책 결정 전에는 관리자 요청도 영구 삭제하지 않는다', async () => {
+    const remove = vi.fn(async () => true);
+    const recorder: AuditRecorder = { record: async () => {}, recordRequired: async () => undefined };
+    app = createApp({ organizations: fakeOrganizations('owner', ['crm.basic']) as never, customers: { remove } as never, audit: recorder });
     const response = await app.inject({ method: 'DELETE', url: `${base}/customers/${CUSTOMER}`, headers });
-    expect(response.statusCode).toBe(204);
-    expect(order).toEqual([`audit:customer.delete:${CUSTOMER}`, 'remove']);
+    expect(response.statusCode).toBe(409);
+    expect(response.json().detail).toMatch(/retention.*policy/i);
+    expect(remove).not.toHaveBeenCalled();
   });
 
-  it('감사 기록에 실패하면 503 이고 삭제하지 않는다', async () => {
-    const store = customers();
-    const recorder: AuditRecorder = { record: async () => {}, recordRequired: async () => { throw new ApiFailure(503, 'Audit log unavailable'); } };
-    app = createApp({ organizations: fakeOrganizations('owner', ['crm.basic']) as never, customers: store as never, audit: recorder });
-    const response = await app.inject({ method: 'DELETE', url: `${base}/customers/${CUSTOMER}`, headers });
-    expect(response.statusCode).toBe(503);
-    expect(response.json().detail).toBe('Audit log unavailable');
-    expect(store.remove).not.toHaveBeenCalled();
-  });
-
-  it('권한이 없으면 감사 기록도 삭제도 하지 않는다', async () => {
-    const store = customers();
+  it('권한이 없으면 정책 응답이나 감사 기록 없이 거부한다', async () => {
+    const remove = vi.fn(async () => true);
     const recorder = fakeRecorder();
-    app = createApp({ organizations: fakeOrganizations('member', ['crm.basic']) as never, customers: store as never, audit: recorder.recorder });
+    app = createApp({ organizations: fakeOrganizations('member', ['crm.basic']) as never, customers: { remove } as never, audit: recorder.recorder });
     expect((await app.inject({ method: 'DELETE', url: `${base}/customers/${CUSTOMER}`, headers })).statusCode).toBe(403);
     expect(recorder.events).toEqual([]);
-    expect(store.remove).not.toHaveBeenCalled();
-  });
-
-  it('감사 기록기가 없는 구성(기존 단위 테스트)은 이전과 같이 동작한다', async () => {
-    const store = customers();
-    app = createApp({ organizations: fakeOrganizations('owner', ['crm.basic']) as never, customers: store as never });
-    expect((await app.inject({ method: 'DELETE', url: `${base}/customers/${CUSTOMER}`, headers })).statusCode).toBe(204);
+    expect(remove).not.toHaveBeenCalled();
   });
 });
 

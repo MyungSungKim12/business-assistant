@@ -5,7 +5,7 @@
  *   P0001·23505 → 409(충돌·낙관적 잠금·멱등 키 불일치), P0002 → 404, 42501 → 403, 22023·23514·22P02 → 422
  * 응답 본문은 createRest가 읽고 클라이언트에 그대로 노출하지 않는다.
  */
-const codeStatus: Record<string, number> = { P0001: 409, '23505': 409, P0002: 404, '42501': 403, '22023': 422, '23514': 422, '22P02': 422 };
+const codeStatus: Record<string, number> = { P0001: 409, '23505': 409, '40001': 409, P0002: 404, '42501': 403, '22023': 422, '23514': 422, '22P02': 422 };
 
 export function withPgErrorMap(fetcher: typeof fetch = fetch): typeof fetch {
   return (async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {

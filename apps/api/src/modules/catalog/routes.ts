@@ -16,12 +16,14 @@ const operationId = z.uuid();
 const supplierInput=z.object({name:text(160),contact_name:z.string().max(120).default(''),phone:z.string().max(40).default(''),email:z.string().max(254).default(''),note:z.string().max(2000).default(''),is_active:z.boolean().default(true)}).strict();
 const purchaseCreate=z.object({supplier_id:z.uuid(),operation_id:operationId,note:z.string().max(2000).default(''),lines:z.array(z.object({product_id:z.uuid(),quantity_ordered:z.number().int().min(1).max(999999),unit_cost:z.string().regex(/^(0|[1-9][0-9]{0,11})$/),note:z.string().max(500).default('')}).strict()).min(1).max(100)}).strict();
 const purchaseStatus=z.object({status:z.enum(['ordered','canceled']),expected_version:version}).strict();
-const purchaseReceipt=z.object({quantity:z.number().int().min(1).max(999999),operation_id:operationId}).strict();
+const purchaseReceipt=z.object({quantity:z.number().int().min(1).max(999999),operation_id:operationId,expires_on:z.iso.date().nullable().default(null),lot_code:z.string().max(120).default('')}).strict();
 
 const productShape = {
   operation_id: operationId,
   sku: text(80), name: text(200), kind: z.enum(['product', 'membership']),
   unit_name: text(30).default('개'),
+  purchase_unit_name: text(30).optional(),
+  units_per_purchase_unit: z.number().int().min(1).max(1_000_000).default(1),
   sale_price: positiveMoney,
   benefit_money: nonnegativeMoney.default('0'),
   benefit_count: z.number().int().min(0).max(999_999).default(0),
@@ -37,8 +39,10 @@ function benefitsMatchKind(value: ProductInput, ctx: z.RefinementCtx) {
 }
 const createProduct = z.object(productShape).strict().superRefine(benefitsMatchKind);
 const updateProduct = z.object({ ...productShape, expected_version: version }).strict().superRefine(benefitsMatchKind);
+const productMetadata=z.object({category:text(80),barcode:z.string().max(80).transform(value=>value.trim()||null).nullable().default(null),expected_version:version,operation_id:operationId}).strict();
+const productImage=z.object({image_file_id:z.uuid().nullable(),expected_version:version,operation_id:operationId}).strict();
 
-const receiveStock = z.object({ operation_id: operationId, quantity: z.number().int().min(1).max(999_999), reason: text(1000) }).strict();
+const receiveStock = z.object({ operation_id: operationId, quantity: z.number().int().min(1).max(999_999), reason: text(1000), expires_on:z.iso.date().nullable().default(null), lot_code:z.string().max(120).default(''), unit_cost:z.string().regex(/^(0|[1-9][0-9]{0,11})$/).nullable().default(null) }).strict();
 const stockAdjustment = z.object({
   operation_id: operationId, kind: z.enum(['supplier_return', 'disposal', 'stocktake']),
   quantity: z.number().int().min(0).max(1_000_000_000), reason: text(1000), expected_version: version,
@@ -64,6 +68,8 @@ const manageWallet = z.object({
 }).strict().superRefine((value, ctx) => {
   if ((value.action === 'extend') !== (value.extend_days !== null)) ctx.addIssue({ code: 'custom', message: 'Extension days are required only for extension' });
 });
+const transferWallet = z.object({ operation_id: operationId, to_customer_id: z.uuid(), expected_owner_version: version, reason: text(1000) }).strict();
+const walletRefund = z.object({operation_id:operationId,cash_refund_amount:positiveMoney,remove_money_amount:nonnegativeMoney,remove_count_amount:z.number().int().min(0).max(1000000),expected_balance_version:version,reason:text(1000),confirmed:z.literal(true)}).strict().refine(value=>Number(value.remove_money_amount)>0||value.remove_count_amount>0,{message:'At least one benefit must be removed'});
 
 const ids = (shape: Record<string, z.ZodType>) => z.object({ organizationId: z.uuid(), ...shape });
 
@@ -90,7 +96,8 @@ export function registerCatalogRoutes(app: FastifyInstance, organizations: OrgAc
     await organizations!.requireAccess(token, organizationId, 'finance.basic', write);
   }
   const productValues = (input: z.infer<typeof createProduct>) => ({
-    sku: input.sku, name: input.name, kind: input.kind, unit_name: input.unit_name, sale_price: input.sale_price,
+    sku: input.sku, name: input.name, kind: input.kind, unit_name: input.unit_name, purchase_unit_name: input.purchase_unit_name ?? input.unit_name,
+    units_per_purchase_unit: input.units_per_purchase_unit, sale_price: input.sale_price,
     benefit_money: input.benefit_money, benefit_count: input.benefit_count, valid_days: input.valid_days, is_active: input.is_active,
   });
 
@@ -117,11 +124,31 @@ export function registerCatalogRoutes(app: FastifyInstance, organizations: OrgAc
     await authorize(c.token, c.params.organizationId, false);
     return c.gateway.listStockLedger(c.token, c.params.organizationId, c.params.productId);
   });
+  app.get(`${base}/catalog-products/:productId/lots`, async (request) => {
+    const c = context(request, { productId: z.uuid() });
+    await authorize(c.token, c.params.organizationId, false);
+    return c.gateway.listInventoryLots(c.token, c.params.organizationId, c.params.productId);
+  });
+  app.get(`${base}/catalog-inventory-lot-alerts`,async request=>{
+    const c=context(request),query=z.object({within_days:z.coerce.number().int().min(0).max(365).default(30),limit:z.coerce.number().int().min(1).max(200).default(200),offset:z.coerce.number().int().min(0).max(5000).default(0)}).safeParse(request.query);
+    if(!query.success)throw new ApiFailure(422,'Invalid inventory lot alert range');
+    await authorize(c.token,c.params.organizationId,false);
+    return c.gateway.listInventoryLotAlerts(c.token,c.params.organizationId,query.data.within_days,query.data.limit,query.data.offset);
+  });
   app.put(`${base}/catalog-products/:productId`, async (request) => {
     const c = context(request, { productId: z.uuid() });
     const input = body(updateProduct, request);
     await authorize(c.token, c.params.organizationId, true);
     return c.gateway.saveProduct(c.token, c.params.organizationId, c.params.productId, input.expected_version, input.operation_id, productValues(input));
+  });
+  app.put(`${base}/catalog-products/:productId/metadata`,async request=>{
+    const c=context(request,{productId:z.uuid()}),input=body(productMetadata,request);
+    await authorize(c.token,c.params.organizationId,true);
+    return c.gateway.setProductMetadata(c.token,c.params.organizationId,c.params.productId,input);
+  });
+  app.put(`${base}/catalog-products/:productId/image`,async request=>{
+    const c=context(request,{productId:z.uuid()}),input=body(productImage,request);await authorize(c.token,c.params.organizationId,true);
+    return c.gateway.setProductImage(c.token,c.params.organizationId,c.params.productId,input);
   });
   app.put(`${base}/catalog-products/:productId/low-stock`, async (request) => {
     const c = context(request, { productId: z.uuid() });
@@ -133,7 +160,7 @@ export function registerCatalogRoutes(app: FastifyInstance, organizations: OrgAc
     const c = context(request, { productId: z.uuid() });
     const input = body(receiveStock, request);
     await authorize(c.token, c.params.organizationId, true);
-    return c.gateway.receiveStock(c.token, c.params.organizationId, c.params.productId, input.quantity, input.reason, input.operation_id);
+    return c.gateway.receiveStock(c.token, c.params.organizationId, c.params.productId, input.quantity, input.reason, input.operation_id, input.expires_on, input.lot_code.trim(), input.unit_cost);
   });
   app.post(`${base}/catalog-products/:productId/stock-adjustments`, async (request) => {
     const c = context(request, { productId: z.uuid() });
@@ -163,11 +190,25 @@ export function registerCatalogRoutes(app: FastifyInstance, organizations: OrgAc
     await authorize(c.token, c.params.organizationId, false);
     return c.gateway.listWalletHistory(c.token, c.params.organizationId, c.params.customerId, c.params.walletId);
   });
+  app.get(`${base}/customers/:customerId/wallets/:walletId/refund-preview`,async request=>{
+    const c=context(request,{customerId:z.uuid(),walletId:z.uuid()});await authorize(c.token,c.params.organizationId,true);
+    return c.gateway.previewWalletRefund(c.token,c.params.organizationId,c.params.customerId,c.params.walletId);
+  });
+  app.post(`${base}/customers/:customerId/wallets/:walletId/refunds`,async request=>{
+    const c=context(request,{customerId:z.uuid(),walletId:z.uuid()}),input=body(walletRefund,request);await authorize(c.token,c.params.organizationId,true);
+    return c.gateway.refundWallet(c.token,c.params.organizationId,c.params.customerId,c.params.walletId,input.cash_refund_amount,input.remove_money_amount,input.remove_count_amount,input.reason,input.expected_balance_version,input.operation_id,input.confirmed);
+  });
   app.post(`${base}/customers/:customerId/wallets/:walletId/lifecycle`, async (request) => {
     const c = context(request, { customerId: z.uuid(), walletId: z.uuid() });
     const input = body(manageWallet, request);
     await authorize(c.token, c.params.organizationId, true);
     return c.gateway.manageWallet(c.token, c.params.organizationId, c.params.customerId, c.params.walletId, input.action, input.extend_days, input.reason, input.expected_version, input.operation_id);
+  });
+  app.post(`${base}/customers/:customerId/wallets/:walletId/transfer`, async request => {
+    const c = context(request, { customerId: z.uuid(), walletId: z.uuid() });
+    const input = body(transferWallet, request);
+    await authorize(c.token, c.params.organizationId, true);
+    return c.gateway.transferWallet(c.token, c.params.organizationId, c.params.customerId, input.to_customer_id, c.params.walletId, input.expected_owner_version, input.reason, input.operation_id);
   });
   app.post(`${base}/visits/:visitId/wallet-usages`, async (request) => {
     const c = context(request, { visitId: z.uuid() });

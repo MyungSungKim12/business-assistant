@@ -47,6 +47,7 @@ const saleCartLine = z.object({
   returned_discount_amount: money(wonMoney, 'ge0').optional(),
   returned_refund_amount: money(wonMoney, 'ge0').optional(),
   staff_id: z.uuid().nullable(), staff_name_snapshot: z.string(), source_snapshot: z.record(z.string(), z.unknown()),
+  commission_allocations: z.array(z.object({ staff_id: z.uuid(), staff_user_id: z.uuid().nullable(), staff_name: z.string(), share_basis_points: z.number().int().min(1).max(10000) })).default([]),
   status: z.enum(['active', 'removed']), removal_reason: z.string(), created_at: z.string(), removed_at: z.string().nullable(),
 });
 
@@ -127,13 +128,22 @@ const reasonText = z.string().min(1).max(1000).refine((value) => value.trim().le
 export const operationRequest = z.object({ operation_id: operationId }).strict();
 export const versionedRequest = operationRequest.extend({ expected_version: expectedVersion }).strict();
 export const addDraftRequest = versionedRequest.extend({ draft_id: uuid }).strict();
+const commissionAllocationRequest = z.object({ staff_id: uuid, share_basis_points: z.number().int().min(1).max(10000) }).strict();
 export const updateLineRequest = z.object({
   operation_id: operationId, expected_version: expectedVersion,
   quantity: z.number().int().min(1).max(999).optional(),
   unit_price: moneyText.optional(),
   staff_id: uuid.nullable().optional(),
   staff_name: z.string().max(200).optional(),
-}).strict().refine((value) => ['quantity', 'unit_price', 'staff_id', 'staff_name'].some((key) => key in value));
+  commission_allocations: z.array(commissionAllocationRequest).max(10).optional(),
+}).strict().superRefine((value, ctx) => {
+  if (!['quantity', 'unit_price', 'staff_id', 'staff_name', 'commission_allocations'].some((key) => key in value)) ctx.addIssue({ code: 'custom', message: 'At least one line value is required' });
+  if (value.commission_allocations) {
+    const ids = value.commission_allocations.map((row) => row.staff_id);
+    if (new Set(ids).size !== ids.length) ctx.addIssue({ code: 'custom', message: 'Duplicate commission staff' });
+    if (value.commission_allocations.length > 0 && value.commission_allocations.reduce((sum, row) => sum + row.share_basis_points, 0) !== 10000) ctx.addIssue({ code: 'custom', message: 'Commission shares must total 100 percent' });
+  }
+});
 export const removeLineRequest = versionedRequest.extend({ reason: reasonText }).strict();
 export const reviewRequest = versionedRequest.extend({ ready: z.boolean() }).strict();
 export const discountRequest = versionedRequest.extend({

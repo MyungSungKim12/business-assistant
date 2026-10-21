@@ -70,7 +70,8 @@ export function createOrganizationGateway(config: ServerConfig, fetcher: typeof 
   async function requireMembership(token:string, id:string) {
     const user = await identify(token);
     const exists = parse(z.boolean(),await request(token,'/rest/v1/rpc/organization_exists',{}, {target_organization_id:id}));
-    if (!exists) throw new ApiFailure(404,'Organization not found');
+    // Keep missing and non-member organizations indistinguishable to callers.
+    if (!exists) throw new ApiFailure(403,'Organization membership required');
     const rows = parse(z.array(membership),await request(token,'/rest/v1/memberships',{select:'role',organization_id:'eq.'+id,user_id:'eq.'+user}));
     if (!rows.length) throw new ApiFailure(403,'Organization membership required');
     return rows[0].role;

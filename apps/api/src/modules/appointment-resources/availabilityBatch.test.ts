@@ -1,6 +1,6 @@
 import { expect,it } from 'vitest';
 import { createAppointmentResourceGateway } from './gateway.js';
-import { loadAvailability } from './availabilityRoutes.js';
+import { loadAvailability,loadAvailabilitySearch } from './availabilityRoutes.js';
 import { ORG,OTHER_ORG,testConfig } from '../catalog/testkit.js';
 const id=(n:number)=>`11111111-1111-4111-8111-${String(n).padStart(12,'0')}`,service=id(9999),date='2026-12-14';
 function fixture(count:number,options:{foreign?:boolean;failed?:boolean;wrongStaff?:boolean;missingCount?:boolean;cap?:number;timeOff?:unknown[];zone?:string;appointments?:unknown[]}={}){
@@ -31,6 +31,15 @@ it('100명도 50명씩 묶고 선택한 담당자만 조회할 수 있다',async
  calls.length=0;
  await loadAvailability(gateway,'token',ORG,{service_id:service,date,staff_id:id(20)});
  expect(calls.filter(url=>url.pathname.endsWith('/appointment_staff_working_hours'))).toHaveLength(1);
+});
+it('추천 탐색은 여러 날의 직원·근무·예약·자원 근거를 한 번에 조회하고 가장 이른 슬롯을 순위화한다',async()=>{
+ const {gateway,calls}=fixture(2);
+ const result=await loadAvailabilitySearch(gateway,'token',ORG,{service_id:service,from_date:date,days:3},new Date('2026-10-19T01:00:00Z'));
+ expect(result.to_date).toBe('2026-12-16');expect(result.recommendations[0]).toMatchObject({date, start:'09:00',available_staff_count:2,duration_minutes:60,buffer_minutes:0});
+ expect(result.recommendations.every(item=>item.date==='2026-12-14')).toBe(true);
+ for(const tableName of ['appointment_staff','appointment_resources','appointment_service_staff','appointment_staff_working_hours','appointment_staff_time_off']) expect(calls.filter(url=>url.pathname.endsWith(`/${tableName}`)).length).toBeLessThanOrEqual(1);
+ expect(calls.filter(url=>url.pathname.endsWith('/appointment_services')).length).toBeLessThanOrEqual(2);
+ expect(calls.filter(url=>url.pathname.endsWith('/appointments')).length).toBeLessThanOrEqual(2);
 });
 it('묶음 조회의 다른 조직·중간 실패를 제한 없음으로 바꾸지 않는다',async()=>{
  for(const options of [{foreign:true},{failed:true},{wrongStaff:true},{missingCount:true}]){

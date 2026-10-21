@@ -8,8 +8,9 @@ const UNAVAILABLE = 'Appointment service unavailable';
 
 const row = { id: z.uuid(), organization_id: z.uuid() };
 const kind = z.enum(['room', 'equipment']);
+export const branchSchema = z.object({ ...row, code: z.string(), name: z.string(), timezone_name: z.string(), is_primary: z.boolean(), is_active: z.boolean(), version: z.number().int().positive() });
 
-export const staffSchema = z.object({ ...row, name: z.string(), is_active: z.boolean(), profile_version: z.number().int().positive().optional(), schedule_version: z.number().int().min(1).default(1) });
+export const staffSchema = z.object({ ...row, branch_id: z.uuid().optional(), auth_user_id:z.uuid().nullable().optional(), name: z.string(), is_active: z.boolean(), profile_version: z.number().int().positive().optional(), schedule_version: z.number().int().min(1).default(1) });
 export const serviceSchema = z.object({
   ...row, name: z.string(), duration_minutes: z.number().int().min(5).max(480), buffer_minutes: z.number().int().min(0).max(120),
   is_active: z.boolean(), resource_version: z.number().int().min(1).default(1),
@@ -17,7 +18,7 @@ export const serviceSchema = z.object({
   price_krw: z.number().int().min(0).max(1_000_000_000).default(0), category: z.string().max(60).default(''),
   service_version: z.number().int().min(1).default(1),
 });
-export const resourceSchema = z.object({ ...row, name: z.string(), kind, is_active: z.boolean(), version: z.number().int().min(1) });
+export const resourceSchema = z.object({ ...row, branch_id: z.uuid().optional(), name: z.string(), kind, is_active: z.boolean(), version: z.number().int().min(1) });
 const requirementRowSchema = z.object({ ...row, service_id: z.uuid(), kind, quantity: z.number().int().min(1).max(10) });
 const consumableRowSchema = z.object({ organization_id: z.uuid(), service_id: z.uuid(), product_id: z.uuid(), quantity: z.number().int().min(1).max(1_000_000) });
 const serviceStaffRowSchema = z.object({ organization_id: z.uuid(), service_id: z.uuid(), staff_id: z.uuid() });
@@ -31,10 +32,12 @@ export const timeOffSchema = z.object({
   ...row, staff_id: z.uuid(), start_at: z.string(), end_at: z.string(), reason: z.string(),
   status: z.enum(['active', 'canceled']), version: z.number().int().min(1),
 });
+export const timeOffRequestSchema = z.object({ ...row, staff_id: z.uuid(), start_at: z.string(), end_at: z.string(), reason: z.string(), status: z.enum(['pending','approved','rejected','withdrawn']), version: z.number().int().positive(), requested_by: z.uuid(), requested_at: z.string(), reviewed_by: z.uuid().nullable(), reviewed_at: z.string().nullable(), review_note: z.string(), withdrawn_by: z.uuid().nullable(), withdrawn_at: z.string().nullable(), time_off_id: z.uuid().nullable(), approval_operation_id: z.uuid() });
+export const timeOffRequestListSchema = z.object({ current_staff_id: z.uuid().nullable(), requests: z.array(timeOffRequestSchema) });
 export const workingHoursResultSchema = z.object({ staff_id: z.uuid(), schedule_version: z.number().int().min(1), timezone_name: z.string(), hours: z.array(workingHourSchema) });
 /** 자원 선택(resource_ids)이 포함된 예약 행. 기존 appointments 모듈의 스키마에는 resource_ids가 없다. */
 export const appointmentSchema = z.object({
-  ...row, customer_id: z.uuid(), staff_id: z.uuid(), service_id: z.uuid(), service_name_snapshot: z.string(),
+  ...row, branch_id: z.uuid().optional(), customer_id: z.uuid(), staff_id: z.uuid(), service_id: z.uuid(), service_name_snapshot: z.string(),
   duration_minutes: z.number().int(), buffer_minutes: z.number().int(), start_at: z.string(), end_at: z.string(),
   status: z.enum(['reserved', 'confirmed', 'checked_in', 'completed', 'canceled', 'no_show']),
   source: z.enum(['manual', 'phone', 'walk_in', 'online']), cancellation_reason: z.string().nullable(), no_show_reason: z.string().nullable().optional(),
@@ -88,6 +91,26 @@ export function createAppointmentResourceGateway(config: ServerConfig, fetcher: 
   }
 
   return {
+    async listBranches(token: string, organizationId: string) {
+      const result = await rpc(token, 'list_organization_branches', organizationId, {}, z.array(branchSchema));
+      if (result.some(branch => branch.organization_id !== organizationId || !branch.is_active)) throw fail();
+      return result;
+    },
+    async createBranch(token: string, organizationId: string, input: { code: string; name: string; timezone_name: string; operation_id: string }) {
+      const result = await rpc(token, 'create_organization_branch', organizationId, { p_code: input.code, p_name: input.name, p_timezone_name: input.timezone_name, p_operation_id: input.operation_id }, branchSchema);
+      if (result.organization_id !== organizationId || !result.is_active) throw fail();
+      return result;
+    },
+    async assignStaffBranch(token: string, organizationId: string, staffId: string, input: { branch_id: string; expected_version: number }) {
+      const result = await rpc(token, 'assign_appointment_staff_branch', organizationId, { p_staff_id: staffId, p_branch_id: input.branch_id, p_expected_version: input.expected_version }, staffSchema);
+      if (result.id !== staffId || result.branch_id !== input.branch_id) throw fail();
+      return result;
+    },
+    async assignResourceBranch(token: string, organizationId: string, resourceId: string, input: { branch_id: string; expected_version: number; operation_id: string }) {
+      const result = await rpc(token, 'assign_appointment_resource_branch', organizationId, { p_resource_id: resourceId, p_branch_id: input.branch_id, p_expected_version: input.expected_version, p_operation_id: input.operation_id }, resourceSchema);
+      if (result.id !== resourceId || result.branch_id !== input.branch_id) throw fail();
+      return result;
+    },
     listStaff: (token: string, organizationId: string) => listAll(token, 'appointment_staff', organizationId, staffSchema),
     listServices: (token: string, organizationId: string) => listAll(token, 'appointment_services', organizationId, serviceSchema),
     listResources: (token: string, organizationId: string) => listAll(token, 'appointment_resources', organizationId, resourceSchema),
@@ -96,6 +119,11 @@ export function createAppointmentResourceGateway(config: ServerConfig, fetcher: 
     async updateStaffProfile(token:string,organizationId:string,staffId:string,input:{name:string;is_active:boolean;expected_version:number;operation_id:string}) {
       const saved=await single(token,'update_appointment_staff_profile',organizationId,{p_staff_id:staffId,p_name:input.name,p_is_active:input.is_active,p_expected_version:input.expected_version,p_operation_id:input.operation_id},staffSchema);
       if(saved.id!==staffId||saved.profile_version===undefined)throw fail();
+      return saved;
+    },
+    async assignStaffAccount(token:string,organizationId:string,staffId:string,input:{user_id:string|null;expected_version:number;operation_id:string}) {
+      const saved=await single(token,'assign_appointment_staff_account',organizationId,{p_staff_id:staffId,p_user_id:input.user_id,p_expected_version:input.expected_version,p_operation_id:input.operation_id},staffSchema);
+      if(saved.id!==staffId||saved.auth_user_id!==input.user_id)throw fail();
       return saved;
     },
     createService: (token: string, organizationId: string, name: string, durationMinutes: number, bufferMinutes: number) =>
@@ -168,11 +196,12 @@ export function createAppointmentResourceGateway(config: ServerConfig, fetcher: 
     },
 
     /** 담당자 근무시간(주간)과 진행 중인 휴무. */
-    async getStaffSchedules(token:string,organizationId:string,staffIds:string[],date:string) {
+    async getStaffSchedules(token:string,organizationId:string,staffIds:string[],date:string,rangeEnd?:string) {
       if(!z.array(z.uuid()).max(2000).safeParse(staffIds).success||new Set(staffIds).size!==staffIds.length||!z.iso.date().safeParse(date).success)throw fail();
       const schedules=new Map(staffIds.map(id=>[id,{staff_id:id,hours:[] as z.infer<typeof workingHourSchema>[],time_off:[] as AppointmentTimeOff[]}]));
       const seenHours=new Set<string>(),seenOff=new Set<string>();
-      const start=`${date}T00:00:00+09:00`,end=`${addDays(date,2)}T00:00:00+09:00`;
+      if(rangeEnd!==undefined&&(!z.iso.date().safeParse(rangeEnd).success||rangeEnd<date))throw fail();
+      const start=`${date}T00:00:00+09:00`,end=`${addDays(rangeEnd??date,2)}T00:00:00+09:00`;
       for(let offset=0;offset<staffIds.length;offset+=50){
         const batch=staffIds.slice(offset,offset+50),allowed=new Set(batch);
         const filters={organization_id:`eq.${organizationId}`,staff_id:`in.(${batch.join(',')})`,order:'id.asc'};
@@ -220,17 +249,38 @@ export function createAppointmentResourceGateway(config: ServerConfig, fetcher: 
       if (result.id !== timeOffId || result.staff_id !== staffId) throw fail();
       return result;
     },
+    listTimeOffRequests: async (token:string,organizationId:string,staffId:string|null) => {
+      const result=await rpc(token,'list_appointment_staff_time_off_requests',organizationId,{p_staff_id:staffId},timeOffRequestListSchema);
+      if(result.requests.some(item=>item.organization_id!==organizationId||(staffId!==null&&item.staff_id!==staffId)))throw fail();
+      return result;
+    },
+    async requestTimeOff(token:string,organizationId:string,staffId:string,input:{start_at:string;end_at:string;reason:string;operation_id:string}) {
+      const result=await single(token,'create_appointment_staff_time_off_request',organizationId,{p_staff_id:staffId,p_start_at:input.start_at,p_end_at:input.end_at,p_reason:input.reason,p_operation_id:input.operation_id},timeOffRequestSchema);
+      if(result.staff_id!==staffId||result.status!=='pending')throw fail();
+      return result;
+    },
+    async reviewTimeOffRequest(token:string,organizationId:string,requestId:string,input:{action:'approve'|'reject';expected_version:number;operation_id:string;review_note:string}) {
+      const result=await single(token,'review_appointment_staff_time_off_request',organizationId,{p_request_id:requestId,p_action:input.action,p_expected_version:input.expected_version,p_operation_id:input.operation_id,p_review_note:input.review_note},timeOffRequestSchema);
+      if(result.id!==requestId||result.status!==(input.action==='approve'?'approved':'rejected'))throw fail();
+      return result;
+    },
+    async withdrawTimeOffRequest(token:string,organizationId:string,requestId:string,input:{expected_version:number;operation_id:string}) {
+      const result=await single(token,'withdraw_appointment_staff_time_off_request',organizationId,{p_request_id:requestId,p_expected_version:input.expected_version,p_operation_id:input.operation_id},timeOffRequestSchema);
+      if(result.id!==requestId||result.status!=='withdrawn')throw fail();
+      return result;
+    },
 
     /**
      * 자원 선택이 포함된 예약 조회·저장. 기존 appointments 라우트가 쓰도록 통합 단계에서 연결한다(라우트는 여기서 등록하지 않는다).
      * 기간 기본값은 Python과 같이 한국 시간 기준 오늘-7일 ~ 오늘+60일이다.
      */
-    async listAppointments(token: string, organizationId: string, filter: { customerId?: string; fromDate?: string; toDate?: string } = {}) {
+    async listAppointments(token: string, organizationId: string, filter: { customerId?: string; fromDate?: string; toDate?: string; branchId?: string } = {}) {
       const today = kstToday(now());
       const start = `${filter.fromDate ?? addDays(today, -7)}T00:00:00+09:00`;
       const end = `${addDays(filter.toDate ?? addDays(today, 60), 1)}T00:00:00+09:00`;
       const filters: Query = { and: `(start_at.gte.${start},start_at.lt.${end})` };
       if (filter.customerId) filters.customer_id = `eq.${filter.customerId}`;
+      if (filter.branchId) filters.branch_id = `eq.${filter.branchId}`;
       return listAll(token, 'appointments', organizationId, appointmentSchema, filters);
     },
     async saveAppointment(token: string, organizationId: string, appointmentId: string | null, input: AppointmentSaveInput) {

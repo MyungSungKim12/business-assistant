@@ -38,6 +38,17 @@ const duplicateGroup = z.object({ reason: z.enum(['phone', 'email']), key: z.str
 const mergeResult = z.object({
   primary: customer, secondary_id: z.uuid(), moved: z.record(z.string(), z.number()), history_id: z.uuid().optional(),
 });
+export const customerRetentionPolicySchema = z.object({
+  organization_id: z.uuid(), profile_days: z.number().int().nullable(), sensitive_notes_days: z.number().int().nullable(),
+  treatment_photos_days: z.number().int().nullable(), consent_records_days: z.number().int().nullable(),
+  transaction_records_days: z.number().int().nullable(), dispute_records_days: z.number().int().nullable(),
+  audit_events_days: z.number().int().nullable(), version: z.number().int(), updated_by: z.uuid(), updated_at: z.string(),
+});
+export type CustomerRetentionPolicy = z.infer<typeof customerRetentionPolicySchema>;
+const retentionStatusSchema = z.object({
+  relationship_ended_at: z.string().nullable(),
+  active_hold: z.object({ id: z.uuid(), reason: z.string(), created_by: z.uuid(), created_at: z.string() }).nullable(),
+});
 export type CustomerTagCount = z.infer<typeof tagCount>;
 export type DuplicateCustomerGroup = z.infer<typeof duplicateGroup>;
 export type CustomerMergeResult = z.infer<typeof mergeResult>;
@@ -106,6 +117,37 @@ export function createCustomerGateway(config: ServerConfig, fetcher: typeof fetc
   }
 
   return {
+    async getRetentionPolicy(token: string, organizationId: string) {
+      const result = await request(token, 'GET', { select: '*', organization_id: `eq.${organizationId}`, limit: '1' }, undefined);
+      const rows = z.array(customerRetentionPolicySchema).safeParse(result);
+      if (!rows.success) throw new ApiFailure(503, 'Customer retention policy unavailable');
+      return rows.data[0] ?? null;
+    },
+    async saveRetentionPolicy(token: string, organizationId: string, input: Omit<CustomerRetentionPolicy, 'organization_id'|'version'|'updated_by'|'updated_at'>, expectedVersion: number) {
+      return rpc(token, 'save_customer_retention_policy', organizationId, {
+        p_expected_version: expectedVersion, p_profile_days: input.profile_days,
+        p_sensitive_notes_days: input.sensitive_notes_days, p_treatment_photos_days: input.treatment_photos_days,
+        p_consent_records_days: input.consent_records_days, p_transaction_records_days: input.transaction_records_days,
+        p_dispute_records_days: input.dispute_records_days, p_audit_events_days: input.audit_events_days,
+      }, z.array(customerRetentionPolicySchema).nonempty().transform(rows => rows[0]!));
+    },
+    async retentionStatus(token: string, organizationId: string, customerId: string) {
+      const [customerRows, relationRows, holds] = await Promise.all([
+        request(token, 'GET', { select: 'id,organization_id', id: `eq.${customerId}`, organization_id: `eq.${organizationId}`, limit: '1' }),
+        request(token, 'GET', { select: 'ended_at', customer_id: `eq.${customerId}`, organization_id: `eq.${organizationId}`, limit: '1' }),
+        request(token, 'GET', { select: 'id,reason,created_by,created_at', customer_id: `eq.${customerId}`, organization_id: `eq.${organizationId}`, released_at: 'is.null', limit: '1' }),
+      ]);
+      const customerRowsParsed = z.array(z.object({ id: z.uuid(), organization_id: z.uuid() })).safeParse(customerRows);
+      const relationRowsParsed = z.array(z.object({ ended_at: z.string() })).safeParse(relationRows);
+      const holdRowsParsed = z.array(z.object({ id: z.uuid(), reason: z.string(), created_by: z.uuid(), created_at: z.string() })).safeParse(holds);
+      if (!customerRowsParsed.success || !relationRowsParsed.success || !holdRowsParsed.success || customerRowsParsed.data.some(row => row.organization_id !== organizationId)) throw new ApiFailure(503, 'Customer retention status unavailable');
+      if (!customerRowsParsed.data[0]) throw new ApiFailure(404, 'Customer not found');
+      return retentionStatusSchema.parse({ relationship_ended_at: relationRowsParsed.data[0]?.ended_at ?? null, active_hold: holdRowsParsed.data[0] ?? null });
+    },
+    setRelationshipEnd: (token: string, organizationId: string, customerId: string, endedAt: string | null, reason: string) =>
+      rpc(token, 'set_customer_relationship_end', organizationId, { p_customer_id: customerId, p_ended_at: endedAt, p_reason: reason }, z.string().nullable()),
+    setLegalHold: (token: string, organizationId: string, customerId: string, active: boolean, reason: string) =>
+      rpc(token, 'set_customer_legal_hold', organizationId, { p_customer_id: customerId, p_active: active, p_reason: reason }, z.uuid()),
     async visitFacts(token:string,organizationId:string,customerIds:string[]){
       const result=await rpc(token,'get_customer_visit_facts',organizationId,{p_customer_ids:customerIds},z.array(customerVisitFactSchema));
       assertOwnRows(result,organizationId);
@@ -136,11 +178,6 @@ export function createCustomerGateway(config: ServerConfig, fetcher: typeof fetc
       if (!result[0]) throw new ApiFailure(503, 'Customer service unavailable');
       return result[0];
     },
-    /** 고객 행을 영구 삭제한다. 삭제된 행이 없으면 false. 화면은 삭제 대신 보관(status=archived)을 쓴다. */
-    async remove(token: string, organizationId: string, customerId: string) {
-      const result = rows(await request(token, 'DELETE', { id: `eq.${customerId}`, organization_id: `eq.${organizationId}`, select }));
-      return result.length > 0;
-    },
     async update(token: string, organizationId: string, customerId: string, patch: Partial<EditableCustomer>) {
       const result = rows(await request(token, 'PATCH', { id: `eq.${customerId}`, organization_id: `eq.${organizationId}` }, patch));
       return result[0] ?? null;
@@ -167,13 +204,12 @@ export function createCustomerGateway(config: ServerConfig, fetcher: typeof fetc
   };
 }
 
-export type CustomerToolsGateway = Pick<ReturnType<typeof createCustomerGateway>, 'search' | 'listTags' | 'renameTag' | 'mergeTags' | 'deleteTag' | 'duplicateGroups' | 'merge' | 'visitFacts'>;
+export type CustomerToolsGateway = Pick<ReturnType<typeof createCustomerGateway>, 'search' | 'listTags' | 'renameTag' | 'mergeTags' | 'deleteTag' | 'duplicateGroups' | 'merge' | 'visitFacts' | 'getRetentionPolicy' | 'saveRetentionPolicy' | 'retentionStatus' | 'setRelationshipEnd' | 'setLegalHold'>;
 
 type CoreCustomerGateway = {
   list(token: string, organizationId: string): Promise<CustomerInput[]>;
   create(token: string, organizationId: string, input: EditableCustomer): Promise<CustomerInput>;
   update(token: string, organizationId: string, customerId: string, patch: Partial<EditableCustomer>): Promise<CustomerInput | null>;
-  remove(token: string, organizationId: string, customerId: string): Promise<boolean>;
 };
 
 /** 검색·태그·병합 메서드는 선택 항목이다(기존 테스트용 가짜 게이트웨이와 호환). 없으면 해당 라우트는 503을 돌려준다. */

@@ -19,8 +19,17 @@ export function platformAdminIds(config: AdminConfig, environment: Record<string
   return new Set(ids.filter((id) => z.uuid().safeParse(id).success));
 }
 
-export type AdminAuditInput = { actorId: string; organizationId: string; action: string; metadata: Record<string, unknown>; requestId?: string; ip?: string };
+export type AdminAuditInput = { actorId: string; organizationId: string | null; action: string; targetType?: string; targetId?: string | null; metadata: Record<string, unknown>; requestId?: string; ip?: string };
 export type SubscriptionInput = { plan_code: string; status: string; starts_at: string; ends_at: string | null };
+export type PlanStorageQuota = { plan_code: string; plan_name: string; quota_bytes: number | null };
+
+const planStorageQuotaSchema = z.object({ code: z.string().min(1).max(40), name: z.string().min(1).max(100), file_storage_quota_bytes: z.number().int().min(0).max(1099511627776).nullable() });
+
+function parsePlanStorageQuota(value: unknown): PlanStorageQuota {
+  const result = planStorageQuotaSchema.safeParse(value);
+  if (!result.success) throw new ApiFailure(503, UNAVAILABLE);
+  return { plan_code: result.data.code, plan_name: result.data.name, quota_bytes: result.data.file_storage_quota_bytes };
+}
 
 export function createAdminGateway(config: AdminConfig, fetcher: typeof fetch = fetch, environment: Record<string, string | undefined> = process.env) {
   const rest = createRest(config, fetcher, UNAVAILABLE);
@@ -30,6 +39,42 @@ export function createAdminGateway(config: AdminConfig, fetcher: typeof fetch = 
     /** 토큰 소유자의 사용자 ID(공개 키 + 사용자 토큰으로 Auth 서버에 확인). */
     userId: (token: string) => rest.userId(token),
     isPlatformAdmin: (userId: string) => platformAdminIds(config, environment).has(userId.toLowerCase()),
+    async listPlanStorageQuotas(): Promise<PlanStorageQuota[]> {
+      const serviceKey = config.APP_SUPABASE_SERVICE_KEY;
+      if (!serviceKey) throw new ApiFailure(503, UNAVAILABLE);
+      const url = new URL('/rest/v1/plans', config.APP_SUPABASE_URL);
+      url.search = new URLSearchParams({ select: 'code,name,file_storage_quota_bytes', order: 'code.asc' }).toString();
+      try {
+        const response = await fetcher(url, { method: 'GET', headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` }, signal: AbortSignal.timeout(10_000), redirect: 'error' });
+        const payload: unknown = await response.json();
+        if (!response.ok || !Array.isArray(payload)) throw new ApiFailure(503, UNAVAILABLE);
+        return payload.map(parsePlanStorageQuota);
+      } catch (error) {
+        if (error instanceof ApiFailure) throw error;
+        throw new ApiFailure(503, UNAVAILABLE);
+      }
+    },
+    async setPlanStorageQuota(planCode: string, quotaBytes: number | null): Promise<PlanStorageQuota> {
+      const serviceKey = config.APP_SUPABASE_SERVICE_KEY;
+      if (!serviceKey) throw new ApiFailure(503, UNAVAILABLE);
+      const url = new URL('/rest/v1/plans', config.APP_SUPABASE_URL);
+      url.search = new URLSearchParams({ code: `eq.${planCode}`, select: 'code,name,file_storage_quota_bytes' }).toString();
+      try {
+        const response = await fetcher(url, {
+          method: 'PATCH', headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}`, 'Content-Type': 'application/json', Prefer: 'return=representation' },
+          body: JSON.stringify({ file_storage_quota_bytes: quotaBytes }), signal: AbortSignal.timeout(10_000), redirect: 'error',
+        });
+        const payload: unknown = await response.json();
+        if (response.status === 404) throw new ApiFailure(404, 'Plan not found');
+        if (!response.ok || !Array.isArray(payload)) throw new ApiFailure(503, UNAVAILABLE);
+        if (payload.length === 0) throw new ApiFailure(404, 'Plan not found');
+        if (payload.length !== 1) throw new ApiFailure(503, UNAVAILABLE);
+        return parsePlanStorageQuota(payload[0]);
+      } catch (error) {
+        if (error instanceof ApiFailure) throw error;
+        throw new ApiFailure(503, UNAVAILABLE);
+      }
+    },
     /** 서버 전용 서비스 키로 구독을 교체한다. 테넌트 어댑터에서는 쓰지 않는다. */
     async replaceSubscription(organizationId: string, input: SubscriptionInput): Promise<SubscriptionInput> {
       const serviceKey = config.APP_SUPABASE_SERVICE_KEY;
@@ -75,7 +120,7 @@ export function createAdminGateway(config: AdminConfig, fetcher: typeof fetch = 
           method: 'POST',
           headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
           body: JSON.stringify({
-            organization_id: input.organizationId, actor_id: input.actorId, action: input.action, target_type: 'organization', target_id: input.organizationId,
+            organization_id: input.organizationId, actor_id: input.actorId, action: input.action, target_type: input.targetType ?? 'organization', target_id: input.targetId ?? input.organizationId,
             metadata: sanitizeMetadata(input.metadata), request_id: input.requestId ?? null, ip: input.ip ?? null, source: 'service',
           }),
           signal: AbortSignal.timeout(10_000), redirect: 'error',

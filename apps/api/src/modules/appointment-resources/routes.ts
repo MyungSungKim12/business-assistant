@@ -14,6 +14,7 @@ const awareDateTime = z.iso.datetime({ offset: true });
 
 const staffRequest = z.object({ name: name(120) }).strict();
 const staffUpdate = z.object({ name: name(120), is_active: z.boolean(), expected_version: version, operation_id: operationId }).strict();
+const staffAccountLink = z.object({ user_id: z.uuid().nullable(), expected_version: version, operation_id: operationId }).strict();
 const serviceRequest = z.object({
   name: name(160), duration_minutes: z.number().int().min(5).max(480), buffer_minutes: z.number().int().min(0).max(120).default(0),
 }).strict();
@@ -24,6 +25,8 @@ const serviceUpdate = z.object({
 }).strict();
 const resourceRequest = z.object({ name: name(120), kind, operation_id: operationId }).strict();
 const resourceUpdate = z.object({ name: name(120), is_active: z.boolean(), expected_version: version, operation_id: operationId }).strict();
+const branchCreate = z.object({ code: z.string().trim().toUpperCase().regex(/^[A-Z0-9][A-Z0-9-]{1,19}$/), name: name(100), timezone_name: name(100).default('Asia/Seoul'), operation_id: operationId }).strict();
+const branchAssignment = z.object({ branch_id: z.uuid(), expected_version: version, operation_id: operationId.optional() }).strict();
 const requirementsRequest = z.object({
   requirements: z.array(z.object({ kind, quantity: z.number().int().min(1).max(10) }).strict()).max(2),
   expected_version: version, operation_id: operationId,
@@ -47,6 +50,7 @@ const timeOffRequest = z.object({
   start_at: awareDateTime, end_at: awareDateTime, reason: name(1000), operation_id: operationId,
 }).strict().refine((value) => Date.parse(value.end_at) > Date.parse(value.start_at), 'Time off requires an aware increasing period');
 const cancelTimeOff = z.object({ expected_version: version, operation_id: operationId }).strict();
+const reviewTimeOffRequest = z.object({ action: z.enum(['approve','reject']), expected_version: version, operation_id: operationId, review_note: z.string().max(500).default('') }).strict();
 
 /**
  * 예약 공간·장비 자원, 서비스별 필수 자원, 담당자 근무시간·휴무, 담당자·서비스 생성 라우트(Python api/appointments.py 중
@@ -69,6 +73,28 @@ export function registerAppointmentResourceRoutes(app: FastifyInstance, organiza
   }
   const authorize = (token: string, organizationId: string, write: boolean) => organizations!.requireAccess(token, organizationId, FEATURE, write);
 
+  app.get(`${base}/appointment-branches`, async request => {
+    const c = context(request);
+    await authorize(c.token, c.params.organizationId, false);
+    return c.gateway.listBranches(c.token, c.params.organizationId);
+  });
+  app.post(`${base}/appointment-branches`, async (request, reply) => {
+    const c = context(request), input = body(branchCreate, request);
+    await authorize(c.token, c.params.organizationId, true);
+    return reply.code(201).send(await c.gateway.createBranch(c.token, c.params.organizationId, input));
+  });
+  app.put(`${base}/appointment-staff/:staffId/branch`, async request => {
+    const c = context(request, { staffId: z.uuid() }), input = body(branchAssignment, request);
+    await authorize(c.token, c.params.organizationId, true);
+    return c.gateway.assignStaffBranch(c.token, c.params.organizationId, c.params.staffId, input);
+  });
+  app.put(`${base}/appointment-resources/:resourceId/branch`, async request => {
+    const c = context(request, { resourceId: z.uuid() }), input = body(branchAssignment, request);
+    await authorize(c.token, c.params.organizationId, true);
+    if (!input.operation_id) throw new ApiFailure(422, 'Invalid appointment request');
+    return c.gateway.assignResourceBranch(c.token, c.params.organizationId, c.params.resourceId, { ...input, operation_id: input.operation_id });
+  });
+
   app.post(`${base}/appointment-staff`, async (request, reply) => {
     const c = context(request);
     const input = body(staffRequest, request);
@@ -79,6 +105,11 @@ export function registerAppointmentResourceRoutes(app: FastifyInstance, organiza
     const c=context(request,{staffId:z.uuid()}),input=body(staffUpdate,request);
     await authorize(c.token,c.params.organizationId,true);
     return c.gateway.updateStaffProfile(c.token,c.params.organizationId,c.params.staffId,input);
+  });
+  app.put(`${base}/appointment-staff/:staffId/account-link`, async request => {
+    const c=context(request,{staffId:z.uuid()}),input=body(staffAccountLink,request);
+    await authorize(c.token,c.params.organizationId,true);
+    return c.gateway.assignStaffAccount(c.token,c.params.organizationId,c.params.staffId,input);
   });
   app.get(`${base}/appointment-staff/:staffId/availability`, async (request) => {
     const c = context(request, { staffId: z.uuid() });
@@ -102,6 +133,28 @@ export function registerAppointmentResourceRoutes(app: FastifyInstance, organiza
     const input = body(cancelTimeOff, request);
     await authorize(c.token, c.params.organizationId, true);
     return c.gateway.cancelTimeOff(c.token, c.params.organizationId, c.params.staffId, c.params.timeOffId, input);
+  });
+  app.get(`${base}/appointment-time-off-requests`, async request => {
+    const c=context(request);
+    const query=z.object({staff_id:z.uuid().optional()}).strict().safeParse(request.query);
+    if(!query.success)throw new ApiFailure(422,'Invalid appointment request');
+    await authorize(c.token,c.params.organizationId,false);
+    return c.gateway.listTimeOffRequests(c.token,c.params.organizationId,query.data.staff_id??null);
+  });
+  app.post(`${base}/appointment-staff/:staffId/time-off-requests`, async (request,reply) => {
+    const c=context(request,{staffId:z.uuid()}),input=body(timeOffRequest,request);
+    await authorize(c.token,c.params.organizationId,false);
+    return reply.code(201).send(await c.gateway.requestTimeOff(c.token,c.params.organizationId,c.params.staffId,input));
+  });
+  app.post(`${base}/appointment-time-off-requests/:requestId/review`, async request => {
+    const c=context(request,{requestId:z.uuid()}),input=body(reviewTimeOffRequest,request);
+    await authorize(c.token,c.params.organizationId,true);
+    return c.gateway.reviewTimeOffRequest(c.token,c.params.organizationId,c.params.requestId,input);
+  });
+  app.post(`${base}/appointment-time-off-requests/:requestId/withdraw`, async request => {
+    const c=context(request,{requestId:z.uuid()}),input=body(cancelTimeOff,request);
+    await authorize(c.token,c.params.organizationId,false);
+    return c.gateway.withdrawTimeOffRequest(c.token,c.params.organizationId,c.params.requestId,input);
   });
 
   app.post(`${base}/appointment-services`, async (request, reply) => {

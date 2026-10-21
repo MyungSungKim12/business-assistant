@@ -32,3 +32,14 @@ it('사유 없는 이전 노쇼 성공 스냅샷도 API에서 복구할 수 있�
  const app=createApp({appointments:createAppointmentGateway(config,async()=>new Response(JSON.stringify(legacy))),organizations:{requireAccess:async()=> 'member'} as never});
  try{const r=await app.inject({method:'POST',url:url.replace('/status-events','/transitions'),headers,payload:{target_status:'no_show',reason:null,expected_version:1,operation_id:id}});expect(r.statusCode).toBe(200);expect(r.json()).toMatchObject(legacy);}finally{await app.close();}
 });
+it('반복 예약 목록 RPC의 조직 범위와 현재 회차를 검증한다',async()=>{
+ const seriesId='44444444-4444-4444-8444-444444444444';
+ const appointment={id:apt,organization_id:org,customer_id:id,staff_id:id,service_id:id,service_name_snapshot:'시술',duration_minutes:60,buffer_minutes:0,start_at:'2026-12-01T01:00:00Z',end_at:'2026-12-01T02:00:00Z',status:'reserved',source:'manual',cancellation_reason:null,version:1};
+ const row={series:{id:seriesId,organization_id:org,customer_id:id,staff_id:id,service_id:id,frequency:'weekly',interval_count:1,occurrence_count:2,created_at:'2026-10-20T00:00:00Z',result_snapshot:{skipped:[]},actor_id:id},occurrences:[{occurrence_number:1,scheduled_start_at:appointment.start_at,is_exception:false,appointment}],exceptions:[]};
+ const fetcher=vi.fn(async(_input:Parameters<typeof fetch>[0],_init?:RequestInit)=>new Response(JSON.stringify([row]))),gateway=createAppointmentGateway(config,fetcher);
+ expect(await gateway.listSeries('token',org,25)).toMatchObject([{series:{id:seriesId},occurrences:[{appointment:{id:apt}}]}]);
+ expect(JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body))).toEqual({p_organization_id:org,p_limit:25});
+ await expect(gateway.listSeries('token',org,25)).resolves.toHaveLength(1);
+ const wrong=createAppointmentGateway(config,async()=>new Response(JSON.stringify([{...row,series:{...row.series,organization_id:apt}}])));
+ await expect(wrong.listSeries('token',org,25)).rejects.toMatchObject({status:503});
+});

@@ -5,7 +5,7 @@ import { createOrganizationGateway } from '../supabase/organizations.js';
 const org = 'a9cc39fd-8e8c-4df8-a623-1f23a3a936bd';
 const user = 'b9cc39fd-8e8c-4df8-a623-1f23a3a936bd';
 const config = { APP_SUPABASE_URL:'https://example.supabase.co', APP_SUPABASE_PUBLISHABLE_KEY:'public', APP_FILE_BUCKET:'business-files', APP_API_PORT:8000 };
-function fixture(options: {invalid?:boolean; member?:boolean; outage?:boolean; subscription?:boolean} = {}) {
+function fixture(options: {invalid?:boolean; member?:boolean; exists?:boolean; outage?:boolean; subscription?:boolean} = {}) {
   const calls: URL[] = [];
   const fetcher: typeof fetch = async (input, init) => {
     const url = new URL(String(input)); calls.push(url);
@@ -13,7 +13,7 @@ function fixture(options: {invalid?:boolean; member?:boolean; outage?:boolean; s
     expect(new Headers(init?.headers).get('authorization')).toBe('Bearer access');
     if (options.outage) throw new Error('private provider diagnostic');
     if (url.pathname === '/auth/v1/user') return Response.json(options.invalid ? {} : { id:user }, {status: options.invalid ? 401:200});
-    if (url.pathname.endsWith('organization_exists')) return Response.json(true);
+    if (url.pathname.endsWith('organization_exists')) return Response.json(options.exists ?? true);
     if (url.pathname.endsWith('memberships')) {
       expect(url.searchParams.get('user_id')).toBe('eq.'+user);
       return Response.json(options.member === false ? [] : [{role:'owner', organizations:{id:org,name:'매장',slug:'shop'}}]);
@@ -43,6 +43,14 @@ describe('organization HTTP flow', () => {
     const result = await app.inject({url:'/api/v1/organizations/'+org+'/entitlements',headers:{authorization:'Bearer access'}});
     expect(result.statusCode).toBe(403);
     expect(calls.some(url=>url.pathname.endsWith('subscriptions'))).toBe(false);
+    await app.close();
+  });
+
+  it('does not reveal whether an inaccessible organization exists', async () => {
+    const {app,calls} = fixture({exists:false});
+    const result = await app.inject({url:'/api/v1/organizations/'+org+'/entitlements',headers:{authorization:'Bearer access'}});
+    expect(result.statusCode).toBe(403);
+    expect(calls.some(url=>url.pathname === '/rest/v1/memberships')).toBe(false);
     await app.close();
   });
   it('returns active features in the existing client format', async () => {

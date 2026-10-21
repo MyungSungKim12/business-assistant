@@ -3,6 +3,7 @@ import { registerAuthRoutes, type AuthGateway } from './routes/auth.js';
 import { registerOrganizationRoutes } from './routes/organizations.js';
 import { registerCustomerRoutes } from './routes/customers.js';
 import { registerCustomerActivityRoutes } from './routes/customer-activities.js';
+import { registerPhoneRoutes } from './modules/phone/routes.js';
 import { registerCustomerPhotoRoutes, type CustomerPhotoGateway } from './routes/customer-photos.js';
 import { registerAppointmentRoutes, type AppointmentGateway } from './routes/appointments.js';
 import { registerOperationRoutes, type OperationsGateway } from './routes/operations.js';
@@ -48,6 +49,7 @@ export function createApp(dependencies: AppDependencies = {}): FastifyInstance {
   registerOrganizationRoutes(app, dependencies.organizations);
   registerCustomerRoutes(app, dependencies.organizations, dependencies.customers, audit);
   registerCustomerActivityRoutes(app, dependencies.organizations, dependencies.activities);
+  registerPhoneRoutes(app, dependencies.organizations, dependencies.customers, dependencies.activities);
   registerCustomerPhotoRoutes(app, dependencies.organizations, dependencies.photos);
   registerAppointmentRoutes(app, dependencies.organizations, dependencies.appointments);
   registerOperationRoutes(app, dependencies.organizations, dependencies.operations);

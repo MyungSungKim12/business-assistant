@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { ApiFailure } from '../../errors.js';
 import { bearerToken } from '../../routes/organizations.js';
@@ -6,6 +6,8 @@ import type { AdminGateway } from './gateway.js';
 
 const STATUSES = ['trialing', 'active', 'past_due', 'canceled', 'expired'] as const;
 const aware = (field: string) => z.iso.datetime({ offset: true, error: `${field} must be timezone-aware` });
+const planQuotaInput = z.object({ quota_bytes: z.number().int().min(0).max(1099511627776).nullable() }).strict();
+const planCode = z.string().regex(/^[A-Za-z0-9_-]{1,40}$/).transform(value => value.toUpperCase());
 
 /** 구독 교체 요청(Python AdminSubscriptionRequest). plan_code는 공백 제거 후 대문자, 시각은 반드시 오프셋 포함, 종료는 시작보다 뒤. */
 export const subscriptionRequest = z.object({
@@ -22,12 +24,42 @@ export const subscriptionRequest = z.object({
  * 서비스 키가 없으면 503이다. 확인 순서: 인증(401) → 서비스 설정(503) → 관리자(403) → 입력(422) → 처리.
  */
 export function registerAdminRoutes(app: FastifyInstance, gateway: AdminGateway | undefined): void {
+  async function requirePlatformAdmin(request: FastifyRequest) {
+    const token = bearerToken(request);
+    if (!gateway) throw new ApiFailure(503, 'Admin subscription service unavailable');
+    const userId = await gateway.userId(token);
+    if (!gateway.configured()) throw new ApiFailure(503, 'Admin subscription service unavailable');
+    if (!gateway.isPlatformAdmin(userId)) throw new ApiFailure(403, 'Platform admin required');
+    return { userId, token };
+  }
+
   // 클라이언트가 '구독' 메뉴 노출 여부를 정하는 데 쓴다. 서비스 키 없이 토큰 소유자 ID 와 관리자 목록만 대조한다.
   app.get('/api/v1/admin/me', async (request) => {
     const token = bearerToken(request);
     if (!gateway) throw new ApiFailure(503, 'Admin subscription service unavailable');
     const userId = await gateway.userId(token);
     return { platform_admin: gateway.isPlatformAdmin(userId) };
+  });
+  app.get('/api/v1/admin/plans/storage-quotas', async request => {
+    await requirePlatformAdmin(request);
+    return gateway!.listPlanStorageQuotas();
+  });
+  app.patch('/api/v1/admin/plans/:planCode/storage-quota', async request => {
+    const { userId } = await requirePlatformAdmin(request);
+    const params = z.object({ planCode }).safeParse(request.params);
+    if (!params.success) throw new ApiFailure(422, 'Invalid plan code');
+    const input = planQuotaInput.safeParse(request.body);
+    if (!input.success) throw new ApiFailure(422, 'Invalid plan storage quota');
+    const saved = await gateway!.setPlanStorageQuota(params.data.planCode, input.data.quota_bytes);
+    try {
+      await gateway!.recordAudit({
+        actorId: userId, organizationId: null, action: 'plan.file_storage_quota_update', targetType: 'plan', targetId: saved.plan_code,
+        metadata: { quota_bytes: saved.quota_bytes }, requestId: request.id, ip: request.ip,
+      });
+    } catch {
+      request.log.error({ action: 'plan.file_storage_quota_update', requestId: request.id }, 'audit event was not recorded');
+    }
+    return saved;
   });
   app.post('/api/v1/admin/organizations/:organizationId/subscription', async (request) => {
     const token = bearerToken(request);

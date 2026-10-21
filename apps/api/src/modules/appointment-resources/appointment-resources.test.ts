@@ -4,12 +4,15 @@ import { auth, buildApp, fakeFetch, fakeOrganizations, OP, ORG, OTHER_ORG, testC
 import { createAppointmentResourceGateway, registerAppointmentResourceModule } from './index.js';
 
 const id = (n: number) => `${n}a9c39fd-8e8c-4df8-a623-1f23a3a936bd`;
+const STAFF_USER='fa9cc39f-d8e8-4df8-a623-1f23a3a936bd';
 const STAFF = id(1), SERVICE = id(2), RESOURCE = id(3), CUSTOMER = id(4), APPT_ID = id(5), LEAVE = id(6);
 const RESOURCE_ROW = { id: RESOURCE, organization_id: ORG, name: '관리실 1', kind: 'room', is_active: true, version: 1 };
 const STAFF_ROW = { id: STAFF, organization_id: ORG, name: '담당자', is_active: true, schedule_version: 1 };
+const BRANCH = { id: id(9), organization_id: ORG, code: 'BR-02', name: '강남점', timezone_name: 'Asia/Seoul', is_primary: false, is_active: true, version: 1 };
 const SERVICE_ROW = { id: SERVICE, organization_id: ORG, name: '관리', duration_minutes: 60, buffer_minutes: 10, is_active: true, resource_version: 3 };
 const HOUR = { id: id(7), organization_id: ORG, staff_id: STAFF, weekday: 4, start_time: '09:00:00', end_time: '18:00:00', timezone_name: 'Asia/Seoul' };
 const TIME_OFF = { id: LEAVE, organization_id: ORG, staff_id: STAFF, start_at: '2026-10-08T15:00:00+09:00', end_at: '2026-10-08T16:00:00+09:00', reason: '교육', status: 'active', version: 1 };
+const LEAVE_REQUEST = { id:'aa9c39fd-8e8c-4df8-a623-1f23a3a936bd',organization_id:ORG,staff_id:STAFF,start_at:'2026-10-08T15:00:00+09:00',end_at:'2026-10-08T16:00:00+09:00',reason:'연차',status:'pending',version:1,requested_by:STAFF_USER,requested_at:'2026-10-01T00:00:00+09:00',reviewed_by:null,reviewed_at:null,review_note:'',withdrawn_by:null,withdrawn_at:null,time_off_id:null,approval_operation_id:'bb9c39fd-8e8c-4df8-a623-1f23a3a936bd' };
 const APPOINTMENT = {
   id: APPT_ID, organization_id: ORG, customer_id: CUSTOMER, staff_id: STAFF, service_id: SERVICE, service_name_snapshot: '관리', duration_minutes: 60, buffer_minutes: 10,
   start_at: '2026-10-08T10:00:00+09:00', end_at: '2026-10-08T11:00:00+09:00', status: 'reserved', source: 'phone', cancellation_reason: null, version: 1, resource_ids: [RESOURCE],
@@ -28,6 +31,13 @@ const supabase = (overrides: Record<string, unknown> = {}) => (call: FakeCall): 
     replace_appointment_service_resource_requirements: { service_id: SERVICE, resource_version: 4, requirements: [{ kind: 'room', quantity: 1 }] },
     replace_appointment_staff_hours: { staff_id: STAFF, schedule_version: 2, timezone_name: 'Asia/Seoul', hours: [HOUR] },
     create_appointment_staff_time_off: TIME_OFF,
+    create_appointment_staff_time_off_request: LEAVE_REQUEST,
+    list_appointment_staff_time_off_requests: {current_staff_id:STAFF,requests:[LEAVE_REQUEST]},
+    review_appointment_staff_time_off_request: {...LEAVE_REQUEST,status:'approved',version:2,time_off_id:LEAVE},
+    withdraw_appointment_staff_time_off_request: {...LEAVE_REQUEST,status:'withdrawn',version:2,withdrawn_by:STAFF_USER,withdrawn_at:'2026-10-02T00:00:00+09:00'},
+    list_organization_branches: [BRANCH], create_organization_branch: BRANCH,
+    assign_appointment_staff_branch: { ...STAFF_ROW, branch_id: BRANCH.id, profile_version: 2 },
+    assign_appointment_resource_branch: { ...RESOURCE_ROW, branch_id: BRANCH.id, version: 2 },
     cancel_appointment_staff_time_off: { ...TIME_OFF, status: 'canceled', version: 2 },
     save_appointment_with_resources: APPOINTMENT,
     ...overrides,
@@ -45,6 +55,69 @@ function setup(reply: (call: FakeCall) => FakeReply = supabase(), role: Role = '
   return { send, calls, organizations };
 }
 const op = (extra: Record<string, unknown> = {}) => ({ ...extra, operation_id: OP });
+
+describe('예약 지점 관리', () => {
+  it('지점 조회·생성은 조직 범위 RPC를 쓰고 생성은 manager만 가능하다', async () => {
+    const { send, calls } = setup();
+    expect((await send('GET', 'appointment-branches')).json()).toEqual([BRANCH]);
+    expect((await send('POST', 'appointment-branches', op({ code: 'br-02', name: ' 강남점 ', timezone_name: 'Asia/Seoul' }))).statusCode).toBe(201);
+    expect(calls[1].body).toEqual({ p_organization_id: ORG, p_code: 'BR-02', p_name: '강남점', p_timezone_name: 'Asia/Seoul', p_operation_id: OP });
+    const member = setup(undefined, 'member');
+    expect((await member.send('POST', 'appointment-branches', op({ code: 'BR-03', name: '서초점' }))).statusCode).toBe(403);
+    expect(member.calls).toHaveLength(0);
+  });
+  it('staff와 resource 지점 이동은 버전과 조직 경계를 보존한다', async () => {
+    const { send, calls } = setup();
+    expect((await send('PUT', `appointment-staff/${STAFF}/branch`, { branch_id: BRANCH.id, expected_version: 1 })).json()).toMatchObject({ branch_id: BRANCH.id });
+    expect((await send('PUT', `appointment-resources/${RESOURCE}/branch`, op({ branch_id: BRANCH.id, expected_version: 1 }))).json()).toMatchObject({ branch_id: BRANCH.id });
+    expect(calls.map(call => call.body)).toEqual([
+      { p_organization_id: ORG, p_staff_id: STAFF, p_branch_id: BRANCH.id, p_expected_version: 1 },
+      { p_organization_id: ORG, p_resource_id: RESOURCE, p_branch_id: BRANCH.id, p_expected_version: 1, p_operation_id: OP },
+    ]);
+    const member = setup(undefined, 'member');
+    expect((await member.send('PUT', `appointment-staff/${STAFF}/branch`, { branch_id: BRANCH.id, expected_version: 1 })).statusCode).toBe(403);
+  });
+});
+
+describe('직원 계정 연결', () => {
+  it('조직 관리자만 기존 구성원 계정을 staff에 연결하고 버전·멱등 키를 보낸다', async () => {
+    const linked = { ...STAFF_ROW, auth_user_id: STAFF_USER, profile_version: 2 };
+    const { send, calls } = setup(supabase({ assign_appointment_staff_account: linked }));
+    const response = await send('PUT', `appointment-staff/${STAFF}/account-link`, { user_id: STAFF_USER, expected_version: 1, operation_id: OP });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ auth_user_id: STAFF_USER, profile_version: 2 });
+    expect(calls[0].body).toEqual({ p_organization_id: ORG, p_staff_id: STAFF, p_user_id: STAFF_USER, p_expected_version: 1, p_operation_id: OP });
+    const member = setup(undefined, 'member');
+    expect((await member.send('PUT', `appointment-staff/${STAFF}/account-link`, { user_id: STAFF_USER, expected_version: 1, operation_id: OP })).statusCode).toBe(403);
+    expect(member.calls).toHaveLength(0);
+  });
+});
+
+describe('직원 휴무 신청 및 검토', () => {
+  it('연결 직원은 신청·조회·철회를 호출하고 관리자는 승인·반려한다', async () => {
+    const member=setup(undefined,'member');
+    const submitted=await member.send('POST',`appointment-staff/${STAFF}/time-off-requests`,{start_at:LEAVE_REQUEST.start_at,end_at:LEAVE_REQUEST.end_at,reason:'연차',operation_id:OP});
+    expect(submitted.statusCode).toBe(201);
+    expect(member.calls[0].body).toMatchObject({p_organization_id:ORG,p_staff_id:STAFF,p_reason:'연차',p_operation_id:OP});
+    expect((await member.send('GET','appointment-time-off-requests')).json()).toMatchObject({current_staff_id:STAFF,requests:[{status:'pending'}]});
+    expect((await member.send('POST',`appointment-time-off-requests/${LEAVE_REQUEST.id}/withdraw`,{expected_version:1,operation_id:OP})).json().status).toBe('withdrawn');
+    const manager=setup();
+    const decision=await manager.send('POST',`appointment-time-off-requests/${LEAVE_REQUEST.id}/review`,{action:'approve',expected_version:1,operation_id:OP});
+    expect(decision.json()).toMatchObject({status:'approved',time_off_id:LEAVE});
+    expect(manager.calls[0].body).toMatchObject({p_action:'approve',p_expected_version:1,p_review_note:''});
+  });
+  it('관리자만 검토할 수 있고 잘못된 요청과 다른 조직 응답은 차단한다', async () => {
+    const member=setup(undefined,'member');
+    expect((await member.send('POST',`appointment-time-off-requests/${LEAVE_REQUEST.id}/review`,{action:'approve',expected_version:1,operation_id:OP})).statusCode).toBe(403);
+    expect(member.calls).toHaveLength(0);
+    const bad=setup();
+    expect((await bad.send('POST',`appointment-staff/${STAFF}/time-off-requests`,{start_at:'bad',end_at:'bad',reason:'x',operation_id:OP})).statusCode).toBe(422);
+    expect((await bad.send('GET','appointment-time-off-requests?unexpected=true')).statusCode).toBe(422);
+    expect(bad.calls).toHaveLength(0);
+    const cross=setup(supabase({list_appointment_staff_time_off_requests:{current_staff_id:STAFF,requests:[{...LEAVE_REQUEST,organization_id:OTHER_ORG}]}}));
+    expect((await cross.send('GET','appointment-time-off-requests')).statusCode).toBe(503);
+  });
+});
 
 describe('공간·장비 자원', () => {
   it('member도 목록을 읽을 수 있다', async () => {

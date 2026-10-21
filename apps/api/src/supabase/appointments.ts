@@ -4,7 +4,7 @@ import { ApiFailure } from '../errors.js';
 import { appointmentStatusEventSchema } from '../routes/appointmentHistory.js';
 import { createAppointmentResourceGateway } from '../modules/appointment-resources/gateway.js';
 import { withPgErrorMap } from '../modules/catalog/pgErrors.js';
-import { appointmentSchema, appointmentServiceSchema, appointmentStaffSchema, type AppointmentGateway, type WaitlistEntry } from '../routes/appointments.js';
+import { appointmentSchema, appointmentServiceSchema, appointmentStaffSchema, type AppointmentGateway, type AppointmentSeriesCancelResult, type AppointmentSeriesUpdateResult, type AppointmentSeriesScheduleResult, type AppointmentSeriesDetail, type WaitlistEntry } from '../routes/appointments.js';
 
 const UNAVAILABLE = 'Appointment service unavailable';
 const waitlistSchema=z.object({id:z.uuid(),organization_id:z.uuid(),customer_id:z.uuid(),service_id:z.uuid(),staff_id:z.uuid().nullable(),preferred_date:z.iso.date().nullable(),note:z.string(),status:z.enum(['waiting','contacted','booked','canceled']),version:z.number().int(),created_at:z.string()});
@@ -65,9 +65,66 @@ export function createAppointmentGateway(config: ServerConfig, rawFetcher: typeo
       return parse(z.array(appointmentServiceSchema), await call(token, 'appointment_services', { organization_id: `eq.${organizationId}`, order: 'name.asc' }), organizationId);
     },
     save: (token, organizationId, id, input) => resources.saveAppointment(token, organizationId, id, input),
+    async createSeries(token, organizationId, input) {
+      const result = await call(token, 'rpc/create_appointment_series', {}, {
+        p_organization_id: organizationId, p_customer_id: input.customer_id, p_staff_id: input.staff_id,
+        p_service_id: input.service_id, p_start_at: input.start_at, p_frequency: input.frequency,
+        p_interval_count: input.interval_count, p_occurrence_count: input.occurrence_count,
+        p_resource_ids: input.resource_ids, p_source: input.source, p_exception_dates: input.exception_dates,
+        p_operation_id: input.operation_id,
+      });
+      const schema = z.object({ series_id: z.uuid(), created: z.array(z.object({ number: z.number().int(), appointment: appointmentSchema })), skipped: z.array(z.object({ number: z.number().int(), date: z.iso.date(), reason: z.enum(['exception_date','conflict']) })) });
+      const parsed = schema.safeParse(result);
+      if (!parsed.success || parsed.data.created.length === 0) throw new ApiFailure(503, UNAVAILABLE);
+      for (const occurrence of parsed.data.created) parse(appointmentSchema, occurrence.appointment, organizationId);
+      if (new Set(parsed.data.created.map((item) => item.number)).size !== parsed.data.created.length
+        || parsed.data.created.some((item) => item.number < 1 || item.number > input.occurrence_count)) throw new ApiFailure(503, UNAVAILABLE);
+      return parsed.data;
+    },
+    async listSeries(token, organizationId, limit) {
+      const detail=z.object({series:z.object({id:z.uuid(),organization_id:z.uuid(),customer_id:z.uuid(),staff_id:z.uuid(),service_id:z.uuid(),frequency:z.enum(['weekly','monthly']),interval_count:z.number().int(),occurrence_count:z.number().int(),created_at:z.string(),result_snapshot:z.unknown().nullable().optional()}),occurrences:z.array(z.object({occurrence_number:z.number().int(),scheduled_start_at:z.string(),is_exception:z.boolean(),appointment:appointmentSchema})),exceptions:z.array(z.object({organization_id:z.uuid(),series_id:z.uuid(),exception_date:z.iso.date(),reason:z.string(),created_at:z.string()}))});
+      const result=z.array(detail).safeParse(await call(token,'rpc/list_appointment_series',{}, {p_organization_id:organizationId,p_limit:limit}));
+      if(!result.success||result.data.some(row=>row.series.organization_id!==organizationId||row.occurrences.some(item=>item.appointment.organization_id!==organizationId)))throw new ApiFailure(503,UNAVAILABLE);
+      return result.data as AppointmentSeriesDetail[];
+    },
+    async cancelSeriesFuture(token, organizationId, seriesId, input) {
+      const result=z.object({series_id:z.uuid(),from_date:z.iso.date(),reason:z.string(),canceled:z.array(appointmentSchema),replayed:z.boolean()}).safeParse(await call(token,'rpc/cancel_future_appointment_series',{}, {p_organization_id:organizationId,p_series_id:seriesId,p_from_date:input.from_date,p_reason:input.reason,p_operation_id:input.operation_id}));
+      if(!result.success||result.data.series_id!==seriesId||result.data.canceled.some(row=>row.organization_id!==organizationId||row.status!=='canceled'))throw new ApiFailure(503,UNAVAILABLE);
+      return result.data as AppointmentSeriesCancelResult;
+    },
+    async updateSeriesFuture(token, organizationId, seriesId, input) {
+      const result=z.object({series_id:z.uuid(),staff_id:z.uuid(),service_id:z.uuid(),updated:z.array(appointmentSchema),replayed:z.boolean()}).safeParse(await call(token,'rpc/update_appointment_series_future',{}, {p_organization_id:organizationId,p_series_id:seriesId,p_staff_id:input.staff_id,p_service_id:input.service_id,p_operation_id:input.operation_id}));
+      if(!result.success||result.data.series_id!==seriesId||result.data.updated.some(row=>row.organization_id!==organizationId||row.staff_id!==input.staff_id||row.service_id!==input.service_id||!['reserved','confirmed'].includes(row.status)))throw new ApiFailure(503,UNAVAILABLE);
+      return result.data as AppointmentSeriesUpdateResult;
+    },
+    async rescheduleSeriesFuture(token, organizationId, seriesId, input) {
+      const result=z.object({series_id:z.uuid(),from_occurrence_number:z.number().int(),start_at:z.string(),frequency:z.enum(['weekly','monthly']),interval_count:z.number().int(),resource_ids:z.array(z.uuid()),updated:z.array(appointmentSchema),replayed:z.boolean()}).safeParse(await call(token,'rpc/reschedule_appointment_series_future',{}, {p_organization_id:organizationId,p_series_id:seriesId,p_from_occurrence_number:input.from_occurrence_number,p_start_at:input.start_at,p_frequency:input.frequency,p_interval_count:input.interval_count,p_resource_ids:input.resource_ids,p_operation_id:input.operation_id}));
+      if(!result.success||result.data.series_id!==seriesId||result.data.from_occurrence_number!==input.from_occurrence_number||result.data.frequency!==input.frequency||result.data.interval_count!==input.interval_count||JSON.stringify(result.data.resource_ids)!==JSON.stringify(input.resource_ids)||result.data.updated.some(row=>row.organization_id!==organizationId||!['reserved','confirmed'].includes(row.status)))throw new ApiFailure(503,UNAVAILABLE);
+      return result.data as AppointmentSeriesScheduleResult;
+    },
     async listWaitlist(token, organizationId) {
       const rows = parse(z.array(waitlistSchema), await call(token, 'appointment_waitlist', { organization_id: `eq.${organizationId}`, order: 'created_at.asc,id.asc' }), organizationId);
       return rows;
+    },
+    async listWaitlistOffers(token, organizationId, id) {
+      const schema=z.array(z.object({id:z.uuid(),organization_id:z.uuid(),offer_group_id:z.uuid(),waitlist_id:z.uuid(),rank:z.number().int(),staff_id:z.uuid(),start_at:z.string(),resource_ids:z.array(z.uuid()),status:z.enum(['offered','accepted','dismissed','superseded','expired']),version:z.number().int(),acted_by:z.uuid().nullable(),acted_at:z.string().nullable(),appointment_id:z.uuid().nullable(),created_at:z.string(),expires_at:z.string()}));
+      const rows=parse(schema,await call(token,'rpc/list_appointment_waitlist_offers',{}, {p_organization_id:organizationId,p_waitlist_id:id}),organizationId);
+      if(rows.some(row=>row.waitlist_id!==id))throw new ApiFailure(503,UNAVAILABLE);
+      return rows;
+    },
+    async createWaitlistOffers(token, organizationId, id, input) {
+      const schema=z.array(z.object({id:z.uuid(),organization_id:z.uuid(),offer_group_id:z.uuid(),waitlist_id:z.uuid(),rank:z.number().int(),staff_id:z.uuid(),start_at:z.string(),resource_ids:z.array(z.uuid()),status:z.enum(['offered','accepted','dismissed','superseded','expired']),version:z.number().int(),acted_by:z.uuid().nullable(),acted_at:z.string().nullable(),appointment_id:z.uuid().nullable(),created_at:z.string()}));
+      const rows=parse(schema,await call(token,'rpc/create_appointment_waitlist_offers',{}, {p_organization_id:organizationId,p_waitlist_id:id,p_offers:input.offers,p_expires_at:input.expires_at,p_operation_id:input.operation_id}),organizationId);
+      if(rows.length!==input.offers.length||rows.some(row=>row.waitlist_id!==id))throw new ApiFailure(503,UNAVAILABLE);
+      return rows;
+    },
+    async actOnWaitlistOffer(token, organizationId, waitlistId, id, input) {
+      const offer=z.object({id:z.uuid(),organization_id:z.uuid(),offer_group_id:z.uuid(),waitlist_id:z.uuid(),rank:z.number().int(),staff_id:z.uuid(),start_at:z.string(),resource_ids:z.array(z.uuid()),status:z.enum(['offered','accepted','dismissed','superseded','expired']),version:z.number().int(),acted_by:z.uuid().nullable(),acted_at:z.string().nullable(),appointment_id:z.uuid().nullable(),created_at:z.string()});
+      const schema=z.object({offer,appointment:appointmentSchema.nullable(),replayed:z.boolean()});
+      const result=schema.safeParse(await call(token,'rpc/act_on_appointment_waitlist_offer',{}, {p_organization_id:organizationId,p_offer_id:id,p_action:input.action,p_expected_version:input.expected_version,p_operation_id:input.operation_id}));
+      if(!result.success||result.data.offer.organization_id!==organizationId||result.data.offer.id!==id||result.data.offer.waitlist_id!==waitlistId )throw new ApiFailure(503,UNAVAILABLE);
+      if(result.data.appointment)parse(appointmentSchema,result.data.appointment,organizationId);
+      return result.data;
     },
     async createWaitlist(token, organizationId, input) {
       const result = parse(waitlistSchema, await call(token, 'rpc/create_appointment_waitlist', {}, {
