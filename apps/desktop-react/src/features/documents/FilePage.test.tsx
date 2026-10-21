@@ -4,9 +4,9 @@ import { FilePage } from './FilePage';
 import { fakeApi as baseFakeApi, FILE, file, httpError, matches, ORG, renderWithHosts } from './testkit';
 
 // 기존 파일 시나리오에는 정상적인 빈 폴더 목록을 명시한다.
-const fakeApi: typeof baseFakeApi = (handler, platform = {}) => baseFakeApi(call => matches(call, 'GET', /\/file-folders$/) ? [] : handler(call), platform);
+const fakeApi: typeof baseFakeApi = (handler, platform = {}, storageUsage?: Parameters<typeof baseFakeApi>[2]) => baseFakeApi(call => matches(call, 'GET', /\/file-folders$/) ? [] : handler(call), platform, storageUsage);
 
-const signed = (extra: Partial<typeof file> = {}) => ({ file: { ...file, ...extra }, signed_url: 'https://storage.example/upload?token=t', expires_in: 600 });
+const signed = (extra: Partial<typeof file> = {}) => ({ file: { ...file, ...extra }, signed_url: 'https://storage.example/upload?token=t', expires_in: 600, reservation_id: '99999999-9999-4999-8999-999999999998' });
 const picker = () => screen.getByLabelText('업로드할 파일') as HTMLInputElement;
 const choose = (...files: File[]) => fireEvent.change(picker(), { target: { files } });
 const sized = (name: string, size: number, type = 'application/pdf') => {
@@ -32,6 +32,34 @@ it('폴더 조회 실패를 빈 폴더 성공으로 숨기지 않고 재시도�
 });
 
 describe('FilePage', () => {
+  it('조직 설정값과 요금제 실효 상한을 함께 표시한다',async()=>{
+    const {api}=fakeApi(()=>[file],{}, {organization_id:ORG,used_bytes:1024,reserved_bytes:0,organization_quota_bytes:10*1024**3,plan_quota_bytes:5*1024**3,quota_bytes:5*1024**3,available_bytes:5*1024**3-1024});
+    renderWithHosts(<FilePage api={api} organizationId={ORG} readOnly={false}/>);
+    expect(await screen.findByLabelText('조직 저장 한도 GiB')).toHaveValue(10);
+    expect(await screen.findByText(/요금제 상한 5120\.0 MB/)).toBeInTheDocument();
+    expect(screen.getByText(/저장 공간 1\.0 KB \/ 5120\.0 MB 사용 중/)).toBeInTheDocument();
+  });
+
+  it('관리자는 조직 저장 한도를 조정하고 변경된 사용량 응답을 반영한다',async()=>{
+    const {api,calls}=fakeApi(call=>call.method==='POST'&&call.path.endsWith('/file-storage/quota')?{organization_id:ORG,used_bytes:0,reserved_bytes:0,organization_quota_bytes:10737418240,plan_quota_bytes:null,quota_bytes:10737418240,available_bytes:10737418240}:[file]);
+    renderWithHosts(<FilePage api={api} organizationId={ORG} readOnly={false}/>);
+    const input=await screen.findByLabelText('조직 저장 한도 GiB');
+    fireEvent.change(input,{target:{value:'10'}});
+    fireEvent.click(screen.getByRole('button',{name:'한도 저장'}));
+    await waitFor(()=>expect(calls.some(call=>call.method==='POST'&&call.path.endsWith('/file-storage/quota')&&call.body&&typeof call.body==='object'&&(call.body as {quota_bytes:number}).quota_bytes===10737418240)).toBe(true));
+    expect(await screen.findByText(/저장 공간 0 B \/ 10240\.0 MB 사용 중/)).toBeInTheDocument();
+  });
+
+  it('파일 버전 이력을 열어 버전별 파일 정보를 표시한다', async()=>{
+    const version={id:'88888888-8888-4888-8888-888888888888',organization_id:ORG,file_id:FILE,version_number:1,original_name:'가격표.pdf',content_type:'application/pdf',size_bytes:2048,uploaded_by:file.uploaded_by,created_at:file.created_at};
+    const {api,calls}=fakeApi(call=>call.method==='GET'&&call.path.endsWith(`/files/${FILE}/versions`)?[version]:[file]);
+    renderWithHosts(<FilePage api={api} organizationId={ORG} readOnly />);
+    expect(await screen.findByText('가격표.pdf')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button',{name:'가격표.pdf 버전 이력'}));
+    expect(await screen.findByText('버전 1')).toBeInTheDocument();
+    expect(calls.some(call=>call.path.endsWith(`/files/${FILE}/versions`))).toBe(true);
+  });
+
   it('폴더를 만들고 파일 태그를 메타데이터로 저장한다', async () => {
     const folder = { id: '88888888-8888-4888-8888-888888888888', organization_id: ORG, name: '가격표', created_by: '66666666-6666-4666-8666-666666666666', created_at: '2026-10-16T00:00:00Z' };
     const createdFolder = { ...folder, id: '99999999-9999-4999-8999-999999999999' };
@@ -100,6 +128,7 @@ describe('FilePage', () => {
     const request = calls.find((call) => matches(call, 'POST', /upload-url$/))!;
     expect(request.body).toEqual({ original_name: '새 파일.pdf', content_type: 'application/pdf', size_bytes: 5 });
     expect(platform.uploadBinary).toHaveBeenCalledWith('https://storage.example/upload?token=t', expect.objectContaining({ kind: 'blob', name: '새 파일.pdf' }));
+    expect(calls.some(call=>call.method==='POST'&&call.path.endsWith(`/files/${created.id}/complete-upload`))).toBe(true);
   });
 
   it('형식이 비어 있으면 application/octet-stream 으로 보낸다', async () => {

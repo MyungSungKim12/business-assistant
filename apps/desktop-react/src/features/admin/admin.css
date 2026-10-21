@@ -16,3 +16,12 @@
   margin: 4px 0;
   color: var(--text-muted);
 }
+
+.admin-plan-quotas { display:grid; gap:10px; max-width:760px; margin-top:18px; }
+.admin-plan-quotas h2 { margin:0 0 4px; font-size:16px; }
+.admin-plan-quota-row { display:grid; grid-template-columns:minmax(130px,1fr) minmax(150px,220px) auto; align-items:end; gap:10px; padding:10px 12px; border:1px solid var(--border); border-radius:8px; background:var(--surface); }
+.admin-plan-quota-row > div { display:grid; gap:3px; align-self:center; }
+.admin-plan-quota-row small { color:var(--text-muted); }
+.admin-plan-quota-row label { display:grid; gap:4px; font-size:12px; }
+.admin-plan-quota-row input { width:100%; }
+@media (max-width:620px) { .admin-plan-quota-row { grid-template-columns:1fr; } }

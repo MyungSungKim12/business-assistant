@@ -35,11 +35,16 @@ export const evidenceVerificationSchema = z.object({
 });
 export const consentEventsSchema = z.array(consentEventSchema);
 export const fileSchema = z.object({
-  id: z.uuid(), organization_id: z.uuid(), uploaded_by: z.uuid(), original_name: z.string(), content_type: z.string(), size_bytes: z.number(), is_archived: z.boolean(),
+  id: z.uuid(), organization_id: z.uuid(), uploaded_by: z.uuid(), original_name: z.string(), content_type: z.string(), size_bytes: z.number(), version_number:z.number().int().positive().default(1), is_archived: z.boolean(),
   created_at: z.string(), updated_at: z.string(), folder_id:z.uuid().nullable().default(null),tags:z.array(z.string()).max(10).default([]),
 });
 export const filesSchema = z.array(fileSchema);
 export const signedFileSchema = z.object({ file: fileSchema, signed_url: z.string(), expires_in: z.number() });
+export const signedUploadFileSchema=signedFileSchema.extend({reservation_id:z.uuid()});
+export const preparedFileVersionSchema = signedFileSchema.extend({ version_upload_path:z.string(), version_operation_id:z.uuid() });
+export const fileStorageUsageSchema=z.object({organization_id:z.uuid(),used_bytes:z.number().int().nonnegative(),reserved_bytes:z.number().int().nonnegative(),organization_quota_bytes:z.number().int().nonnegative(),plan_quota_bytes:z.number().int().nonnegative().nullable(),quota_bytes:z.number().int().nonnegative(),available_bytes:z.number().int().nonnegative()});
+export type FileStorageUsage=z.infer<typeof fileStorageUsageSchema>;
+export const fileVersionsSchema = z.array(z.object({id:z.uuid(),organization_id:z.uuid(),file_id:z.uuid(),version_number:z.number().int().positive(),original_name:z.string(),content_type:z.string(),size_bytes:z.number(),uploaded_by:z.uuid(),created_at:z.string()}));
 // 고객·시술 선택용(발행 대상 찾기). 다른 모듈의 응답에서 필요한 열만 읽는다.
 export const customerOptionsSchema = z.array(z.object({ id: z.uuid(), name: z.string() }));
 export const treatmentOptionsSchema = z.array(z.object({ id: z.uuid(), customer_id: z.uuid(), treatment_name: z.string(), treatment_date: z.string() }));

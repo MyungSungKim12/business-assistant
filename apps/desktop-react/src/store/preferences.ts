@@ -12,6 +12,8 @@ export type StartMenu = (typeof START_MENU_CHOICES)[number];
 
 export const CHART_DAYS_CHOICES = [7, 14, 30] as const;
 export type ChartDays = (typeof CHART_DAYS_CHOICES)[number];
+export const HOME_WIDGET_IDS=['appointments','tasks','visits','recent','chart','stock','wallet'] as const;
+export type HomeWidgetId=(typeof HOME_WIDGET_IDS)[number];
 
 export interface Preferences {
   /** 전화번호·이메일 가려서 표시 */
@@ -30,9 +32,11 @@ export interface Preferences {
   updateNotice: boolean;
   /** 홈 수입·지출 차트 기간(일) */
   homeChartDays: ChartDays;
+  /** 홈 패널 표시 순서. 숨긴 패널은 목록에서 제외하고 기본값에 복원한다. */
+  homeWidgets: HomeWidgetId[];
 }
 
-export const DEFAULT_PREFERENCES: Preferences = { maskPhone: false, idleLockMinutes: 0, fontScale: 1, startMenu: 'dashboard', notificationsEnabled: true, desktopNotificationsEnabled: false, updateNotice: true, homeChartDays: 14 };
+export const DEFAULT_PREFERENCES: Preferences = { maskPhone: false, idleLockMinutes: 0, fontScale: 1, startMenu: 'dashboard', notificationsEnabled: true, desktopNotificationsEnabled: false, updateNotice: true, homeChartDays: 14, homeWidgets:[...HOME_WIDGET_IDS] };
 const KEY_PREFIX = 'business-assistant.prefs.';
 
 export const preferencesKey = (userId: string) => `${KEY_PREFIX}${userId}`;
@@ -49,6 +53,7 @@ export function sanitizePreferences(raw: unknown): Preferences {
     desktopNotificationsEnabled: value.desktopNotificationsEnabled === true,
     updateNotice: value.updateNotice !== false,
     homeChartDays: CHART_DAYS_CHOICES.find((choice) => choice === value.homeChartDays) ?? DEFAULT_PREFERENCES.homeChartDays,
+    homeWidgets: (()=>{const raw=Array.isArray(value.homeWidgets)?value.homeWidgets:DEFAULT_PREFERENCES.homeWidgets;const valid=[...new Set(raw.filter((id):id is HomeWidgetId=>HOME_WIDGET_IDS.includes(id as HomeWidgetId)))];return valid.length?valid:DEFAULT_PREFERENCES.homeWidgets;})(),
   };
 }
 
@@ -77,12 +82,13 @@ interface PreferenceState extends Preferences {
   setDesktopNotificationsEnabled(value: boolean): void;
   setUpdateNotice(value: boolean): void;
   setHomeChartDays(value: ChartDays): void;
+  setHomeWidgets(value: HomeWidgetId[]): void;
 }
 
 export const usePreferences = create<PreferenceState>((set, get) => {
   const update = (patch: Partial<Preferences>) => {
-    const { userId, maskPhone, idleLockMinutes, fontScale, startMenu, notificationsEnabled, desktopNotificationsEnabled, updateNotice, homeChartDays } = get();
-    const next = { maskPhone, idleLockMinutes, fontScale, startMenu, notificationsEnabled, desktopNotificationsEnabled, updateNotice, homeChartDays, ...patch };
+    const { userId, maskPhone, idleLockMinutes, fontScale, startMenu, notificationsEnabled, desktopNotificationsEnabled, updateNotice, homeChartDays,homeWidgets } = get();
+    const next = { maskPhone, idleLockMinutes, fontScale, startMenu, notificationsEnabled, desktopNotificationsEnabled, updateNotice, homeChartDays,homeWidgets, ...patch };
     if (userId) writePreferences(userId, next);
     set(next);
   };
@@ -98,5 +104,6 @@ export const usePreferences = create<PreferenceState>((set, get) => {
     setDesktopNotificationsEnabled: (value) => update({ desktopNotificationsEnabled: value }),
     setUpdateNotice: (value) => update({ updateNotice: value }),
     setHomeChartDays: (value) => update({ homeChartDays: value }),
+    setHomeWidgets: (value) => update({homeWidgets:value.length?[...new Set(value.filter(id=>HOME_WIDGET_IDS.includes(id)))]:DEFAULT_PREFERENCES.homeWidgets}),
   };
 });

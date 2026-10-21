@@ -8,7 +8,11 @@ const ORG = 'a9cc39fd-8e8c-4df8-a623-1f23a3a936bd';
 const OTHER = 'b9cc39fd-8e8c-4df8-a623-1f23a3a936bd';
 
 function setup(handler: (body: Record<string, unknown>) => unknown = (body) => body) {
-  const server = fakeApi((call) => handler(call.body as Record<string, unknown>));
+  const server = fakeApi((call) => call.path === '/admin/plans/storage-quotas'
+    ? [{ plan_code: 'BASIC', plan_name: '베이직', quota_bytes: null }]
+    : call.path === '/admin/plans/BASIC/storage-quota' && call.method === 'PATCH'
+      ? { plan_code: 'BASIC', plan_name: '베이직', quota_bytes: (call.body as { quota_bytes: number | null }).quota_bytes }
+      : handler((call.body ?? {}) as Record<string, unknown>));
   render(<><NoticeHost /><ConfirmDialog /><AdminSubscriptionPage api={server.api as never} organizationId={ORG} /></>);
   return server;
 }
@@ -31,13 +35,14 @@ describe('AdminSubscriptionPage', () => {
     fill('2026-09-16T09:00', '2026-10-16T09:00');
     submit();
     expect(await screen.findByText(/구독을 BASIC \/ active/, { exact: false })).toBeInTheDocument();
-    expect(calls).toHaveLength(0);
+    expect(calls.filter(call => call.path.endsWith('/subscription'))).toHaveLength(0);
     fireEvent.click(screen.getByRole('button', { name: '교체' }));
-    await waitFor(() => expect(calls).toHaveLength(1));
-    expect(calls[0].method).toBe('POST');
-    expect(calls[0].path).toBe(`/admin/organizations/${OTHER}/subscription`);
-    expect(calls[0].body).toEqual({ plan_code: 'BASIC', status: 'active', starts_at: toOffsetIso('2026-09-16T09:00'), ends_at: toOffsetIso('2026-10-16T09:00') });
-    expect((calls[0].body as { starts_at: string }).starts_at).toMatch(/Z$/);
+    await waitFor(() => expect(calls.filter(call => call.path.endsWith('/subscription'))).toHaveLength(1));
+    const subscriptionCall = calls.find(call => call.path.endsWith('/subscription'))!;
+    expect(subscriptionCall.method).toBe('POST');
+    expect(subscriptionCall.path).toBe(`/admin/organizations/${OTHER}/subscription`);
+    expect(subscriptionCall.body).toEqual({ plan_code: 'BASIC', status: 'active', starts_at: toOffsetIso('2026-09-16T09:00'), ends_at: toOffsetIso('2026-10-16T09:00') });
+    expect((subscriptionCall.body as { starts_at: string }).starts_at).toMatch(/Z$/);
     expect((await screen.findAllByText(/구독을 저장했습니다/)).length).toBeGreaterThan(0);
   });
 
@@ -47,7 +52,7 @@ describe('AdminSubscriptionPage', () => {
     submit();
     fireEvent.click(await screen.findByRole('button', { name: '취소' }));
     await waitFor(() => expect(screen.queryByRole('button', { name: '교체' })).not.toBeInTheDocument());
-    expect(calls).toHaveLength(0);
+    expect(calls.filter(call => call.path.endsWith('/subscription'))).toHaveLength(0);
   });
 
   it.each([
@@ -61,7 +66,7 @@ describe('AdminSubscriptionPage', () => {
     mutate();
     submit();
     expect(await screen.findByText(message)).toBeInTheDocument();
-    expect(calls).toHaveLength(0);
+    expect(calls.filter(call => call.path.endsWith('/subscription'))).toHaveLength(0);
   });
 
   it.each([
@@ -83,6 +88,16 @@ describe('AdminSubscriptionPage', () => {
     fireEvent.change(screen.getByLabelText('상태'), { target: { value: 'canceled' } });
     submit();
     fireEvent.click(await screen.findByRole('button', { name: '교체' }));
-    await waitFor(() => expect(calls[0].body).toMatchObject({ status: 'canceled', ends_at: null }));
+    await waitFor(() => expect(calls.find(call => call.path.endsWith('/subscription'))?.body).toMatchObject({ status: 'canceled', ends_at: null }));
+  });
+
+  it('미설정 플랜 용량은 빈 값으로 표시하고 확인 뒤 바이트 단위로 저장한다', async () => {
+    const { calls } = setup();
+    expect(await screen.findByLabelText('BASIC 저장 한도 GiB')).toHaveValue(null);
+    fireEvent.change(screen.getByLabelText('BASIC 저장 한도 GiB'), { target: { value: '8' } });
+    fireEvent.click(screen.getByRole('button', { name: 'BASIC 한도 저장' }));
+    fireEvent.click(await screen.findByRole('button', { name: '저장' }));
+    await waitFor(() => expect(calls.find(call => call.path.endsWith('/BASIC/storage-quota'))?.body).toEqual({ quota_bytes: 8 * 1024 ** 3 }));
+    expect(await screen.findByText('BASIC 요금제 용량을 저장했습니다.')).toBeInTheDocument();
   });
 });

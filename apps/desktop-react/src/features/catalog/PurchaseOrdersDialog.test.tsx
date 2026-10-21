@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { PurchaseOrdersDialog } from './PurchaseOrdersDialog';
 import { fakeApi, ORG, renderWithHosts, USER } from '../documents/testkit';
 
-const product = (id: string, name: string) => ({ id, organization_id: ORG, sku: id, name, kind: 'product' as const, unit_name: '개', sale_price: '1000', benefit_money: '0', benefit_count: 0, valid_days: null, is_active: true, version: 1, stock_quantity: 0 });
+const product = (id: string, name: string) => ({ id, organization_id: ORG, sku: id, name, kind: 'product' as const, unit_name: '개', purchase_unit_name: '박스', units_per_purchase_unit: 12, sale_price: '1000', benefit_money: '0', benefit_count: 0, valid_days: null, is_active: true, version: 1, stock_quantity: 0,category:'기타',barcode:null,image_file_id:null });
 
 describe('PurchaseOrdersDialog', () => {
   it('공급처 상세정보를 저장하고 여러 품목을 한 발주로 생성한다', async () => {

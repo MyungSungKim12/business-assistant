@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../api/errors';
 import type { DashboardApi } from './dashboardApi';
 import { DashboardPage } from './DashboardPage';
+import { HOME_WIDGET_IDS, usePreferences } from '../../store/preferences';
 
 const NOW = new Date('2026-10-13T01:00:00Z'); // KST 2026-10-13 10:00 (화)
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -270,6 +271,19 @@ describe('DashboardPage', () => {
 });
 
 describe('DashboardPage 홈 확장(HOME-03)', () => {
+  it('홈 패널을 숨기고 순서를 바꾸며 사용자 설정에 반영한다', async () => {
+    usePreferences.getState().setHomeWidgets([...HOME_WIDGET_IDS]);
+    const {api}=makeApi();renderPage(api);
+    fireEvent.click(await screen.findByRole('button',{name:'홈 구성'}));
+    fireEvent.click(within(screen.getByRole('dialog')).getByLabelText('재고 부족'));
+    fireEvent.click(screen.getByRole('button',{name:'오늘 예약 아래로'}));
+    expect(usePreferences.getState().homeWidgets[0]).toBe('tasks');
+    expect(usePreferences.getState().homeWidgets).not.toContain('stock');
+    fireEvent.click(screen.getByRole('button',{name:'닫기'}));
+    await waitFor(()=>expect(document.querySelector('[data-widget="stock"]')).toBeNull());
+    expect(Array.from(document.querySelectorAll<HTMLElement>('.dash-widget')).map(node=>node.dataset.widget)[0]).toBe('tasks');
+  });
+
   it('이번 달 순수입 카드에 전월 동기 대비 변화를 보인다', async () => {
     const prior = [...transactions, { id: id(53), transaction_type: 'income', amount: '120000', transaction_date: '2026-09-05', is_archived: false }];
     const { api } = makeApi({ transactions: () => prior });

@@ -1,10 +1,10 @@
 import type { ApiClient } from '../../api/client';
 import {
-  availabilitySchema, requirementsSavedSchema, requirementsSchema, resourceSchema, resourcesSchema, resourceSetupSchema, serviceListSchema, serviceSchema,
+  availabilitySchema, branchesSchema, branchSchema, requirementsSavedSchema, requirementsSchema, resourceSchema, resourcesSchema, resourceSetupSchema, serviceListSchema, serviceSchema,
   consumablesSchema,
   serviceStaffIdsSchema,
   serviceStaffListSchema,
-  staffListSchema, staffSchema, timeOffSchema, workingHoursSavedSchema, type ResourceKind, type ResourceRequirement,
+  staffListSchema, staffSchema, timeOffSchema, timeOffRequestListSchema, timeOffRequestSchema, workingHoursSavedSchema, type ResourceKind, type ResourceRequirement,
 } from './schemas';
 
 /** 이 기능이 쓰는 ApiClient의 부분. 테스트에서는 call만 가진 가짜를 넣는다. */
@@ -16,6 +16,10 @@ export type ServiceUpdate = {
 const base = (organizationId: string) => `/organizations/${organizationId}`;
 
 export const resourceApi = {
+  listBranches: (api: CallApi, organizationId: string) => api.call('GET', `${base(organizationId)}/appointment-branches`, branchesSchema),
+  createBranch: (api: CallApi, organizationId: string, input: { code: string; name: string; timezone_name: string; operation_id: string }) => api.call('POST', `${base(organizationId)}/appointment-branches`, branchSchema, input),
+  assignStaffBranch: (api: CallApi, organizationId: string, staffId: string, input: { branch_id: string; expected_version: number }) => api.call('PUT', `${base(organizationId)}/appointment-staff/${staffId}/branch`, staffSchema, input),
+  assignResourceBranch: (api: CallApi, organizationId: string, resourceId: string, input: { branch_id: string; expected_version: number; operation_id: string }) => api.call('PUT', `${base(organizationId)}/appointment-resources/${resourceId}/branch`, resourceSchema, input),
   listResources: (api: CallApi, organizationId: string) => api.call('GET', `${base(organizationId)}/appointment-resources`, resourcesSchema),
   createResource: (api: CallApi, organizationId: string, input: { name: string; kind: ResourceKind; operation_id: string }) =>
     api.call('POST', `${base(organizationId)}/appointment-resources`, resourceSchema, input),
@@ -53,6 +57,7 @@ export const resourceApi = {
   listStaff: (api: CallApi, organizationId: string) => api.call('GET', `${base(organizationId)}/appointment-staff`, staffListSchema),
   createStaff: (api: CallApi, organizationId: string, input: { name: string }) => api.call('POST', `${base(organizationId)}/appointment-staff`, staffSchema, input),
   updateStaffProfile: (api:CallApi,organizationId:string,staffId:string,input:{name:string;is_active:boolean;expected_version:number;operation_id:string})=>api.call('PUT',`${base(organizationId)}/appointment-staff/${staffId}`,staffSchema,input),
+  assignStaffAccount:(api:CallApi,organizationId:string,staffId:string,input:{user_id:string|null;expected_version:number;operation_id:string})=>api.call('PUT',`${base(organizationId)}/appointment-staff/${staffId}/account-link`,staffSchema,input),
   getAvailability: (api: CallApi, organizationId: string, staffId: string) => api.call('GET', `${base(organizationId)}/appointment-staff/${staffId}/availability`, availabilitySchema),
   saveWorkingHours: (api: CallApi, organizationId: string, staffId: string, input: { timezone_name: string; hours: { weekday: number; start: string; end: string }[]; expected_version: number; operation_id: string }) =>
     api.call('PUT', `${base(organizationId)}/appointment-staff/${staffId}/working-hours`, workingHoursSavedSchema, input),
@@ -60,4 +65,8 @@ export const resourceApi = {
     api.call('POST', `${base(organizationId)}/appointment-staff/${staffId}/time-off`, timeOffSchema, input),
   cancelTimeOff: (api: CallApi, organizationId: string, staffId: string, timeOffId: string, input: { expected_version: number; operation_id: string }) =>
     api.call('POST', `${base(organizationId)}/appointment-staff/${staffId}/time-off/${timeOffId}/cancel`, timeOffSchema, input),
+  listTimeOffRequests: (api:CallApi,organizationId:string,staffId:string|null) => api.call('GET',`${base(organizationId)}/appointment-time-off-requests${staffId?`?staff_id=${encodeURIComponent(staffId)}`:''}`,timeOffRequestListSchema),
+  requestTimeOff: (api:CallApi,organizationId:string,staffId:string,input:{start_at:string;end_at:string;reason:string;operation_id:string}) => api.call('POST',`${base(organizationId)}/appointment-staff/${staffId}/time-off-requests`,timeOffRequestSchema,input),
+  reviewTimeOffRequest: (api:CallApi,organizationId:string,requestId:string,input:{action:'approve'|'reject';expected_version:number;operation_id:string;review_note:string}) => api.call('POST',`${base(organizationId)}/appointment-time-off-requests/${requestId}/review`,timeOffRequestSchema,input),
+  withdrawTimeOffRequest: (api:CallApi,organizationId:string,requestId:string,input:{expected_version:number;operation_id:string}) => api.call('POST',`${base(organizationId)}/appointment-time-off-requests/${requestId}/withdraw`,timeOffRequestSchema,input),
 };

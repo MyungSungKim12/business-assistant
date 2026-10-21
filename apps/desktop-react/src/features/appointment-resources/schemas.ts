@@ -2,9 +2,11 @@ import { z } from 'zod';
 
 export const resourceKindSchema = z.enum(['room', 'equipment']);
 export type ResourceKind = z.infer<typeof resourceKindSchema>;
+export const branchSchema = z.object({ id: z.string(), organization_id: z.string(), code: z.string(), name: z.string(), timezone_name: z.string(), is_primary: z.boolean(), is_active: z.boolean(), version: z.number().int().positive() });
+export const branchesSchema = z.array(branchSchema);
 
 export const resourceSchema = z.object({
-  id: z.string(), organization_id: z.string(), name: z.string(), kind: resourceKindSchema, is_active: z.boolean(), version: z.number(),
+  id: z.string(), organization_id: z.string(), branch_id: z.string().optional(), name: z.string(), kind: resourceKindSchema, is_active: z.boolean(), version: z.number(),
 });
 export const resourcesSchema = z.array(resourceSchema);
 export type AppointmentResource = z.infer<typeof resourceSchema>;
@@ -22,7 +24,7 @@ export const consumablesSchema = z.array(consumableSchema);
 export const serviceStaffListSchema = z.array(z.object({ service_id: z.string(), staff_id: z.string() }));
 export const serviceStaffIdsSchema = z.object({ staff_ids: z.array(z.string()) });
 
-export const staffSchema = z.object({ id: z.string(), organization_id: z.string(), name: z.string(), is_active: z.boolean(), profile_version: z.number().int().positive().optional(), schedule_version: z.number().default(1) });
+export const staffSchema = z.object({ id: z.string(), organization_id: z.string(), branch_id: z.string().optional(), auth_user_id:z.string().nullable().optional(), name: z.string(), is_active: z.boolean(), profile_version: z.number().int().positive().optional(), schedule_version: z.number().default(1) });
 export const staffListSchema = z.array(staffSchema);
 export type AppointmentStaffRow = z.infer<typeof staffSchema>;
 
@@ -40,8 +42,11 @@ export const timeOffSchema = z.object({
   id: z.string(), staff_id: z.string(), start_at: z.string(), end_at: z.string(), reason: z.string(), status: z.enum(['active', 'canceled']), version: z.number(),
 });
 export const availabilitySchema = z.object({ staff_id: z.string(), schedule_version: z.number(), hours: z.array(workingHourSchema), time_off: z.array(timeOffSchema) });
+export const timeOffRequestSchema = z.object({ id:z.string(),organization_id:z.string(),staff_id:z.string(),start_at:z.string(),end_at:z.string(),reason:z.string(),status:z.enum(['pending','approved','rejected','withdrawn']),version:z.number(),requested_by:z.string(),requested_at:z.string(),reviewed_by:z.string().nullable(),reviewed_at:z.string().nullable(),review_note:z.string(),withdrawn_by:z.string().nullable(),withdrawn_at:z.string().nullable(),time_off_id:z.string().nullable(),approval_operation_id:z.string() });
+export const timeOffRequestListSchema = z.object({current_staff_id:z.string().nullable(),requests:z.array(timeOffRequestSchema)});
 export const workingHoursSavedSchema = z.object({ staff_id: z.string(), schedule_version: z.number(), timezone_name: z.string(), hours: z.array(workingHourSchema) });
 export type StaffAvailability = z.infer<typeof availabilitySchema>;
 export type TimeOff = z.infer<typeof timeOffSchema>;
+export type TimeOffRequest = z.infer<typeof timeOffRequestSchema>;
 
 export const kindLabel: Record<ResourceKind, string> = { room: '공간', equipment: '장비' };

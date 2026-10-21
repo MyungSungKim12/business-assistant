@@ -46,3 +46,12 @@
 .file-preview__image { max-width: 100%; max-height: 100%; object-fit: contain; }
 .file-preview__frame { width: 100%; height: 100%; border: 0; background: #fff; }
 .file-preview__info { margin: 0; }
+.file-version-dialog { display:grid; gap:10px; }
+.file-version-dialog ol { display:grid; gap:6px; list-style:none; margin:0; padding:0; max-height:55vh; overflow:auto; }
+.file-version-dialog li { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px; border:1px solid var(--border); border-radius:var(--radius-sm); }
+.file-version-dialog li div { display:grid; gap:3px; min-width:0; }
+.file-version-dialog li span,.file-version-dialog li time { color:var(--text-muted); font-size:12px; }
+.file-quota-settings { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; margin: 8px 0 12px; padding: 10px 12px; border: 1px solid var(--border, #e3e6ea); border-radius: 8px; background: var(--surface, #fff); }
+.file-quota-settings label { display: grid; gap: 4px; font-weight: 600; }
+.file-quota-settings input { width: 120px; }
+.file-quota-settings .muted { align-self: center; }

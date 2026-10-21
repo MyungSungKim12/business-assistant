@@ -5,6 +5,7 @@ import { vi } from 'vitest';
 import type { z } from 'zod';
 import type { ApiClient } from '../../api/client';
 import { ApiError } from '../../api/errors';
+import type { FileStorageUsage } from './schemas';
 
 export const ORG = '22222222-2222-4222-8222-222222222222';
 export const CUSTOMER = '11111111-1111-4111-8111-111111111111';
@@ -21,18 +22,25 @@ export const document = { id: DOCUMENT, organization_id: ORG, template_id: null,
 export const issued = { id: DOCUMENT, organization_id: ORG, customer_id: CUSTOMER, treatment_id: TREATMENT, template_id: TEMPLATE, template_version: 2, title: '시술 동의서', content: '안녕하세요 김고객', source_snapshot: { customer: { name: '김고객', phone: '010' }, treatment: { name: '필러', date: '2026-10-13' } }, issued_by: USER, issued_at: stamp };
 export const preview = { template_id: TEMPLATE, template_version: 2, title: '시술 동의서', content: '안녕하세요 김고객', source_snapshot: issued.source_snapshot, missing_fields: [] as string[] };
 export const signEvent = { id: '88888888-8888-4888-8888-888888888888', organization_id: ORG, document_id: DOCUMENT, revision: 1, action: 'sign' as const, values: { signer_name: '김고객', strokes: [[[0, 0], [1, 1]]], confirmed: true }, actor_id: USER, occurred_at: stamp, content_hash: 'a'.repeat(64) };
-export const file = { id: FILE, organization_id: ORG, uploaded_by: USER, original_name: '가격표.pdf', content_type: 'application/pdf', size_bytes: 2048, is_archived: false, created_at: stamp, updated_at: stamp, folder_id: null, tags: [] as string[] };
+export const file = { id: FILE, organization_id: ORG, uploaded_by: USER, original_name: '가격표.pdf', content_type: 'application/pdf', size_bytes: 2048, version_number:1, is_archived: false, created_at: stamp, updated_at: stamp, folder_id: null, tags: [] as string[] };
 
 export type Call = { method: string; path: string; body: unknown };
 export type Handler = (call: Call) => unknown;
 
 /** api.call 을 흉내 내는 가짜 클라이언트. 응답은 실제 zod 스키마로 한 번 더 검증해 서버 형식과의 어긋남을 잡는다. */
-export function fakeApi(handler: Handler, platform: Record<string, unknown> = {}) {
+export function fakeApi(handler: Handler, platform: Record<string, unknown> = {}, storageUsage: FileStorageUsage = {organization_id:ORG,used_bytes:0,reserved_bytes:0,organization_quota_bytes:5368709120,plan_quota_bytes:null,quota_bytes:5368709120,available_bytes:5368709120}) {
   const calls: Call[] = [];
+  let pendingUploadFile:unknown=file;
   const call = vi.fn(async (method: string, path: string, schema: z.ZodType, body?: unknown) => {
     const entry = { method, path, body };
     calls.push(entry);
-    return schema.parse(await handler(entry));
+    let response=method==='GET'&&path.endsWith('/file-storage/usage')
+      ? storageUsage
+      : await handler(entry);
+    if(method==='POST'&&path.endsWith('/upload-url')&&typeof response==='object'&&response!==null&&'file' in response)pendingUploadFile=(response as {file:unknown}).file;
+    if(method==='POST'&&path.endsWith('/complete-upload')&&Array.isArray(response))response=pendingUploadFile;
+    if(method==='DELETE'&&path.includes('/file-storage/uploads/')&&Array.isArray(response)&&response.length===0)response={released:true};
+    return schema.parse(response);
   });
   const api = { call, callVoid: vi.fn(), filePlatform: { kind: 'browser', uploadBinary: vi.fn(async () => undefined), downloadBinary: vi.fn(async () => new Uint8Array([1, 2, 3])), ...platform } };
   return { api: api as unknown as ApiClient, calls, call, platform: api.filePlatform as unknown as Record<string, ReturnType<typeof vi.fn>> };

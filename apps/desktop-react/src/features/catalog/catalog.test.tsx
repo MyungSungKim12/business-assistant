@@ -1,18 +1,20 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { NoticeHost, ConfirmDialog } from '@business-assistant/react-ui';
 import { apiFailure, fakeApi, type FakeCall } from '../appointment-resources/testApi';
-import { CustomerWalletDialog, InventoryPage, ServicePage, StaffPage, WalletUseDialog, toProductInput } from './index';
+import { CommissionRulesDialog, CustomerWalletDialog, InventoryPage, ServicePage, StaffPage, WalletUseDialog, toProductInput } from './index';
 
 const ORG = 'a9cc39fd-8e8c-4df8-a623-1f23a3a936bd';
-const cream = { id: 'p1', organization_id: ORG, sku: 'SKU-1', name: '보습 크림', kind: 'product', unit_name: '개', sale_price: '30000', benefit_money: '0', benefit_count: 0, valid_days: null, is_active: true, version: 1, stock_quantity: 7 };
-const pass = { id: 'p2', organization_id: ORG, sku: 'PASS-1', name: '10회 패키지', kind: 'membership', unit_name: '회', sale_price: '500000', benefit_money: '0', benefit_count: 10, valid_days: 365, is_active: true, version: 3, stock_quantity: 0 };
+const IMAGE='7a9c39fd-8e8c-4df8-a623-1f23a3a936bd';
+const cream = { id: 'p1', organization_id: ORG, sku: 'SKU-1', name: '보습 크림', kind: 'product', unit_name: '개', purchase_unit_name: '개', units_per_purchase_unit: 1, sale_price: '30000', benefit_money: '0', benefit_count: 0, valid_days: null, is_active: true, version: 1, stock_quantity: 7 };
+const pass = { id: 'p2', organization_id: ORG, sku: 'PASS-1', name: '10회 패키지', kind: 'membership', unit_name: '회', purchase_unit_name: '회', units_per_purchase_unit: 1, sale_price: '500000', benefit_money: '0', benefit_count: 10, valid_days: 365, is_active: true, version: 3, stock_quantity: 0 };
 
 type Handlers = Record<string, (call: FakeCall) => unknown>;
 function server(handlers: Handlers) {
   return fakeApi((call) => {
-    const key = `${call.method} ${call.path.replace(`/organizations/${ORG}`, '')}`;
+    const key = `${call.method} ${call.path.replace(`/organizations/${ORG}`, '').split('?')[0]}`;
     const handler = handlers[key];
+    if (key === 'GET /catalog-inventory-lot-alerts' && !handler) return [];
     if (!handler) throw new Error(`unexpected ${key}`);
     return handler(call);
   });
@@ -22,9 +24,9 @@ const renderInventory = (api: never, readOnly = false) => render(<><NoticeHost /
 const field = (label: string) => screen.getByLabelText(label, { selector: 'input, select' });
 
 describe('toProductInput', () => {
-  const base = { kind: 'product' as const, sku: ' SKU ', name: ' 이름 ', unit_name: ' 개 ', sale_price: '1000', benefit_money: '0', benefit_count: '0', valid_days: '', is_active: true };
+  const base = { kind: 'product' as const, sku: ' SKU ', name: ' 이름 ', unit_name: ' 개 ', purchase_unit_name: '박스', units_per_purchase_unit: '12', sale_price: '1000', benefit_money: '0', benefit_count: '0', valid_days: '', is_active: true };
   it('상품은 혜택 필드를 0으로 고정하고 공백을 제거한다', () => {
-    expect(toProductInput({ ...base, benefit_money: '99', benefit_count: '5', valid_days: '30' })).toEqual({ sku: 'SKU', name: '이름', kind: 'product', unit_name: '개', sale_price: '1000', benefit_money: '0', benefit_count: 0, valid_days: null, is_active: true });
+    expect(toProductInput({ ...base, benefit_money: '99', benefit_count: '5', valid_days: '30' })).toEqual({ sku: 'SKU', name: '이름', kind: 'product', unit_name: '개', purchase_unit_name: '박스', units_per_purchase_unit: 12, sale_price: '1000', benefit_money: '0', benefit_count: 0, valid_days: null, is_active: true });
   });
   it('판매가는 1원 이상의 정수 문자열이어야 한다', () => {
     for (const price of ['', '0', '1.5', '-1', 'abc', '1000000000000']) expect(toProductInput({ ...base, sale_price: price })).toBe('SKU, 이름, 단위와 1원 이상의 판매가를 확인하세요.');
@@ -40,6 +42,28 @@ describe('toProductInput', () => {
 });
 
 describe('InventoryPage', () => {
+  it('조직 전체의 유통기한 알림에서 해당 상품의 로트 상세를 연다', async () => {
+    const alert={id:'lot-1',organization_id:ORG,product_id:'p1',product_name:'보습 크림',lot_code:'LOT-A',received_quantity:4,remaining_quantity:3,expires_on:'2026-11-01',unit_cost:'1200',received_at:'2026-10-20T00:00:00Z',alert_status:'expiring_soon'};
+    const {api,calls}=server({'GET /catalog-products':()=>[cream],'GET /catalog-inventory-lot-alerts':()=>[alert],'GET /catalog-products/p1/lots':()=>[alert]});
+    renderInventory(api as never);
+    expect(await screen.findByText('LOT-A')).toBeInTheDocument();
+    expect(screen.getByRole('gridcell',{name:'30일 이내'})).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button',{name:'로트 상세'}));
+    expect(await screen.findByRole('dialog',{name:'보습 크림 · 로트·유통기한'})).toBeInTheDocument();
+    expect(calls.some(call=>call.path.endsWith('/catalog-products/p1/lots'))).toBe(true);
+  });
+
+  it('유통기한 알림이 한 페이지를 채우면 다음 페이지를 이어 붙인다', async () => {
+    const alert=(index:number)=>({id:`lot-${index}`,organization_id:ORG,product_id:'p1',product_name:'보습 크림',lot_code:`LOT-${index}`,received_quantity:2,remaining_quantity:2,expires_on:`2026-11-${String(index%28+1).padStart(2,'0')}`,unit_cost:'1200',received_at:'2026-10-20T00:00:00Z',alert_status:'expiring_soon'});
+    const firstPage=Array.from({length:200},(_,index)=>alert(index+1));
+    const {api,calls}=server({'GET /catalog-products':()=>[cream],'GET /catalog-inventory-lot-alerts':call=>new URLSearchParams(call.path.split('?')[1]).get('offset')==='200'?[alert(201)]:firstPage});
+    renderInventory(api as never);
+    expect(await screen.findByText('LOT-200')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button',{name:'다음 200건'}));
+    expect(await screen.findByText('LOT-201')).toBeInTheDocument();
+    expect(calls.filter(call=>call.path.includes('/catalog-inventory-lot-alerts'))).toHaveLength(2);
+  });
+
   it('상품 목록을 보여 주고 검색과 구분 필터로 좁힌다', async () => {
     const { api } = server({ 'GET /catalog-products': () => [cream, pass] });
     renderInventory(api as never);
@@ -67,6 +91,74 @@ describe('InventoryPage', () => {
     expect(typeof body.operation_id).toBe('string');
     expect(body).not.toHaveProperty('expected_version');
     expect(screen.getAllByText('판매 조건을 저장했습니다.').length).toBeGreaterThan(0);
+  });
+
+  it('상품 분류·바코드를 별도 버전 저장하고 목록 검색에 반영한다',async()=>{
+    const {api,calls}=server({'GET /catalog-products':()=>[cream],'PUT /catalog-products/p1/metadata':call=>({...cream,category:(call.body as {category:string}).category,barcode:(call.body as {barcode:string}).barcode,version:2})});
+    renderInventory(api as never);
+    fireEvent.click(await screen.findByText('보습 크림'));
+    fireEvent.change(screen.getByLabelText('상품 분류'),{target:{value:'스킨케어'}});
+    fireEvent.change(screen.getByLabelText('바코드'),{target:{value:'8801234567890'}});
+    fireEvent.click(screen.getByRole('button',{name:'분류·바코드 저장'}));
+    await waitFor(()=>expect(bodies(calls,'PUT /catalog-products/p1/metadata')).toHaveLength(1));
+    expect(bodies(calls,'PUT /catalog-products/p1/metadata')[0]).toMatchObject({category:'스킨케어',barcode:'8801234567890',expected_version:1});
+    fireEvent.change(screen.getByLabelText('상품 검색'),{target:{value:'8801234567890'}});
+    expect(await screen.findByText('보습 크림')).toBeInTheDocument();
+  });
+
+  it('바코드 스캐너 입력을 Enter로 조회해 정확히 일치하는 상품 상세를 연다',async()=>{
+    const scanned={...cream,category:'스킨케어',barcode:'8801234567890'};
+    const {api}=server({'GET /catalog-products':()=>[scanned,pass]});
+    renderInventory(api as never);
+    await screen.findByText('보습 크림');
+    const input=screen.getByLabelText('바코드 스캔');
+    fireEvent.change(input,{target:{value:'8801234567890'}});
+    fireEvent.keyDown(input,{key:'Enter',code:'Enter'});
+    expect(await screen.findByLabelText('상품 분류')).toHaveValue('스킨케어');
+    expect(screen.getByLabelText('바코드')).toHaveValue('8801234567890');
+    expect(screen.getByText('바코드로 보습 크림 상품을 찾았습니다.')).toHaveAttribute('aria-live','polite');
+    expect(input).toHaveValue('');
+  });
+
+  it('등록되지 않은 스캔 코드면 잘못된 상품을 열지 않고 재시도 안내를 한다',async()=>{
+    const {api}=server({'GET /catalog-products':()=>[cream,pass]});
+    renderInventory(api as never);
+    await screen.findByText('보습 크림');
+    fireEvent.click(screen.getByText('10회 패키지'));
+    fireEvent.change(screen.getByLabelText('바코드 스캔'),{target:{value:'0000000000000'}});
+    fireEvent.keyDown(screen.getByLabelText('바코드 스캔'),{key:'Enter',code:'Enter'});
+    expect(await screen.findByText(/해당 바코드로 등록된 상품이 없습니다/)).toHaveAttribute('aria-live','polite');
+    expect(screen.getByLabelText('SKU')).toHaveValue('PASS-1');
+  });
+
+  it('중복 바코드가 조회되면 임의의 상품을 선택하지 않는다',async()=>{
+    const duplicate=[{...cream,barcode:'8800000000000'},{...pass,barcode:'8800000000000'}];
+    const {api}=server({'GET /catalog-products':()=>duplicate});
+    renderInventory(api as never);
+    await screen.findByText('보습 크림');
+    fireEvent.change(screen.getByLabelText('바코드 스캔'),{target:{value:'8800000000000'}});
+    fireEvent.keyDown(screen.getByLabelText('바코드 스캔'),{key:'Enter',code:'Enter'});
+    expect(await screen.findByText(/같은 바코드가 여러 상품에 등록/)).toHaveAttribute('aria-live','polite');
+    expect(screen.getByLabelText('SKU')).toHaveValue('');
+  });
+
+  it('5MB 이하 이미지 파일을 자료 저장소에 올린 뒤 상품에 연결한다',async()=>{
+    const asset={id:IMAGE,organization_id:ORG,uploaded_by:'12345678-1234-4678-9234-567812345678',original_name:'cream.png',content_type:'image/png',size_bytes:1024,is_archived:false,version_number:1,created_at:'2026-10-20T00:00:00Z',updated_at:'2026-10-20T00:00:00Z',folder_id:null,tags:[]};
+    const {api,calls}=server({
+      'GET /catalog-products':()=>[{...cream,image_file_id:null}],
+      'POST /files/upload-url':()=>({file:asset,signed_url:'https://storage/upload',expires_in:60,reservation_id:'88888888-8888-4888-8888-888888888888'}),
+      [`POST /files/${IMAGE}/complete-upload`]:()=>asset,
+      'POST /files/7a9c39fd-8e8c-4df8-a623-1f23a3a936bd/download-url':()=>({file:asset,signed_url:'https://storage/download',expires_in:60}),
+      'PUT /catalog-products/p1/image':()=>({...cream,image_file_id:IMAGE,version:2}),
+    });
+    const platform={kind:'tauri',pickFiles:vi.fn(async()=>[{kind:'blob' as const,name:'cream.png',contentType:'image/png',size:1024,blob:new Blob(['image'])}]),uploadBinary:vi.fn(async()=>{}),downloadBinary:vi.fn(async()=>new Uint8Array([1,2,3]))};
+    Object.assign(api,{filePlatform:platform});vi.spyOn(URL,'createObjectURL').mockReturnValue('blob:preview');
+    renderInventory(api as never);fireEvent.click(await screen.findByText('보습 크림'));fireEvent.click(screen.getByRole('button',{name:'이미지 등록'}));
+    await waitFor(()=>expect(bodies(calls,'PUT /catalog-products/p1/image')).toHaveLength(1));
+    expect(bodies(calls,'POST /files/upload-url')[0]).toMatchObject({original_name:'cream.png',content_type:'image/png',size_bytes:1024});
+    expect(bodies(calls,'PUT /catalog-products/p1/image')[0]).toMatchObject({image_file_id:IMAGE,expected_version:1});
+    expect(platform.uploadBinary).toHaveBeenCalledTimes(1);
+    expect(await screen.findByRole('img',{name:'보습 크림 상품 이미지'})).toHaveAttribute('src','blob:preview');
   });
 
   it('잘못된 입력은 서버로 보내지 않고 안내한다', async () => {
@@ -121,9 +213,12 @@ describe('InventoryPage', () => {
     expect(await screen.findByText('실물 상품을 선택하고 입고 사유를 입력하세요.')).toBeInTheDocument();
     expect(bodies(calls, 'POST /catalog-products/p1/stock-receipts')).toHaveLength(0);
     fireEvent.change(screen.getByLabelText('수량 변경 사유'), { target: { value: ' 신규 입고 ' } });
+    fireEvent.change(screen.getByLabelText('입고 로트 번호'), { target: { value: 'LOT-7' } });
+    fireEvent.change(screen.getByLabelText('입고 유통기한'), { target: { value: '2026-12-31' } });
+    fireEvent.change(screen.getByLabelText('입고 매입 단가'), { target: { value: '1200' } });
     fireEvent.click(screen.getByRole('button', { name: '선택 상품 입고' }));
     await waitFor(() => expect(bodies(calls, 'POST /catalog-products/p1/stock-receipts')).toHaveLength(1));
-    expect(bodies(calls, 'POST /catalog-products/p1/stock-receipts')[0]).toMatchObject({ quantity: 3, reason: '신규 입고' });
+    expect(bodies(calls, 'POST /catalog-products/p1/stock-receipts')[0]).toMatchObject({ quantity: 3, reason: '신규 입고', lot_code:'LOT-7', expires_on:'2026-12-31', unit_cost:'1200' });
     expect(await screen.findByText('재고 · 현재 10개')).toBeInTheDocument();
   });
 
@@ -161,6 +256,17 @@ describe('InventoryPage', () => {
     expect(grid.getByText('-2 개')).toBeInTheDocument();
   });
 
+  it('상품별 로트 목록에서 유통기한 임박 상태를 표시한다', async () => {
+    const lot={id:'lot-1',organization_id:ORG,product_id:'p1',lot_code:'LOT-1',received_quantity:4,remaining_quantity:3,expires_on:'2026-11-01',unit_cost:'1200',received_at:'2026-10-20T00:00:00Z',alert_status:'expiring_soon'};
+    const {api}=server({'GET /catalog-products':()=>[cream],'GET /catalog-products/p1/lots':()=>[lot]});
+    renderInventory(api as never);
+    fireEvent.click(await screen.findByText('보습 크림'));
+    fireEvent.click(screen.getByRole('button',{name:'로트·유통기한'}));
+    const dialog=await screen.findByRole('dialog',{name:'보습 크림 · 로트·유통기한'});
+    expect(within(dialog).getByText('LOT-1')).toBeInTheDocument();
+    expect(within(dialog).getByText('임박')).toBeInTheDocument();
+  });
+
   it('읽기 전용(member)은 저장·입고·변동 기록 UI가 없고 이력만 본다', async () => {
     const { api } = server({ 'GET /catalog-products': () => [cream] });
     renderInventory(api as never, true);
@@ -193,6 +299,22 @@ describe('InventoryPage', () => {
 });
 
 const staffRow = { id: 'st1', organization_id: ORG, name: '김담당', is_active: true };
+describe('CommissionRulesDialog',()=>{
+ it('대상별 시행일 수당 규칙을 퍼센트에서 basis points로 저장한다',async()=>{
+  const service={id:'svc1',organization_id:ORG,name:'기본 시술',duration_minutes:60,buffer_minutes:0,is_active:true};
+  const {api,calls}=server({'GET /staff-commission-rules':()=>[],'GET /appointment-staff':()=>[staffRow],'GET /appointment-services':()=>[service],'GET /catalog-products':()=>[cream,pass],'POST /staff-commission-rules':call=>({id:'rule1',organization_id:ORG,staff_id:'st1',commission_scope:'service',service_id:'svc1',product_id:null,rate_basis_points:1500,basis:'net_paid',effective_from:'2026-10-01',effective_to:null,version:1,is_active:true,created_by:'owner',created_at:'2026-10-01T00:00:00Z'})});
+  render(<CommissionRulesDialog api={api as never} organizationId={ORG} onClose={()=>undefined}/>);
+  await screen.findByText('등록된 수당 규칙이 없습니다.');
+  fireEvent.change(screen.getByLabelText('수당 적용 직원'),{target:{value:'st1'}});
+  fireEvent.change(screen.getByLabelText('수당 적용 대상'),{target:{value:'svc1'}});
+  fireEvent.change(screen.getByLabelText('수당률'),{target:{value:'15'}});
+  fireEvent.change(screen.getByLabelText('수당 시작일'),{target:{value:'2026-10-01'}});
+  fireEvent.click(screen.getByRole('button',{name:'규칙 저장'}));
+  await waitFor(()=>expect(bodies(calls,'POST /staff-commission-rules')).toHaveLength(1));
+  expect(bodies(calls,'POST /staff-commission-rules')[0]).toMatchObject({staff_id:'st1',commission_scope:'service',service_id:'svc1',rate_basis_points:1500,effective_from:'2026-10-01'});
+ });
+});
+
 describe('StaffPage', () => {
   it('직원 목록, 추가, 근무시간 대화상자를 제공한다', async () => {
     const { api, calls } = server({
@@ -271,6 +393,64 @@ const wallet = {
   usage_history: [{ id: 'u1', visit_id: 'v1', sale_line_id: 'l2', mode: 'money', money_delta: '-5000', count_delta: 0, applied_amount: '5000', created_at: '2026-10-05T01:00:00Z' }],
 };
 describe('CustomerWalletDialog', () => {
+  it('금액권 환불은 서버 한도·잔액 버전·외부 환불 확인을 기록 요청에 전달한다', async () => {
+    let current = { ...wallet, money_balance: '100000', count_balance: 0, usage_history: [], owner_version: 1 };
+    const { api, calls } = server({
+      'GET /customers/c1/wallets': () => [current],
+      'GET /customers/c1/wallets/w1/history': () => current.money_balance === '75000' ? [{ id: 'event-refund', event_type: 'refund', occurred_at: '2026-10-20T00:00:00Z', money_delta: '-25000', count_delta: 0, reason: '고객 요청', visit_id: null, previous_expires_on: null, expires_on: null }] : [],
+      'GET /customers/c1/wallets/w1/refund-preview': () => ({ organization_id: ORG, customer_id: 'c1', wallet_id: 'w1', refund_cap: '100000', money_balance: '100000', count_balance:0, balance_version: 2, purchase_amount: '100000', currency: 'KRW' }),
+      'POST /customers/c1/wallets/w1/refunds': call => { current = { ...current, money_balance: '75000' }; return { organization_id: ORG, customer_id: 'c1', wallet_id: 'w1', amount: '25000', money_removed:'25000', count_removed:0, previous_balance: '100000', new_balance: '75000', previous_count_balance:0, new_count_balance:0, balance_version: 3, transaction_date: '2026-10-20', finance_transaction_id: 'f1', reason: (call.body as { reason: string }).reason, lifecycle_status: 'active', created_by: 'u1' }; },
+    });
+    render(<><NoticeHost /><CustomerWalletDialog api={api} organizationId={ORG} customerId="c1" onClose={() => undefined} /></>);
+    await screen.findByText('100,000원');
+    fireEvent.click(walletCell('10회 패키지'));
+    fireEvent.click(screen.getByRole('button', { name: '잔액 환불' }));
+    expect(await screen.findByText(/환불 가능 최대 100,000원/)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('실제 환불 금액(원)'), { target: { value: '0' } });
+    fireEvent.change(screen.getByLabelText('환불 사유'), { target: { value: '고객 요청' } });
+    fireEvent.click(screen.getByRole('button', { name: '환불 기록' }));
+    expect(await screen.findByText(/환불 금액은 환불 가능액/)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('실제 환불 금액(원)'), { target: { value: '25000' } });
+    fireEvent.change(screen.getByLabelText('차감할 잔여 금액(원)'), { target: { value: '25000' } });
+    fireEvent.click(screen.getByLabelText('외부 결제 수단으로 환불을 완료했습니다.'));
+    fireEvent.click(screen.getByRole('button', { name: '환불 기록' }));
+    await waitFor(() => expect(bodies(calls, 'POST /customers/c1/wallets/w1/refunds')).toHaveLength(1));
+    expect(bodies(calls, 'POST /customers/c1/wallets/w1/refunds')[0]).toMatchObject({ cash_refund_amount: '25000', remove_money_amount:'25000', remove_count_amount:0, expected_balance_version: 2, reason: '고객 요청', confirmed: true });
+    expect(await screen.findByText('75,000원')).toBeInTheDocument();
+    expect(await within(screen.getByRole('grid', { name: '회원권 변경·환불 이력' })).findByText('환불')).toBeInTheDocument();
+  });
+
+  it('횟수·복합 회원권 환불은 실제 현금과 회수 횟수를 각각 입력한다', async () => {
+    const { api, calls } = server({ 'GET /customers/c1/wallets': () => [wallet], 'GET /customers/c1/wallets/w1/refund-preview': () => ({ organization_id:ORG,customer_id:'c1',wallet_id:'w1',refund_cap:'100000',money_balance:'100000',count_balance:4,balance_version:2,purchase_amount:'100000',currency:'KRW' }), 'POST /customers/c1/wallets/w1/refunds':()=>({organization_id:ORG,customer_id:'c1',wallet_id:'w1',amount:'30000',money_removed:'10000',count_removed:1,previous_balance:'100000',new_balance:'90000',previous_count_balance:4,new_count_balance:3,balance_version:3,transaction_date:'2026-10-20',finance_transaction_id:'f2',reason:'정책 환불',lifecycle_status:'active',created_by:'u1'}) });
+    render(<CustomerWalletDialog api={api} organizationId={ORG} customerId="c1" onClose={() => undefined} />);
+    await screen.findByText('100,000원');
+    fireEvent.click(walletCell('10회 패키지'));
+    fireEvent.click(screen.getByRole('button', { name: '잔액 환불' }));
+    expect(await screen.findByText(/횟수 혜택은 환불액으로 자동 환산하지 않습니다/)).toBeInTheDocument();
+    expect(screen.getByLabelText('회수할 횟수')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('실제 환불 금액(원)'),{target:{value:'30000'}});fireEvent.change(screen.getByLabelText('차감할 잔여 금액(원)'),{target:{value:'10000'}});fireEvent.change(screen.getByLabelText('회수할 횟수'),{target:{value:'1'}});fireEvent.change(screen.getByLabelText('환불 사유'),{target:{value:'정책 환불'}});fireEvent.click(screen.getByLabelText('외부 결제 수단으로 환불을 완료했습니다.'));fireEvent.click(screen.getByRole('button',{name:'환불 기록'}));
+    await waitFor(()=>expect(bodies(calls,'POST /customers/c1/wallets/w1/refunds')).toHaveLength(1));expect(bodies(calls,'POST /customers/c1/wallets/w1/refunds')[0]).toMatchObject({cash_refund_amount:'30000',remove_money_amount:'10000',remove_count_amount:1});
+  });
+
+  it('사용 이력이 없는 회원권만 같은 조직 고객에게 양도한다', async () => {
+    const unused = { ...wallet, usage_history: [], owner_version: 1 };
+    const target = { id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', organization_id: ORG, name: '양수 고객', email: null, phone: null, notes: '', birth_date: null, skin_type: null, concerns: [], allergies: '', last_visit_date: null, next_visit_date: null, tags: [], status: 'active' };
+    const { api, calls } = server({
+      'GET /customers/c1/wallets': () => [unused],
+      'GET /customers': () => [target],
+      'POST /customers/c1/wallets/w1/transfer': call => ({ ...unused, customer_id: target.id, owner_version: 2, reason: (call.body as { reason: string }).reason }),
+    });
+    render(<><NoticeHost /><CustomerWalletDialog api={api} organizationId={ORG} customerId="c1" onClose={() => undefined} /></>);
+    await screen.findByText('100,000원');
+    fireEvent.click(walletCell('10회 패키지'));
+    fireEvent.click(screen.getByRole('button', { name: '회원권 양도' }));
+    fireEvent.change(await screen.findByLabelText('양도 받을 고객'), { target: { value: target.id } });
+    fireEvent.change(screen.getByLabelText('양도 사유'), { target: { value: '가족 양도' } });
+    fireEvent.click(screen.getByRole('button', { name: '양도 확인' }));
+    await waitFor(() => expect(bodies(calls, 'POST /customers/c1/wallets/w1/transfer')).toHaveLength(1));
+    expect(bodies(calls, 'POST /customers/c1/wallets/w1/transfer')[0]).toMatchObject({ to_customer_id: target.id, expected_owner_version: 1, reason: '가족 양도' });
+  });
+
   it('잔여 혜택과 사용 내역을 보여 주고 정지는 사유·버전과 함께 보낸다', async () => {
     let current = wallet;
     const { api, calls } = server({

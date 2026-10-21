@@ -37,6 +37,22 @@
   font-size: 12px;
 }
 
+.catalog-form__image {
+  grid-column: 1/-1;
+  display: grid;
+  gap: 6px;
+}
+
+.catalog-form__image img {
+  display: block;
+  width: min(100%, 320px);
+  max-height: 220px;
+  object-fit: contain;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--surface-panel);
+}
+
 .catalog-form .form-actions {
   display: flex;
   gap: 4px;

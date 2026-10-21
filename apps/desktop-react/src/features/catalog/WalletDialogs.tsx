@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { DataGrid, ErrorState, LoadingState, Modal, Select, notify, type Column } from '@business-assistant/react-ui';
 import { isDefiniteRejection, useOperationTracker } from '../appointment-resources/operationIds';
+import { customersSchema } from '../../api/schemas';
 import type { CallApi } from '../appointment-resources/api';
 import { catalogApi, type WalletAction } from './api';
-import { won, type CartBundle, type CustomerWallet, type WalletUseResult } from './schemas';
+import { won, walletEventLabel, type CartBundle, type CustomerWallet, type WalletUseResult, type WalletRefundPreview, type WalletHistoryEvent } from './schemas';
 import './catalog.css';
 
-const statusLabel = (wallet: CustomerWallet) => (wallet.lifecycle_status === 'paused' ? '정지' : '사용 가능');
+const statusLabel = (wallet: CustomerWallet) => wallet.lifecycle_status === 'paused' ? '정지' : wallet.lifecycle_status === 'refunded' ? '환불 완료' : '사용 가능';
 
 export interface CustomerWalletDialogProps {
   api: CallApi;
@@ -20,10 +21,19 @@ export interface CustomerWalletDialogProps {
 /** 고객 회원권 · 잔여 혜택과 정지·재개·기간 연장(옛 CustomerWalletDialog). */
 export function CustomerWalletDialog({ api, organizationId, customerId, readOnly = false, onClose }: CustomerWalletDialogProps) {
   const [wallets, setWallets] = useState<CustomerWallet[]>([]);
+  const [historyEvents, setHistoryEvents] = useState<WalletHistoryEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [action, setAction] = useState<WalletAction | null>(null);
+  const [transferCustomers, setTransferCustomers] = useState<Array<{ id: string; name: string }>>([]);
+  const [transferTarget, setTransferTarget] = useState('');
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [refundPreview, setRefundPreview] = useState<WalletRefundPreview | null>(null);
+  const [refundAmount, setRefundAmount] = useState('');
+  const [refundMoneyRemoval, setRefundMoneyRemoval] = useState('');
+  const [refundCountRemoval, setRefundCountRemoval] = useState('0');
+  const [refundConfirmed, setRefundConfirmed] = useState(false);
   const [reason, setReason] = useState('');
   const [days, setDays] = useState('7');
   const [status, setStatus] = useState('');
@@ -37,6 +47,12 @@ export function CustomerWalletDialog({ api, organizationId, customerId, readOnly
     finally { setLoading(false); }
   }, [api, organizationId, customerId]);
   useEffect(() => { void load(); }, [load]);
+
+  const loadHistory = useCallback(async (walletId: string) => {
+    try { setHistoryEvents(await catalogApi.listWalletHistory(api, organizationId, customerId, walletId)); }
+    catch { setHistoryEvents([]); }
+  }, [api, organizationId, customerId]);
+  useEffect(() => { if (selectedId) void loadHistory(selectedId); else setHistoryEvents([]); }, [selectedId, loadHistory]);
 
   const selected = wallets.find((item) => item.id === selectedId) ?? null;
   const canManage = !readOnly && !busy && selected !== null;
@@ -62,6 +78,66 @@ export function CustomerWalletDialog({ api, organizationId, customerId, readOnly
     } finally { setBusy(false); }
   }
 
+  async function openTransfer() {
+    if (!selected || !canManage || selected.lifecycle_status !== 'active' || selected.usage_history.length) return;
+    try {
+      const rows = await api.call('GET', `/organizations/${organizationId}/customers`, customersSchema);
+      const targets = rows.filter(row => row.id !== customerId && row.status === 'active').map(({ id, name }) => ({ id, name }));
+      setTransferCustomers(targets); setTransferTarget(targets[0]?.id ?? ''); setReason(''); setTransferOpen(true);
+      if (!targets.length) setStatus('양도할 활성 고객이 없습니다.');
+    } catch { setStatus('고객 목록을 불러오지 못해 양도 대상을 확인할 수 없습니다.'); }
+  }
+
+  async function submitTransfer() {
+    if (!selected || !transferTarget || !reason.trim()) { setStatus('양도 대상과 사유를 입력하세요.'); return; }
+    setBusy(true);
+    try {
+      await catalogApi.transferWallet(api, organizationId, customerId, selected.id, {
+        to_customer_id: transferTarget, expected_owner_version: selected.owner_version,
+        reason: reason.trim(), operation_id: op.idFor(JSON.stringify([selected.id, selected.owner_version, transferTarget, reason.trim()])),
+      });
+      op.reset(); setTransferOpen(false); setReason(''); setStatus('회원권을 양도했습니다.'); notify.success('회원권을 양도했습니다.'); await load();
+    } catch (error) {
+      if (isDefiniteRejection(error)) op.reset();
+      setStatus((error as { status?: number }).status === 409 ? '회원권 상태가 바뀌었습니다. 새로고침 후 다시 확인하세요.' : isDefiniteRejection(error) ? '사용 이력이 있거나 양도할 수 없는 회원권입니다.' : '결과가 불명확합니다. 같은 요청을 다시 시도하면 중복 없이 처리됩니다.');
+    } finally { setBusy(false); }
+  }
+
+  async function openRefund() {
+    if (!selected || !canManage) return;
+    setStatus('환불 가능 금액을 확인하는 중입니다.');
+    try {
+      const preview = await catalogApi.previewWalletRefund(api, organizationId, customerId, selected.id);
+      setRefundPreview(preview); setRefundAmount(''); setRefundMoneyRemoval(''); setRefundCountRemoval('0'); setRefundConfirmed(false); setReason(''); setStatus('');
+    } catch (error) {
+      setRefundPreview(null);
+      setStatus((error as { status?: number }).status === 403 ? '회원권 환불은 관리자만 확인할 수 있습니다.' : '이 회원권은 환불 대상이 아니거나 환불 가능액을 확인할 수 없습니다. 금액권 여부와 잔여 혜택을 확인하세요.');
+    }
+  }
+
+  async function submitRefund() {
+    if (!selected || !refundPreview) return;
+    const amount = refundAmount.trim(), trimmedReason = reason.trim();
+    if (!/^[1-9][0-9]{0,11}$/.test(amount) || Number(amount) > Number(refundPreview.refund_cap)) { setStatus(`환불 금액은 환불 가능액 ${won(refundPreview.refund_cap)} 이하여야 합니다.`); return; }
+    if (!trimmedReason) { setStatus('환불 사유를 입력하세요.'); return; }
+    if (!refundConfirmed) { setStatus('외부 결제 수단으로 환불을 완료했는지 확인하세요.'); return; }
+    if (!/^(0|[1-9][0-9]{0,11})$/.test(refundMoneyRemoval) || Number(refundMoneyRemoval)>Number(refundPreview.money_balance) || !/^(0|[1-9][0-9]{0,6})$/.test(refundCountRemoval) || Number(refundCountRemoval)>refundPreview.count_balance || (Number(refundMoneyRemoval)===0&&Number(refundCountRemoval)===0)) { setStatus('회수할 금액 또는 횟수를 잔여 혜택 이내로 입력하세요.'); return; }
+    const countRemoval=Number(refundCountRemoval);
+    const fingerprint = JSON.stringify([selected.id, refundPreview.balance_version, amount, refundMoneyRemoval, countRemoval, trimmedReason, true]);
+    setBusy(true);
+    try {
+      const result = await catalogApi.refundWallet(api, organizationId, customerId, selected.id, {
+        cash_refund_amount:amount, remove_money_amount:refundMoneyRemoval, remove_count_amount:countRemoval, expected_balance_version: refundPreview.balance_version, reason: trimmedReason, confirmed: true,
+        operation_id: op.idFor(fingerprint),
+      });
+      op.reset(); setRefundPreview(null); setRefundAmount(''); setRefundMoneyRemoval(''); setRefundCountRemoval('0'); setRefundConfirmed(false); setReason('');
+      setStatus(`환불 ${won(result.amount)}을 기록했습니다. 금액 혜택 ${won(result.money_removed)}·횟수 혜택 ${result.count_removed}회를 회수했습니다.`); notify.success('회원권 환불을 기록했습니다.'); await load(); await loadHistory(selected.id);
+    } catch (error) {
+      if (isDefiniteRejection(error)) op.reset();
+      setStatus((error as { status?: number }).status === 409 ? '잔액이 바뀌었거나 정산 기간이 마감되었습니다. 새로고침 후 확인하세요.' : isDefiniteRejection(error) ? '환불을 기록할 수 없습니다. 환불 금액과 회원권 상태를 확인하세요.' : '처리 결과를 확인하지 못했습니다. 같은 요청을 다시 시도하면 중복 없이 처리됩니다.');
+    } finally { setBusy(false); }
+  }
+
   const columns: Column<CustomerWallet>[] = [
     { key: 'name', header: '회원권', width: 160, value: (row) => row.name_snapshot },
     { key: 'money', header: '잔여 금액', width: 100, value: (row) => Number(row.money_balance), render: (row) => won(row.money_balance) },
@@ -84,11 +160,20 @@ export function CustomerWalletDialog({ api, organizationId, customerId, readOnly
                 { key: 'used', header: '사용', width: 80, value: (row) => row.usage.mode, render: (row) => (row.usage.mode === 'count' ? '1회' : won(Math.abs(Number(row.usage.money_delta)))) },
                 { key: 'applied', header: '적용 금액', width: 100, value: (row) => Number(row.usage.applied_amount), render: (row) => won(row.usage.applied_amount) },
               ]} />
+            <DataGrid rows={historyEvents.filter(event => event.event_type !== 'use')} rowKey={event => event.id} ariaLabel="회원권 변경·환불 이력" emptyText="별도 변경 이력이 없습니다."
+              columns={[
+                { key:'event',header:'변경',width:100,value:event=>walletEventLabel[event.event_type] },
+                { key:'at',header:'일시',width:150,value:event=>event.occurred_at,render:event=>event.occurred_at.slice(0,16).replace('T',' ') },
+                { key:'delta',header:'잔액 변화',width:120,value:event=>Number(event.money_delta),render:event=>Number(event.money_delta)!==0?won(event.money_delta):`${event.count_delta}회` },
+                { key:'reason',header:'사유',value:event=>event.reason??'—' },
+              ]} />
             {!readOnly && (
               <div className="wallet-actions">
                 <button type="button" disabled={!canManage || selected.lifecycle_status !== 'active'} onClick={() => setAction('pause')}>정지</button>
                 <button type="button" disabled={!canManage || selected.lifecycle_status !== 'paused'} onClick={() => setAction('resume')}>재개</button>
                 <button type="button" disabled={!canManage || !selected.expires_on} onClick={() => setAction('extend')}>기간 연장</button>
+                <button type="button" disabled={!canManage || selected.lifecycle_status !== 'active' || selected.usage_history.length > 0} onClick={() => void openTransfer()}>회원권 양도</button>
+                <button type="button" disabled={!canManage || selected.lifecycle_status !== 'active'} onClick={() => void openRefund()}>잔액 환불</button>
               </div>
             )}
             {action && (
@@ -99,6 +184,8 @@ export function CustomerWalletDialog({ api, organizationId, customerId, readOnly
                 <button type="button" disabled={busy} onClick={() => setAction(null)}>취소</button>
               </div>
             )}
+            {transferOpen && <div className="inline-form" aria-label="회원권 양도"><label>양도 받을 고객<Select value={transferTarget} onChange={setTransferTarget} options={transferCustomers.map(row => ({ value: row.id, label: row.name }))} /></label><label>양도 사유<input value={reason} onChange={event => setReason(event.currentTarget.value)} /></label><small>사용하지 않은 활성 회원권만 양도할 수 있습니다.</small><button type="button" className="primary-button" disabled={busy || !transferTarget} onClick={() => void submitTransfer()}>양도 확인</button><button type="button" disabled={busy} onClick={() => setTransferOpen(false)}>취소</button></div>}
+            {refundPreview && <div className="inline-form" aria-label="회원권 잔액 환불"><p>실제 외부 환불액과 회수할 잔여 혜택을 매장 환불 정책에 따라 각각 입력하세요. 횟수 혜택은 환불액으로 자동 환산하지 않습니다.</p><small>잔여 금액 {won(refundPreview.money_balance)} · 잔여 횟수 {refundPreview.count_balance}회 · 현금 환불 가능 최대 {won(refundPreview.refund_cap)}</small><label>실제 환불 금액(원)<input aria-label="실제 환불 금액(원)" inputMode="numeric" value={refundAmount} onChange={event => setRefundAmount(event.currentTarget.value)} /></label><label>차감할 잔여 금액(원)<input aria-label="차감할 잔여 금액(원)" inputMode="numeric" value={refundMoneyRemoval} onChange={event => setRefundMoneyRemoval(event.currentTarget.value)} /></label><label>회수할 횟수<input aria-label="회수할 횟수" inputMode="numeric" value={refundCountRemoval} onChange={event => setRefundCountRemoval(event.currentTarget.value)} /></label><label>환불 사유<input aria-label="환불 사유" value={reason} onChange={event => setReason(event.currentTarget.value)} /></label><label className="check"><input type="checkbox" checked={refundConfirmed} disabled={busy} onChange={event => setRefundConfirmed(event.currentTarget.checked)} />외부 결제 수단으로 환불을 완료했습니다.</label><button type="button" className="primary-button" disabled={busy} onClick={() => void submitRefund()}>환불 기록</button><button type="button" disabled={busy} onClick={() => { setRefundPreview(null); setReason(''); }}>취소</button></div>}
           </>
         )}
         {status && <p aria-live="polite" className="catalog-message">{status}</p>}

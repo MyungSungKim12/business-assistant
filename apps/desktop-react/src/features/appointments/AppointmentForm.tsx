@@ -6,9 +6,11 @@ import type { AppointmentResource, ResourceRequirement } from '../appointment-re
 import { formatKstTime, kstIso, todayKstKey, toKstLocalInput } from './appointmentTime';
 import { canStaffDoService, type ServiceStaffMap } from './serviceStaff';
 import { AvailabilityChips } from './AvailabilityChips';
+import { AvailabilitySearch } from './AvailabilitySearch';
 import { AppointmentCustomerPicker } from './AppointmentCustomerPicker';
 import { useDraftProtection } from '../../app/DraftBoundary';
 import { dateOfLocalInput, type AvailabilityQuery } from './availability';
+import { z } from 'zod';
 
 export interface FormValues {
   customer_id: string;
@@ -24,6 +26,7 @@ export const emptyFormValues: FormValues = { customer_id: '', staff_id: '', serv
 export interface AppointmentFormProps {
   api: ApiClient;
   organizationId: string;
+  branchId?: string;
   customers: Customer[];
   staff: AppointmentStaff[];
   services: AppointmentService[];
@@ -51,7 +54,7 @@ const sortedIds = (ids: string[]) => [...ids].sort();
 const sameValues = (a: FormValues, b: FormValues) => a.customer_id === b.customer_id && a.staff_id === b.staff_id && a.service_id === b.service_id && a.start_at === b.start_at && sortedIds(a.resource_ids).join() === sortedIds(b.resource_ids).join();
 
 /** 새 예약·예약 수정 공용 폼. 저장에 실패해도 입력은 그대로 둔다. */
-export function AppointmentForm({ api, organizationId, customers, staff, services, serviceStaff = {}, appointment: latestAppointment, seed, customerName, staffName, onSaved, onDirtyChange, onCancel, onReload, onCustomerFound, onBusyChange }: AppointmentFormProps) {
+export function AppointmentForm({ api, organizationId, branchId, customers, staff, services, serviceStaff = {}, appointment: latestAppointment, seed, customerName, staffName, onSaved, onDirtyChange, onCancel, onReload, onCustomerFound, onBusyChange }: AppointmentFormProps) {
   // 자동 갱신이 편집 시작 버전을 바꾸면 동시 수정 검사가 우회된다. 명시적으로 다시 열 때만 기준을 바꾼다.
   const appointment = useRef(latestAppointment).current;
   const editing = appointment !== undefined;
@@ -63,10 +66,15 @@ export function AppointmentForm({ api, organizationId, customers, staff, service
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [conflict, setConflict] = useState(false);
+  const [repeatSeries, setRepeatSeries] = useState(false);
+  const [seriesFrequency, setSeriesFrequency] = useState<'weekly'|'monthly'>('weekly');
+  const [seriesInterval, setSeriesInterval] = useState('1');
+  const [seriesCount, setSeriesCount] = useState('8');
+  const [seriesExceptionDates, setSeriesExceptionDates] = useState('');
   // 같은 입력의 재시도는 같은 operation_id를 써서 서버가 중복 저장을 막고, 입력이 바뀌면 새로 만든다.
   const operation = useOperationTracker();
 
-  const dirty = !sameValues(values, initial);
+  const dirty = !sameValues(values, initial) || (repeatSeries && (seriesFrequency !== 'weekly' || seriesInterval !== '1' || seriesCount !== '8' || seriesExceptionDates.trim() !== ''));
   useDraftProtection(dirty, saving);
   useEffect(() => { onBusyChange?.(saving); return () => onBusyChange?.(false); }, [saving, onBusyChange]);
   const dirtyReport = useRef(onDirtyChange);
@@ -123,9 +131,24 @@ export function AppointmentForm({ api, organizationId, customers, staff, service
       expected_version: appointment ? appointment.version : null,
       resource_ids: sortedIds(values.resource_ids),
     };
-    const operationId = operation.idFor(JSON.stringify({ id: appointment?.id ?? null, ...input }));
+    const operationId = operation.idFor(JSON.stringify({ id: appointment?.id ?? null, ...input, series: repeatSeries ? [seriesFrequency, seriesInterval, seriesCount, seriesExceptionDates] : null }));
     setSaving(true);
     try {
+      if (!appointment && repeatSeries) {
+        const exceptions = [...new Set(seriesExceptionDates.split(/[\s,]+/).map((value) => value.trim()).filter(Boolean))];
+        if (exceptions.some((value) => !/^\d{4}-\d{2}-\d{2}$/.test(value) || Number.isNaN(Date.parse(`${value}T00:00:00Z`)))) {
+          setError('예외일은 YYYY-MM-DD 형식으로 입력해 주세요.'); setSaving(false); return;
+        }
+        const result = await api.call('POST', `/organizations/${organizationId}/appointment-series`, z.object({
+          series_id: z.uuid(), created: z.array(z.object({ number: z.number(), appointment: appointmentSchema })),
+          skipped: z.array(z.object({ number: z.number(), date: z.iso.date(), reason: z.enum(['exception_date','conflict']) })),
+        }), { ...input, frequency: seriesFrequency, interval_count: Number(seriesInterval), occurrence_count: Number(seriesCount), exception_dates: exceptions, operation_id: operationId });
+        const saved = result.created[0]?.appointment;
+        if (!saved) throw new Error('No series occurrences created');
+        operation.reset(); setError(''); setConflict(false);
+        onSaved(saved);
+        return;
+      }
       const saved = appointment
         ? await api.call('PUT', `/organizations/${organizationId}/appointments/${appointment.id}`, appointmentSchema, { ...input, operation_id: operationId })
         : await api.createAppointment(organizationId, { ...input, expected_version: null, operation_id: operationId });
@@ -173,11 +196,22 @@ export function AppointmentForm({ api, organizationId, customers, staff, service
         <input required type="datetime-local" value={values.start_at} onChange={(e) => set({ start_at: e.target.value })} />
       </label>
       {values.start_at && values.service_id && <p className="apt-form__schedule">예상 종료 {formatKstTime(Date.parse(kstIso(values.start_at)) + (services.find(x => x.id === values.service_id)?.duration_minutes ?? appointment?.duration_minutes ?? 0) * 60_000)} · 여유 {services.find(x => x.id === values.service_id)?.buffer_minutes ?? appointment?.buffer_minutes ?? 0}분</p>}
+      {!editing && <section className="apt-series-form" aria-label="반복 예약">
+        <label><input type="checkbox" checked={repeatSeries} onChange={(event) => setRepeatSeries(event.currentTarget.checked)} /> 반복 예약으로 등록</label>
+        {repeatSeries && <div className="apt-series-form__fields">
+          <label>반복 주기<select value={seriesFrequency} onChange={(event) => setSeriesFrequency(event.currentTarget.value as 'weekly'|'monthly')}><option value="weekly">매주</option><option value="monthly">매월</option></select></label>
+          <label>간격<input type="number" min="1" max="12" value={seriesInterval} onChange={(event) => setSeriesInterval(event.currentTarget.value)} /> {seriesFrequency === 'weekly' ? '주' : '개월'}마다</label>
+          <label>회차<input type="number" min="2" max="52" value={seriesCount} onChange={(event) => setSeriesCount(event.currentTarget.value)} /></label>
+          <label className="apt-series-form__exceptions">예외일<input placeholder="2026-11-01, 2026-12-25" value={seriesExceptionDates} onChange={(event) => setSeriesExceptionDates(event.currentTarget.value)} /><small>쉼표로 구분합니다. 시간 충돌 회차는 자동 건너뛰고 결과에 표시됩니다.</small></label>
+        </div>}
+      </section>}
       {latestAppointment && latestAppointment.version !== appointment?.version && <p role="alert" className="apt-warning">다른 곳에서 예약이 변경되었습니다. 현재 입력은 유지되며, 저장 시 충돌을 확인합니다. 최신 예약을 확인한 뒤 다시 수정해 주세요.</p>}
       <AvailabilityChips api={api} organizationId={organizationId} query={availabilityQuery} startAt={values.start_at} onPick={pickTime} />
+      {values.service_id&&<AvailabilitySearch api={api} organizationId={organizationId} serviceId={values.service_id} staffId={values.staff_id} resourceIds={values.resource_ids} excludeAppointmentId={appointment?.id} startDate={availabilityDate} staff={staff} onPick={(date,time,staffId)=>set({start_at:`${date}T${time}`,staff_id:staffId})}/>}
       <ResourcePicker
         api={api}
         organizationId={organizationId}
+        branchId={branchId}
         serviceId={values.service_id || null}
         value={values.resource_ids}
         onChange={(ids) => setValues((old) => ({ ...old, resource_ids: ids }))}

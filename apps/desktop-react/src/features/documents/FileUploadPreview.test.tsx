@@ -7,7 +7,7 @@ import { fakeApi as baseFakeApi, FILE, file, httpError, matches, ORG, renderWith
 const fakeApi: typeof baseFakeApi = (handler, platform = {}) => baseFakeApi((call) => matches(call, 'GET', /\/file-folders$/) ? [] : handler(call), platform);
 const image = { ...file, id: '99999999-9999-4999-8999-999999999991', original_name: '시술사진.png', content_type: 'image/png' };
 const zip = { ...file, id: '99999999-9999-4999-8999-999999999992', original_name: '백업.zip', content_type: 'application/zip' };
-const signedUpload = { file, signed_url: 'https://storage.example/upload?token=t', expires_in: 600 };
+const signedUpload = { file, signed_url: 'https://storage.example/upload?token=t', expires_in: 600, reservation_id: '88888888-8888-4888-8888-888888888888' };
 const picker = () => screen.getByLabelText('업로드할 파일') as HTMLInputElement;
 const choose = (...files: File[]) => fireEvent.change(picker(), { target: { files } });
 const pdf = (name: string) => new File(['x'], name, { type: 'application/pdf' });

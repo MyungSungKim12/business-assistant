@@ -6,6 +6,7 @@ import { AppointmentPage } from './AppointmentPage';
 import { addDays, todayKstKey } from './appointmentTime';
 
 const ids = { org: '22222222-2222-4222-8222-222222222222', customer: '11111111-1111-4111-8111-111111111111', staff: '33333333-3333-4333-8333-333333333333', service: '44444444-4444-4444-8444-444444444444', appointment: '55555555-5555-4555-8555-555555555555' };
+const branches = [{ id: '66666666-6666-4666-8666-666666666666', organization_id: ids.org, code: 'MAIN', name: '본점', timezone_name: 'Asia/Seoul', is_primary: true, is_active: true, version: 1 }, { id: '77777777-7777-4777-8777-777777777777', organization_id: ids.org, code: 'BR-2', name: '2호점', timezone_name: 'Asia/Seoul', is_primary: false, is_active: true, version: 1 }];
 const today = todayKstKey();
 const appointment = { id: ids.appointment, organization_id: ids.org, customer_id: ids.customer, staff_id: ids.staff, service_id: ids.service, service_name_snapshot: '피부관리', duration_minutes: 60, buffer_minutes: 10, start_at: `${today}T10:00:00+09:00`, end_at: `${today}T11:00:00+09:00`, status: 'reserved', source: 'manual', cancellation_reason: null, version: 2, memo: '', resource_ids: [] };
 
@@ -13,6 +14,7 @@ type Handler = (method: string, path: string, schema: unknown, body?: unknown) =
 
 function client(overrides: Record<string, unknown> = {}, rows: unknown[] = [appointment], handler?: Handler) {
   return {
+    listAppointmentBranches: vi.fn(async () => []),
     listAppointments: vi.fn(async () => rows),
     listAppointmentStaff: vi.fn(async () => [{ id: ids.staff, organization_id: ids.org, name: '김담당', is_active: true, schedule_version: 1 }]),
     listAppointmentServices: vi.fn(async () => [{ id: ids.service, organization_id: ids.org, name: '피부관리', duration_minutes: 60, buffer_minutes: 10, is_active: true, resource_version: 1 }]),
@@ -484,6 +486,55 @@ describe('AppointmentPage 권한', () => {
     expect(screen.queryByRole('button', { name: '공간·장비 관리' })).not.toBeInTheDocument();
   });
 
+  it('반복 예약 목록에서 시리즈 회차를 조회한다', async () => {
+    const api=client({},[appointment]);renderPage(api);
+    fireEvent.click(await screen.findByRole('button',{name:'반복 예약'}));
+    expect(await screen.findByRole('dialog',{name:'반복 예약 회차'})).toBeInTheDocument();
+    expect(await screen.findByText('등록된 반복 예약이 없습니다.')).toBeInTheDocument();
+    expect(api.call).toHaveBeenCalledWith('GET',`/organizations/${ids.org}/appointment-series?limit=100`,expect.anything());
+  });
+
+  it('관리자는 시작 날짜 이후의 반복 예약 회차만 일괄 취소할 수 있다', async()=>{
+    const seriesId='88888888-8888-4888-8888-888888888888';
+    const series={series:{id:seriesId,organization_id:ids.org,customer_id:ids.customer,staff_id:ids.staff,service_id:ids.service,frequency:'weekly',interval_count:1,occurrence_count:2,created_at:appointment.start_at,result_snapshot:{skipped:[]}},occurrences:[{occurrence_number:1,scheduled_start_at:appointment.start_at,is_exception:false,appointment}],exceptions:[]};
+    const api=client({},[appointment],async(_method,path)=>path.includes('cancel-future')?{series_id:seriesId,from_date:today,reason:'정기 시술 일정 종료',canceled:[{...appointment,status:'canceled',version:3}],replayed:false}:path.endsWith('appointment-series?limit=100')?[series]:[]);
+    renderPage(api,{canManageResources:true});fireEvent.click(await screen.findByRole('button',{name:'반복 예약'}));
+    await screen.findByRole('table',{name:'반복 예약 회차 목록'});
+    expect(screen.getByRole('button',{name:'이후 회차 1건 취소'})).toBeEnabled();
+    fireEvent.click(screen.getByRole('button',{name:'이후 회차 1건 취소'}));
+    fireEvent.click(await screen.findByRole('button',{name:'1건 취소'}));
+    await waitFor(()=>expect(api.call).toHaveBeenCalledWith('POST',`/organizations/${ids.org}/appointment-series/${seriesId}/cancel-future`,expect.anything(),expect.objectContaining({from_date:today,reason:'정기 예약 일정 종료',operation_id:expect.any(String)})));
+  });
+
+  it('관리자는 반복 예약의 미래 기본 회차에 담당자와 시술을 일괄 적용한다',async()=>{
+    const seriesId='88888888-8888-4888-8888-888888888888',otherStaff='99999999-9999-4999-8999-999999999999',otherService='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    const series={series:{id:seriesId,organization_id:ids.org,customer_id:ids.customer,staff_id:ids.staff,service_id:ids.service,frequency:'weekly',interval_count:1,occurrence_count:2,created_at:appointment.start_at,result_snapshot:{skipped:[]}},occurrences:[{occurrence_number:1,scheduled_start_at:appointment.start_at,is_exception:false,appointment}],exceptions:[]};
+    const api=client({listAppointmentStaff:vi.fn(async()=>[{id:ids.staff,organization_id:ids.org,name:'김담당',is_active:true,schedule_version:1},{id:otherStaff,organization_id:ids.org,name:'이담당',is_active:true,schedule_version:1}]),listAppointmentServices:vi.fn(async()=>[{id:ids.service,organization_id:ids.org,name:'피부관리',duration_minutes:60,buffer_minutes:10,is_active:true,resource_version:1},{id:otherService,organization_id:ids.org,name:'진정관리',duration_minutes:45,buffer_minutes:5,is_active:true,resource_version:1}])},[appointment],async(_method,path)=>path.includes('update-future')?{series_id:seriesId,staff_id:otherStaff,service_id:otherService,updated:[{...appointment,staff_id:otherStaff,service_id:otherService,service_name_snapshot:'진정관리',duration_minutes:45}],replayed:false}:path.endsWith('appointment-series?limit=100')?[{...series,series:{...series.series,staff_id:otherStaff,service_id:otherService},occurrences:[{...series.occurrences[0],appointment:{...appointment,staff_id:otherStaff,service_id:otherService,service_name_snapshot:'진정관리',duration_minutes:45}}]}]:[]);
+    renderPage(api,{canManageResources:true});fireEvent.click(await screen.findByRole('button',{name:'반복 예약'}));await screen.findByRole('table',{name:'반복 예약 회차 목록'});
+    fireEvent.change(screen.getByLabelText('시리즈 담당자'),{target:{value:otherStaff}});fireEvent.change(screen.getByLabelText('시리즈 시술'),{target:{value:otherService}});await waitFor(()=>expect(screen.getByRole('button',{name:'미래 회차 담당자·시술 변경'})).toBeEnabled());fireEvent.click(screen.getByRole('button',{name:'미래 회차 담당자·시술 변경'}));
+    fireEvent.click(await screen.findByRole('button',{name:'1건 적용'}));
+    await waitFor(()=>expect(api.call).toHaveBeenCalledWith('POST',`/organizations/${ids.org}/appointment-series/${seriesId}/update-future`,expect.anything(),expect.objectContaining({staff_id:otherStaff,service_id:otherService,operation_id:expect.any(String)})));
+  });
+
+  it('관리자는 반복 예약의 남은 일정 주기와 공간·장비를 함께 변경한다',async()=>{
+    const seriesId='88888888-8888-4888-8888-888888888888',resourceId='99999999-9999-4999-8999-999999999999';
+    const first={...appointment,id:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',start_at:`${addDays(today,7)}T10:00:00+09:00`,end_at:`${addDays(today,7)}T11:00:00+09:00`};
+    const second={...appointment,id:'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',start_at:`${addDays(today,14)}T10:00:00+09:00`,end_at:`${addDays(today,14)}T11:00:00+09:00`};
+    const series={series:{id:seriesId,organization_id:ids.org,customer_id:ids.customer,staff_id:ids.staff,service_id:ids.service,frequency:'weekly',interval_count:1,occurrence_count:2,resource_ids:[],created_at:first.start_at,result_snapshot:{skipped:[]}},occurrences:[{occurrence_number:1,scheduled_start_at:first.start_at,is_exception:false,appointment:first},{occurrence_number:2,scheduled_start_at:second.start_at,is_exception:false,appointment:second}],exceptions:[]};
+    const resource={id:resourceId,organization_id:ids.org,name:'관리실',kind:'room',is_active:true,version:1};
+    const api=client({},[first,second],async(method,path)=>{
+      if(path.endsWith('/appointment-resources'))return[resource];
+      if(path.endsWith('/appointment-series?limit=100'))return[series];
+      if(path.endsWith('/reschedule-future'))return{series_id:seriesId,from_occurrence_number:1,start_at:first.start_at,frequency:'monthly',interval_count:1,resource_ids:[resourceId],updated:[first,second],replayed:false};
+      return[];
+    });
+    renderPage(api,{canManageResources:true});fireEvent.click(await screen.findByRole('button',{name:'반복 예약'}));await screen.findByRole('table',{name:'반복 예약 회차 목록'});
+    fireEvent.change(screen.getByLabelText('반복 예약 주기'),{target:{value:'monthly'}});
+    fireEvent.click(screen.getByLabelText('관리실 사용'));
+    fireEvent.click(screen.getByRole('button',{name:'미래 일정 2건 재배치'}));fireEvent.click(await screen.findByRole('button',{name:'2건 적용'}));
+    await waitFor(()=>{const calls=(api.call as unknown as ReturnType<typeof vi.fn>).mock.calls;expect(calls.some(call=>call[0]==='POST'&&call[1]===`/organizations/${ids.org}/appointment-series/${seriesId}/reschedule-future`&&call[3]?.frequency==='monthly'&&call[3]?.resource_ids?.includes(resourceId)),JSON.stringify({post:calls.filter(call=>call[0]==='POST').map(call=>[call[1],call[3]]),alert:screen.queryByRole('alert')?.textContent,date:screen.queryByLabelText('새 반복 예약 시작 일시')?.getAttribute('value')}).slice(0,2000)).toBe(true)});
+  });
+
   it('보기 전용이면 폼·빈 칸 누르기·상태 버튼이 없고 상세만 본다', async () => {
     renderPage(client(), { readOnly: true });
     fireEvent.click(await block());
@@ -530,6 +581,24 @@ describe('AppointmentPage 담당자 필터(APT-14)', () => {
     expect(screen.getAllByRole('button', { name: /^10:00 김고객 상세/ })).toHaveLength(1);
     fireEvent.change(screen.getByRole('combobox', { name: '담당자 필터' }), { target: { value: '' } });
     expect(screen.getAllByRole('button', { name: /^10:00 김고객 상세/ })).toHaveLength(2);
+  });
+});
+
+describe('AppointmentPage 지점(APT-20)', () => {
+  it('선택 지점에 속한 담당자만 필터 선택지로 노출한다', async () => {
+    const api = client({
+      listAppointmentBranches: vi.fn(async () => branches),
+      listAppointmentStaff: vi.fn(async () => [
+        { id: ids.staff, organization_id: ids.org, branch_id: branches[0].id, name: '본점 담당', is_active: true, schedule_version: 1 },
+        { id: '99999999-9999-4999-8999-999999999999', organization_id: ids.org, branch_id: branches[1].id, name: '2호점 담당', is_active: true, schedule_version: 1 },
+      ]),
+    });
+    renderPage(api);
+    const staffFilter = await screen.findByLabelText('담당자 필터') as HTMLSelectElement;
+    expect(Array.from(staffFilter.options).map(option => option.textContent)).toContain('본점 담당');
+    fireEvent.change(screen.getByLabelText('지점 선택'), { target: { value: branches[1].id } });
+    await waitFor(() => expect(Array.from(staffFilter.options).map(option => option.textContent)).toContain('2호점 담당'));
+    expect(Array.from(staffFilter.options).map(option => option.textContent)).not.toContain('본점 담당');
   });
 });
 

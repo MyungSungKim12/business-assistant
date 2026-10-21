@@ -3,21 +3,31 @@ import { expect,it,vi } from 'vitest';
 import { StaffProfileDialog } from './StaffProfileDialog';
 vi.mock('@business-assistant/react-ui',async original=>({...await original<object>(),confirm:vi.fn(async()=>true)}));
 const staff={id:'22222222-2222-4222-8222-222222222222',organization_id:'11111111-1111-4111-8111-111111111111',name:'직원',is_active:true,schedule_version:1,profile_version:1};
+it('기존 조직 구성원을 직원 계정으로 연결하고 버전 정보를 저장한다',async()=>{
+ const user={user_id:'33333333-3333-4333-8333-333333333333',email:'staff@example.com',display_name:'김직원',role:'member',joined_at:'2026-10-20T00:00:00Z'},linked={...staff,auth_user_id:user.user_id,profile_version:2};
+ const call=vi.fn().mockResolvedValueOnce([user]).mockResolvedValueOnce(linked),onSaved=vi.fn();
+ render(<StaffProfileDialog api={{call} as never} organizationId={staff.organization_id} staff={staff} linkedUserIds={[]} onSaved={onSaved} onClose={vi.fn()}/>);
+ fireEvent.change(await screen.findByLabelText('연결된 로그인 구성원'),{target:{value:user.user_id}});
+ fireEvent.click(screen.getByRole('button',{name:'계정 연결 저장'}));
+ await waitFor(()=>expect(onSaved).toHaveBeenCalledWith(linked));
+ expect(call.mock.calls[1][1]).toBe(`/organizations/${staff.organization_id}/appointment-staff/${staff.id}/account-link`);
+ expect(call.mock.calls[1][3]).toMatchObject({user_id:user.user_id,expected_version:1});
+});
 it('저장 실패 시 입력과 같은 요청 ID를 보존하고 재시도한다',async()=>{
- const call=vi.fn().mockRejectedValueOnce({status:503}).mockResolvedValueOnce({...staff,name:'수정',profile_version:2}),onSaved=vi.fn();
+ const call=vi.fn().mockResolvedValueOnce([]).mockRejectedValueOnce({status:503}).mockResolvedValueOnce({...staff,name:'수정',profile_version:2}),onSaved=vi.fn();
  render(<StaffProfileDialog api={{call} as never} organizationId={staff.organization_id} staff={staff} onSaved={onSaved} onClose={vi.fn()}/>);
  fireEvent.change(screen.getByLabelText('직원 이름'),{target:{value:'수정'}});
  fireEvent.click(screen.getByRole('button',{name:'저장'}));await screen.findByRole('alert');
  expect(screen.getByLabelText('직원 이름')).toHaveValue('수정');
  fireEvent.click(screen.getByRole('button',{name:'저장'}));await waitFor(()=>expect(onSaved).toHaveBeenCalled());
- expect(call.mock.calls[0][3].operation_id).toBe(call.mock.calls[1][3].operation_id);
+ expect(call.mock.calls[1][3].operation_id).toBe(call.mock.calls[2][3].operation_id);
 });
 it('중지 충돌은 재배정 안내를 표시하고 입력을 보존한다',async()=>{
- const call=vi.fn().mockRejectedValue({status:409});
+ const call=vi.fn().mockResolvedValueOnce([]).mockRejectedValueOnce({status:409});
  render(<StaffProfileDialog api={{call} as never} organizationId={staff.organization_id} staff={staff} onSaved={vi.fn()} onClose={vi.fn()}/>);
  fireEvent.click(screen.getByLabelText('예약 담당 사용'));
  fireEvent.click(screen.getByRole('button',{name:'저장'}));
- expect(await screen.findByRole('alert')).toHaveTextContent('재배정');
+ expect(await screen.findByText(/재배정/)).toBeInTheDocument();
  expect(screen.getByLabelText('예약 담당 사용')).not.toBeChecked();
 });
 it('SQL 미적용으로 버전이 없으면 저장하지 않는다',()=>{

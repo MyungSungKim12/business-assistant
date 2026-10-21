@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { NoticeHost } from '@business-assistant/react-ui';
-import { ResourceManagerDialog, ResourcePicker, StaffAvailabilityDialog, autoSelectResources, kstIso, missingRequirements, createOperationTracker } from './index';
+import { BranchManagerDialog, ResourceManagerDialog, ResourcePicker, StaffAvailabilityDialog, autoSelectResources, kstIso, missingRequirements, createOperationTracker } from './index';
 import { apiFailure, fakeApi, type FakeCall } from './testApi';
 
 const ORG = 'a9cc39fd-8e8c-4df8-a623-1f23a3a936bd';
@@ -12,6 +12,8 @@ const laser = { id: 'e1', organization_id: ORG, name: '레이저 1', kind: 'equi
 const retired = { id: 'r3', organization_id: ORG, name: '폐쇄실', kind: 'room', is_active: false, version: 2 };
 const service = { id: 's1', organization_id: ORG, name: '관리', duration_minutes: 60, buffer_minutes: 10, is_active: true };
 const service2 = { ...service, id: 's2', name: '레이저' };
+const mainBranch={id:'b1',organization_id:ORG,code:'MAIN',name:'본점',timezone_name:'Asia/Seoul',is_primary:true,is_active:true,version:1};
+const branch2={...mainBranch,id:'b2',code:'BR-02',name:'강남점',is_primary:false};
 
 function server(overrides: Record<string, (call: FakeCall) => unknown> = {}) {
   const handlers: Record<string, (call: FakeCall) => unknown> = {
@@ -31,6 +33,30 @@ function server(overrides: Record<string, (call: FakeCall) => unknown> = {}) {
   });
 }
 const sent = (calls: FakeCall[], key: string) => calls.filter((call) => `${call.method} ${call.path.replace(`/organizations/${ORG}`, '')}` === key);
+
+describe('BranchManagerDialog',()=>{
+  it('관리자 지점을 만들고 직원·자원을 지점에 배정한다',async()=>{
+    const staff={id:'staff-1',organization_id:ORG,branch_id:mainBranch.id,name:'담당자',is_active:true,profile_version:1,schedule_version:1};
+    const {api,calls}=fakeApi(call=>{
+      if(call.path.endsWith('/appointment-branches')&&call.method==='GET')return[mainBranch,branch2];
+      if(call.path.endsWith('/appointment-staff')&&call.method==='GET')return[staff];
+      if(call.path.endsWith('/appointment-resources')&&call.method==='GET')return[room];
+      if(call.method==='POST'&&call.path.endsWith('/appointment-branches'))return{...branch2,id:'b3',code:(call.body as {code:string}).code,name:(call.body as {name:string}).name};
+      if(call.method==='PUT'&&call.path.endsWith('/appointment-staff/staff-1/branch'))return{...staff,branch_id:branch2.id,profile_version:2};
+      if(call.method==='PUT'&&call.path.endsWith('/appointment-resources/r1/branch'))return{...room,branch_id:branch2.id,version:2};
+      throw new Error(`unexpected ${call.method} ${call.path}`);
+    });
+    render(<><NoticeHost/><BranchManagerDialog api={api} organizationId={ORG} onClose={()=>undefined}/></>);
+    expect(await screen.findByText('담당자')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('지점 코드'),{target:{value:'BR-03'}});fireEvent.change(screen.getByLabelText('지점명'),{target:{value:'서초점'}});
+    fireEvent.click(screen.getByRole('button',{name:'지점 추가'}));
+    await waitFor(()=>expect(calls.some(call=>call.method==='POST'&&call.path.endsWith('/appointment-branches'))).toBe(true));
+    fireEvent.change(screen.getByLabelText('담당자 지점'),{target:{value:branch2.id}});
+    await waitFor(()=>expect(calls.some(call=>call.method==='PUT'&&call.path.endsWith('/appointment-staff/staff-1/branch'))).toBe(true));
+    fireEvent.change(screen.getByLabelText('관리실 1 지점'),{target:{value:branch2.id}});
+    await waitFor(()=>expect(calls.some(call=>call.method==='PUT'&&call.path.endsWith('/appointment-resources/r1/branch'))).toBe(true));
+  });
+});
 
 describe('ResourceManagerDialog', () => {
   it('공간·장비 목록과 서비스 기준을 불러온다', async () => {
@@ -126,9 +152,10 @@ const leaveRow = { id: 'l1', staff_id: 'st1', start_at: '2026-10-08T15:00:00+09:
 
 function availabilityServer(overrides: Record<string, (call: FakeCall) => unknown> = {}) {
   return fakeApi((call) => {
-    const key = `${call.method} ${call.path.replace(`/organizations/${ORG}/appointment-staff/st1`, '')}`;
+    const key = `${call.method} ${call.path.replace(`/organizations/${ORG}`, '').replace('/appointment-staff/st1', '')}`;
     const handlers: Record<string, (call: FakeCall) => unknown> = {
       'GET /availability': () => ({ staff_id: 'st1', schedule_version: 5, hours: [hour(4, '09:00', '18:00')], time_off: [leaveRow] }),
+      'GET /appointment-time-off-requests': () => ({current_staff_id:null,requests:[]}),
       'PUT /working-hours': () => ({ staff_id: 'st1', schedule_version: 6, timezone_name: 'Asia/Seoul', hours: [] }),
       'POST /time-off': () => leaveRow,
       'POST /time-off/l1/cancel': () => ({ ...leaveRow, status: 'canceled', version: 3 }),
@@ -204,6 +231,22 @@ describe('StaffAvailabilityDialog', () => {
     render(<StaffAvailabilityDialog api={api} organizationId={ORG} staff={staff} readOnly onClose={() => undefined} />);
     await screen.findByText('교육');
     for (const label of ['근무시간 저장', '휴무 등록', '선택 휴무 취소']) expect(screen.queryByRole('button', { name: label })).not.toBeInTheDocument();
+  });
+
+  it('연결된 직원은 승인 전 휴무를 신청하고 목록에 표시한다', async () => {
+    const pending={id:'req1',organization_id:ORG,staff_id:'st1',start_at:'2026-10-08T15:00:00+09:00',end_at:'2026-10-08T16:00:00+09:00',reason:'연차',status:'pending',version:1,requested_by:'user1',requested_at:'2026-10-01T00:00:00+09:00',reviewed_by:null,reviewed_at:null,review_note:'',withdrawn_by:null,withdrawn_at:null,time_off_id:null,approval_operation_id:'op1'};
+    const {api,calls}=availabilityServer({
+      'GET /appointment-time-off-requests':()=>({current_staff_id:'st1',requests:[pending]}),
+      'POST /time-off-requests':()=>pending,
+    });
+    render(<StaffAvailabilityDialog api={api} organizationId={ORG} staff={staff} readOnly onClose={()=>undefined}/>);
+    expect(await screen.findByText('검토 대기')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('신청 시작'),{target:{value:'2026-10-12T10:00'}});
+    fireEvent.change(screen.getByLabelText('신청 종료'),{target:{value:'2026-10-12T11:00'}});
+    fireEvent.change(screen.getByLabelText('신청 사유'),{target:{value:'개인 일정'}});
+    fireEvent.click(screen.getByRole('button',{name:'휴무 신청'}));
+    await waitFor(()=>expect(calls.some(call=>call.path.endsWith('/time-off-requests'))).toBe(true));
+    expect(calls.find(call=>call.path.endsWith('/time-off-requests'))?.body).toMatchObject({start_at:'2026-10-12T10:00:00+09:00',end_at:'2026-10-12T11:00:00+09:00',reason:'개인 일정'});
   });
 
   it('불러오기 실패와 저장 충돌을 안내한다', async () => {

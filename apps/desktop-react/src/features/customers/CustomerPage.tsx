@@ -13,6 +13,8 @@ import { customerExportColumns } from './io/customerExport';
 import { CustomerImportDialog } from './io/CustomerImportDialog';
 import { DuplicateMergeDialog } from './DuplicateMergeDialog';
 import { TagManagerDialog } from './TagManagerDialog';
+import { CustomerRetentionDialog } from './CustomerRetentionDialog';
+import { PhoneMemoDialog } from './PhoneMemoDialog';
 import { filterCustomers, SORT_LABELS, type CustomerSort, type StatusFilter } from './customerSearch';
 import { isMergeArchive, restoreConfirmText } from './restore';
 import { useCustomerList } from './useCustomerList';
@@ -45,6 +47,8 @@ export function CustomerPage({ api, organizationId, readOnly, focusCustomerId, f
   const [importing, setImporting] = useState(false);
   const [tagsOpen, setTagsOpen] = useState(false);
   const [mergeOpen, setMergeOpen] = useState(false);
+  const [retentionOpen, setRetentionOpen] = useState(false);
+  const [phoneMemoOpen, setPhoneMemoOpen] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const closeImport = useCallback(() => setImporting(false), []);
   const closeTags = useCallback(() => setTagsOpen(false), []);
@@ -154,8 +158,10 @@ export function CustomerPage({ api, organizationId, readOnly, focusCustomerId, f
         <div><h1>고객관리</h1><p className="muted">고객 프로필과 상담 정보를 관리합니다.</p></div>
         <div className="cx-toolbar-actions">
           <ExportButton title="고객 목록" columns={customerExportColumns} rows={filtered} allRows={rows} disabled={list.loading} />
+          {!readOnly && <button onClick={() => setPhoneMemoOpen(true)}>전화 메모</button>}
           {!readOnly && <button onClick={() => setTagsOpen(true)}>태그 관리</button>}
           {!readOnly && <button onClick={() => setMergeOpen(true)}>중복 병합</button>}
+          {!readOnly && <button disabled={!selected} title={!selected ? '고객을 선택하면 보유 정책과 법적 보류를 관리할 수 있습니다.' : undefined} onClick={() => setRetentionOpen(true)}>보유·파기 정책</button>}
           {!readOnly && <button onClick={() => setImporting(true)}>가져오기</button>}
           {!readOnly && <button className="primary-button" onClick={() => void changeCustomer(null)}>새 고객</button>}
         </div>
@@ -221,6 +227,8 @@ export function CustomerPage({ api, organizationId, readOnly, focusCustomerId, f
       {importing && <CustomerImportDialog api={api} organizationId={organizationId} existing={rows} onClose={closeImport} onImported={() => void list.reload()} />}
       {tagsOpen && <TagManagerDialog api={api} organizationId={organizationId} onChanged={() => void list.reload()} onClose={closeTags} />}
       {mergeOpen && <DuplicateMergeDialog api={api} organizationId={organizationId} customers={rows} complete={!paged} onMerged={() => void list.reload()} onClose={closeMerge} />}
+      {retentionOpen && selected && <CustomerRetentionDialog api={api} organizationId={organizationId} customerId={selected.id} onClose={() => setRetentionOpen(false)} />}
+      {phoneMemoOpen && <PhoneMemoDialog api={api} organizationId={organizationId} onClose={() => setPhoneMemoOpen(false)} />}
     </section>
   );
 }

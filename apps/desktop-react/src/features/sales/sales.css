@@ -34,6 +34,10 @@
 .sales-form { display: flex; flex-direction: column; gap: 4px; }
 .sales-form label { display: flex; flex-direction: column; gap: 2px; }
 .sales-form__row { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 4px; }
+.sales-commission-splits { grid-column: 1 / -1; display: grid; gap: 8px; margin: 0; padding: 10px; border: 1px solid var(--border-subtle); border-radius: 8px; min-width: 0; }
+.sales-commission-splits legend { padding: 0 5px; font-weight: 600; }
+.sales-commission-splits > .sales-form__row { grid-template-columns: minmax(160px, 1fr) minmax(100px, 160px) auto; align-items: end; }
+.sales-commission-splits .muted { margin: 0; }
 .sales-check { flex-direction: row !important; align-items: center; gap: 4px !important; }
 .sales-actions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
 .sales-actions--stack { flex-direction: column; align-items: stretch; }

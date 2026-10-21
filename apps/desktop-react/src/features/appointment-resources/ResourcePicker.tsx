@@ -26,6 +26,7 @@ export const describeRequirements = (requirements: ResourceRequirement[]) =>
 export interface ResourcePickerProps {
   api: CallApi;
   organizationId: string;
+  branchId?: string;
   /** 선택한 서비스. 바뀌면 필수 기준을 다시 읽는다. */
   serviceId: string | null;
   /** 선택된 자원 ID(제어 컴포넌트). 예약 저장 요청의 resource_ids로 그대로 보낸다. */
@@ -42,7 +43,7 @@ export interface ResourcePickerProps {
  * 예약 작성 폼에 끼워 넣는 공간·장비 선택. 활성 자원을 체크박스로 보여 주고 서비스의 필수 기준(공간 N개·장비 N개)과
  * 부족 여부를 표시한다. 선택한 ID는 `onChange`로 받아 예약 저장의 `resource_ids`에 넣는다.
  */
-export function ResourcePicker({ api, organizationId, serviceId, value, onChange, onRequirementsChange, autoSelect = true, disabled = false }: ResourcePickerProps) {
+export function ResourcePicker({ api, organizationId, branchId, serviceId, value, onChange, onRequirementsChange, autoSelect = true, disabled = false }: ResourcePickerProps) {
   const [resources, setResources] = useState<AppointmentResource[]>([]);
   const [requirements, setRequirements] = useState<ResourceRequirement[]>([]);
   const [error, setError] = useState('');
@@ -60,8 +61,9 @@ export function ResourcePicker({ api, organizationId, serviceId, value, onChange
           serviceId ? resourceApi.listRequirements(api, organizationId, serviceId) : Promise.resolve<ResourceRequirement[]>([]),
         ]);
         if (!alive) return;
-        setResources(resourceRows); setRequirements(requirementRows); setError(''); setLoadedFor(serviceId);
-        callbacks.current.onRequirementsChange?.(requirementRows, resourceRows);
+        const scopedResources = branchId ? resourceRows.filter(row => !row.branch_id || row.branch_id === branchId) : resourceRows;
+        setResources(scopedResources); setRequirements(requirementRows); setError(''); setLoadedFor(serviceId);
+        callbacks.current.onRequirementsChange?.(requirementRows, scopedResources);
         const initial = firstLoad.current;
         firstLoad.current = false;
         // 첫 로드에서는 호출자가 준 선택(편집 중인 예약)을 존중하고, 서비스가 바뀐 뒤에만 자동 선택한다.
@@ -71,7 +73,7 @@ export function ResourcePicker({ api, organizationId, serviceId, value, onChange
       }
     })();
     return () => { alive = false; };
-  }, [api, organizationId, serviceId, autoSelect]);
+  }, [api, organizationId, branchId, serviceId, autoSelect]);
 
   const active = resources.filter((item) => item.is_active);
   const missing = missingRequirements(requirements, resources, value);

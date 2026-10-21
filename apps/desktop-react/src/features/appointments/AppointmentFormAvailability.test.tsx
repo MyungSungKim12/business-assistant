@@ -12,7 +12,10 @@ const availability = {
 };
 
 function renderForm(seed: Record<string, unknown> = {}) {
-  const call = vi.fn(async (_method: string, path: string) => (path.includes('appointment-availability') ? availability : []));
+  const seriesAppointment={id:'55555555-5555-4555-8555-555555555555',organization_id:ids.org,customer_id:ids.customer,staff_id:ids.staff,service_id:ids.service,service_name_snapshot:'피부관리',duration_minutes:60,buffer_minutes:10,start_at:'2026-12-14T00:00:00Z',end_at:'2026-12-14T01:00:00Z',status:'reserved',source:'manual',cancellation_reason:null,version:1};
+  const call = vi.fn(async (_method: string, path: string) => path.includes('appointment-series')
+    ? {series_id:'66666666-6666-4666-8666-666666666666',created:[{number:1,appointment:seriesAppointment}],skipped:[]}
+    : (path.includes('appointment-availability') ? availability : []));
   const api = { call, createAppointment: vi.fn() } as unknown as ApiClient;
   render(
     <AppointmentForm
@@ -27,6 +30,13 @@ function renderForm(seed: Record<string, unknown> = {}) {
 }
 
 describe('AppointmentForm 가능 시간 칩', () => {
+  it('반복 예약을 회차별 생성 API로 제출한다', async () => {
+    const { call } = renderForm({ customer_id: ids.customer, staff_id: ids.staff, service_id: ids.service, start_at: '2026-12-14T09:00' });
+    fireEvent.click(screen.getByLabelText('반복 예약으로 등록'));
+    fireEvent.click(screen.getByRole('button', { name: '예약 저장' }));
+    await waitFor(() => expect(call).toHaveBeenCalledWith('POST', expect.stringContaining('/appointment-series'), expect.anything(), expect.objectContaining({ frequency:'weekly', occurrence_count:8 })));
+  });
+
   it('서비스를 고르기 전에는 안내만 보이고 고른 뒤 가능 시간을 읽는다', async () => {
     const { call } = renderForm({ start_at: '2026-12-14T09:00' });
     expect(screen.getByText(/서비스를 고르면/)).toBeInTheDocument();

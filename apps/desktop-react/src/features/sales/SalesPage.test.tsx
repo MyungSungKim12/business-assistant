@@ -26,6 +26,7 @@ function cartServer(options: { visits?: unknown[]; failFirst?: { path: RegExp; e
   };
   const handlers = {
     'GET /visits': () => state.visits,
+    'GET /appointment-staff': () => [{id:uid(9),organization_id:ORG,auth_user_id:uid(10),name:'박원장',is_active:true,schedule_version:1},{id:uid(11),organization_id:ORG,auth_user_id:uid(12),name:'김실장',is_active:true,schedule_version:1}],
     'GET /sale-cart-drafts': () => [draft()],
     'GET /customers/:id/wallets': () => [],
     'POST /customers/:id/visits': (_b: unknown, call: Call) => guarded(call, () => { state.visits = [visit()]; return current(); }),
@@ -92,11 +93,15 @@ describe('SalesPage 방문 장바구니', () => {
     await user.type(within(editor).getByLabelText('수량'), '2');
     await user.clear(within(editor).getByLabelText('단가'));
     await user.type(within(editor).getByLabelText('단가'), '100000.50');
-    await user.type(within(editor).getByLabelText('담당자'), '박원장');
+    await user.selectOptions(within(editor).getByLabelText('담당자'), uid(9));
+    await user.click(within(editor).getByRole('button', { name: '추가 담당자 배분' }));
+    await user.selectOptions(within(editor).getByLabelText('추가 담당 직원'), uid(11));
+    await user.type(within(editor).getByLabelText('추가 직원 1 배분 비율'), '40');
     await user.click(screen.getByRole('button', { name: '항목 수정' }));
     await waitFor(() => expect(screen.getByTestId('subtotal')).toHaveTextContent('230,001원'));
     const patch = calls.find((call) => call.method === 'PATCH')!;
-    expect(patch.body).toMatchObject({ quantity: 2, unit_price: '100000.50', staff_id: null, staff_name: '박원장', expected_version: 3 });
+    expect(patch.body).toMatchObject({ quantity: 2, unit_price: '100000.50', staff_id: uid(9), staff_name: '박원장', expected_version: 3 });
+    expect(patch.body).toMatchObject({ commission_allocations: [{ staff_id: uid(9), share_basis_points: 6000 }, { staff_id: uid(11), share_basis_points: 4000 }] });
 
     const discount = screen.getByLabelText('수동 할인');
     await user.selectOptions(within(discount).getByLabelText('할인 종류'), 'percent');
@@ -113,6 +118,24 @@ describe('SalesPage 방문 장바구니', () => {
     await user.click(screen.getByRole('button', { name: '검토 완료' }));
     expect(await screen.findByText('장바구니 상태: 검토 완료')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '수납 기록 · 내역' })).toBeEnabled();
+  });
+
+  it('직원 배분 합계가 100%를 넘으면 저장을 막는다', async () => {
+    const { user, calls } = setup();
+    await ready();
+    await user.click(screen.getByRole('button', { name: /김고객/ }));
+    await user.click(screen.getByRole('button', { name: '새 방문 시작' }));
+    await screen.findByText(/장바구니를 저장했습니다/);
+    await user.click(screen.getByRole('button', { name: '시술 초안 담기 보톡스 시술' }));
+    await user.click(screen.getByRole('button', { name: '보톡스 시술' }));
+    const editor = screen.getByLabelText('항목 편집');
+    await user.selectOptions(within(editor).getByLabelText('담당자'), uid(9));
+    await user.click(within(editor).getByRole('button', { name: '추가 담당자 배분' }));
+    await user.selectOptions(within(editor).getByLabelText('추가 담당 직원'), uid(11));
+    await user.type(within(editor).getByLabelText('추가 직원 1 배분 비율'), '100');
+    await user.click(within(editor).getByRole('button', { name: '항목 수정' }));
+    expect(await screen.findByText(/직원별 배분 합계는 100%를 넘을 수 없습니다/)).toBeInTheDocument();
+    expect(calls.some((call) => call.method === 'PATCH')).toBe(false);
   });
 
   it('요청 결과가 불명확하면 같은 작업 ID로 재시도하고 화면 내용을 유지한다', async () => {
@@ -151,11 +174,11 @@ describe('SalesPage 방문 장바구니', () => {
     await ready();
     await user.click(screen.getByRole('button', { name: /김고객/ }));
     await user.click(await screen.findByRole('button', { name: '보톡스 시술' }));
-    await user.type(within(screen.getByLabelText('항목 편집')).getByLabelText('담당자'), '박');
+    await user.selectOptions(within(screen.getByLabelText('항목 편집')).getByLabelText('담당자'), uid(9));
     await user.click(screen.getByRole('button', { name: /이고객/ }));
     expect(await screen.findByText('수정 중인 내용을 버리고 이동할까요?')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: '취소' }));
-    expect(within(screen.getByLabelText('항목 편집')).getByLabelText('담당자')).toHaveValue('박');
+    expect(within(screen.getByLabelText('항목 편집')).getByLabelText('담당자')).toHaveValue(uid(9));
     expect(screen.getByRole('button', { name: /김고객/ })).toHaveAttribute('aria-pressed', 'true');
     await user.click(screen.getByRole('button', { name: /이고객/ }));
     await user.click(await screen.findByRole('button', { name: '버리기' }));

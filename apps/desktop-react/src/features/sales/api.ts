@@ -36,7 +36,7 @@ export const salesApi = {
   /** 상품·회원권 담기는 카탈로그 모듈이 제공하는 경로를 쓴다. */
   addCatalogProduct: (api: ApiClient, o: string, visitId: string, productId: string, version: number, operationId: string) =>
     api.call('POST', `${org(o)}/visits/${visitId}/sale-cart/lines/catalog-product`, bundleSchema, { product_id: productId, expected_version: version, operation_id: operationId }),
-  updateLine: (api: ApiClient, o: string, visitId: string, lineId: string, version: number, operationId: string, values: { quantity: number; unit_price: string; staff_id: string | null; staff_name: string }) =>
+  updateLine: (api: ApiClient, o: string, visitId: string, lineId: string, version: number, operationId: string, values: { quantity: number; unit_price: string; staff_id: string | null; staff_name: string; commission_allocations?: Array<{ staff_id: string; share_basis_points: number }> }) =>
     api.call('PATCH', `${org(o)}/visits/${visitId}/sale-cart/lines/${lineId}`, bundleSchema, { ...values, expected_version: version, operation_id: operationId }),
   removeLine: (api: ApiClient, o: string, visitId: string, lineId: string, version: number, operationId: string, reason: string) =>
     api.call('POST', `${org(o)}/visits/${visitId}/sale-cart/lines/${lineId}/remove`, bundleSchema, { reason, expected_version: version, operation_id: operationId }),

@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { confirm, notify } from '@business-assistant/react-ui';
 import type { ApiClient } from '../../api/client';
-import { appointmentsSchema, type Appointment, type AppointmentService, type AppointmentStaff, type Customer } from '../../api/schemas';
-import { ResourceManagerDialog, resourceApi } from '../appointment-resources';
+import { appointmentsSchema, type Appointment, type AppointmentBranch, type AppointmentService, type AppointmentStaff, type Customer } from '../../api/schemas';
+import { BranchManagerDialog, ResourceManagerDialog, resourceApi } from '../appointment-resources';
 import type { AppointmentResource } from '../appointment-resources';
 import { AppointmentDetail } from './AppointmentDetail';
 import { AppointmentStatusHistory } from './AppointmentStatusHistory';
@@ -10,6 +10,7 @@ import { AppointmentForm, type FormValues } from './AppointmentForm';
 import { AppointmentList } from './AppointmentList';
 import { AppointmentToolbar, type ViewMode } from './AppointmentToolbar';
 import { WaitlistDialog } from './WaitlistDialog';
+import { AppointmentSeriesDialog } from './AppointmentSeriesDialog';
 import { DayGrid } from './DayGrid';
 import { ReasonModal, type ReasonKind } from './ReasonModal';
 import { WeekGrid } from './WeekGrid';
@@ -45,6 +46,8 @@ export function AppointmentPage({ api, organizationId, readOnly, canManageResour
   const [items, setItems] = useState<Appointment[]>([]);
   const [selectedSnapshot, setSelectedSnapshot] = useState<Appointment | null>(null);
   const [staff, setStaff] = useState<AppointmentStaff[]>([]);
+  const [branches, setBranches] = useState<AppointmentBranch[]>([]);
+  const [branchId, setBranchId] = useState('');
   const [staffDirectory,setStaffDirectory]=useState<AppointmentStaff[]>([]);
   const [staffFilter, setStaffFilter] = useState('');
   const [serviceStaff, setServiceStaff] = useState<ServiceStaffMap>({});
@@ -56,7 +59,9 @@ export function AppointmentPage({ api, organizationId, readOnly, canManageResour
   const [day, setDay] = useState(() => todayKstKey());
   const [panel, setPanel] = useState<Panel>(() => (readOnly ? { kind: 'none' } : { kind: 'create', key: 0 }));
   const [resourceDialog, setResourceDialog] = useState(false);
+  const [branchDialog, setBranchDialog] = useState(false);
   const [waitlistDialog,setWaitlistDialog]=useState(false);
+  const [seriesDialog,setSeriesDialog]=useState(false);
   const [reasonTarget, setReasonTarget] = useState<{ appointment: Appointment; kind: ReasonKind } | null>(null);
   const [busy, setBusy] = useState(false);
   const [statusFilter, setStatusFilter] = useState('');
@@ -112,6 +117,7 @@ export function AppointmentPage({ api, organizationId, readOnly, canManageResour
   }, [api, organizationId, visible]);
 
   const load = useCallback(() => Promise.all([
+    api.listAppointmentBranches(organizationId).catch(() => [] as AppointmentBranch[]),
     api.listAppointments(organizationId),
     api.listAppointmentStaff(organizationId),
     api.listAppointmentServices(organizationId),
@@ -120,7 +126,9 @@ export function AppointmentPage({ api, organizationId, readOnly, canManageResour
     resourceApi.listResources(api, organizationId).catch(() => { setResourceWarning('공간·장비 정보를 확인하지 못했습니다. 저장 시 서버가 최종 검사합니다.'); return [] as AppointmentResource[]; }),
     resourceApi.listServiceStaff(api, organizationId).catch(() => { setResourceWarning('담당 가능 직원 규칙을 확인하지 못했습니다. 저장 시 서버가 최종 검사합니다.'); return []; }),
   ])
-    .then(([appointments, staffRows, serviceRows, customerRows, rangeRows, resourceRows, serviceStaffRows]) => {
+    .then(([branchRows, appointments, staffRows, serviceRows, customerRows, rangeRows, resourceRows, serviceStaffRows]) => {
+      setBranches(branchRows);
+      setBranchId(current => branchRows.some(row => row.id === current) ? current : branchRows.find(row => row.is_primary)?.id ?? branchRows[0]?.id ?? '');
       setServiceStaff(buildServiceStaffMap(serviceStaffRows));
       setItems((old) => mergeAppointments(old, [...appointments, ...rangeRows]));
       setStaff(staffRows.filter((row) => row.is_active));
@@ -150,8 +158,10 @@ export function AppointmentPage({ api, organizationId, readOnly, canManageResour
   const resourceName = useCallback((id: string) => resources.find((row) => row.id === id)?.name, [resources]);
   // 담당자 필터는 주·목록 보기에만 적용한다. 선택한 담당자가 사라졌으면(비활성 등) 전체로 본다.
   const activeStaffFilter = staff.some((row) => row.id === staffFilter) ? staffFilter : '';
-  const filteredItems = useMemo(() => items.filter(item => (!activeStaffFilter || item.staff_id === activeStaffFilter) && (!statusFilter || item.status === statusFilter)), [items, activeStaffFilter, statusFilter]);
-  const summaryRows = items.filter(item => kstDateKey(item.start_at) >= visible.from && kstDateKey(item.start_at) <= visible.to && (!activeStaffFilter || item.staff_id === activeStaffFilter));
+  const activeBranchId = branches.some(row => row.id === branchId) ? branchId : branches.find(row => row.is_primary)?.id ?? branches[0]?.id ?? '';
+  const branchStaff = useMemo(() => staff.filter(row => !row.branch_id || row.branch_id === activeBranchId), [staff, activeBranchId]);
+  const filteredItems = useMemo(() => items.filter(item => (!activeBranchId || !item.branch_id || item.branch_id === activeBranchId) && (!activeStaffFilter || item.staff_id === activeStaffFilter) && (!statusFilter || item.status === statusFilter)), [items, activeBranchId, activeStaffFilter, statusFilter]);
+  const summaryRows = items.filter(item => (!activeBranchId || !item.branch_id || item.branch_id === activeBranchId) && kstDateKey(item.start_at) >= visible.from && kstDateKey(item.start_at) <= visible.to && (!activeStaffFilter || item.staff_id === activeStaffFilter));
   const listRows = useMemo(() => filteredItems.filter((item) => kstDateKey(item.start_at) === day).sort((a, b) => a.start_at.localeCompare(b.start_at)), [filteredItems, day]);
 
   const selected = panel.kind === 'detail' || panel.kind === 'edit'
@@ -169,6 +179,11 @@ export function AppointmentPage({ api, organizationId, readOnly, canManageResour
     if (busy || editorBusy.current) { notify.info('저장 중입니다. 결과를 확인한 뒤 이동해 주세요.'); return false; }
     if (!dirtyRef.current) return true;
     return confirm({ title: '작성 중인 내용', message: '저장하지 않은 입력이 있습니다. 버리고 이동할까요?', confirmLabel: '버리고 이동', cancelLabel: '계속 작성' });
+  }
+
+  async function selectBranch(nextId: string) {
+    if (nextId === activeBranchId || !(await canLeaveForm())) return;
+    setBranchId(nextId); setStaffFilter(''); setPanel({ kind: 'none' });
   }
 
   async function selectAppointment(appointment: Appointment) {
@@ -290,9 +305,10 @@ export function AppointmentPage({ api, organizationId, readOnly, canManageResour
           key={`create-${panel.key}`}
           api={api}
           organizationId={organizationId}
+          branchId={activeBranchId}
           customers={customers.filter(row => row.status === 'active')}
           onCustomerFound={customer => setCustomers(old => [...old.filter(row => row.id !== customer.id), customer])}
-          staff={staff}
+          staff={branchStaff}
           services={services}
           serviceStaff={serviceStaff}
           seed={panel.seed}
@@ -310,8 +326,9 @@ export function AppointmentPage({ api, organizationId, readOnly, canManageResour
           key={`edit-${selected.id}`}
           api={api}
           organizationId={organizationId}
+          branchId={activeBranchId}
           customers={customers.filter(row => row.status === 'active')}
-          staff={staff}
+          staff={branchStaff}
           services={services}
           serviceStaff={serviceStaff}
           appointment={selected}
@@ -364,8 +381,9 @@ export function AppointmentPage({ api, organizationId, readOnly, canManageResour
         onPrev={() => shiftDay(-1)}
         onNext={() => shiftDay(1)}
         onToday={() => setDay(todayKstKey())}
-        staffFilter={{ options: staff.map((row) => ({ id: row.id, name: row.name })), value: activeStaffFilter, onChange: setStaffFilter }}
-        extra={<><button type="button" aria-label="예약 새로고침" disabled={refreshing} onClick={() => void refreshVisible()}>{refreshing ? '갱신 중…' : '새로고침'}</button>{!readOnly&&<><button type="button" className="primary-button" onClick={() => void startCreate()}>새 예약</button><button type="button" onClick={()=>setWaitlistDialog(true)}>대기 목록</button></>}{canManageResources&&<button type="button" onClick={() => setResourceDialog(true)}>공간·장비 관리</button>}</>}
+        staffFilter={{ options: branchStaff.map((row) => ({ id: row.id, name: row.name })), value: activeStaffFilter, onChange: setStaffFilter }}
+        branchFilter={{ options: branches.map((row) => ({ id: row.id, name: row.name })), value: activeBranchId, onChange: value => void selectBranch(value) }}
+        extra={<><button type="button" aria-label="예약 새로고침" disabled={refreshing} onClick={() => void refreshVisible()}>{refreshing ? '갱신 중…' : '새로고침'}</button><button type="button" onClick={()=>setSeriesDialog(true)}>반복 예약</button>{!readOnly&&<><button type="button" className="primary-button" onClick={() => void startCreate()}>새 예약</button><button type="button" onClick={()=>setWaitlistDialog(true)}>대기 목록</button></>}{canManageResources&&<><button type="button" onClick={() => setResourceDialog(true)}>공간·장비 관리</button><button type="button" onClick={() => setBranchDialog(true)}>지점 관리</button></>}</>}
       />
       <div className="apt-overview" aria-label="예약 현황">
         <div className="apt-overview__counts"><strong>{view === 'week' ? '이번 주' : '선택일'} {summaryRows.length}건</strong>{Object.entries(statusLabels).map(([status,label]) => <span key={status} className="apt-status" data-status={status}>{label} {summaryRows.filter(item => item.status === status).length}</span>)}</div>
@@ -381,7 +399,7 @@ export function AppointmentPage({ api, organizationId, readOnly, canManageResour
             <DayGrid
               day={day}
               items={filteredItems}
-              staff={activeStaffFilter ? staff.filter(row => row.id === activeStaffFilter) : staff}
+              staff={activeStaffFilter ? branchStaff.filter(row => row.id === activeStaffFilter) : branchStaff}
               customerName={customerName}
               selectedId={selectedId}
               now={now}
@@ -422,7 +440,9 @@ export function AppointmentPage({ api, organizationId, readOnly, canManageResour
         <aside className="apt-side">{renderSide()}</aside>
       </div>
       {resourceDialog && <ResourceManagerDialog api={api} organizationId={organizationId} readOnly={!canManageResources} onClose={() => { setResourceDialog(false); void load(); }} />}
-      {waitlistDialog&&<WaitlistDialog api={api} organizationId={organizationId} customers={customers} staff={staff} services={services} resources={resources} serviceStaff={serviceStaff} readOnly={readOnly} onBooked={appointment=>{mutationRevision.current++;setItems(old=>mergeAppointments(old,[appointment]));setDay(kstDateKey(appointment.start_at));setWaitlistDialog(false)}} onClose={()=>setWaitlistDialog(false)}/>}
+      {branchDialog && <BranchManagerDialog api={api} organizationId={organizationId} onClose={() => { setBranchDialog(false); void load(); }} />}
+      {waitlistDialog&&<WaitlistDialog api={api} organizationId={organizationId} customers={customers} staff={branchStaff} services={services} resources={resources.filter(row=>!row.branch_id||row.branch_id===activeBranchId)} serviceStaff={serviceStaff} readOnly={readOnly} onBooked={appointment=>{mutationRevision.current++;setItems(old=>mergeAppointments(old,[appointment]));setDay(kstDateKey(appointment.start_at));setWaitlistDialog(false)}} onClose={()=>setWaitlistDialog(false)}/>}
+      {seriesDialog&&<AppointmentSeriesDialog api={api} organizationId={organizationId} customers={customers} staff={staffDirectory} services={services} resources={resources.filter(row=>!row.branch_id||row.branch_id===activeBranchId)} canManage={canManageResources} onClose={()=>setSeriesDialog(false)}/>}
       {reasonTarget && (
         <ReasonModal
           kind={reasonTarget.kind}

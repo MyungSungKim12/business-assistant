@@ -25,6 +25,7 @@ export const lineSchema = z.object({
   unit_price: money, line_total: money, staff_id: z.uuid().nullable(), staff_name_snapshot: z.string(),
   status: z.enum(['active', 'removed']), removal_reason: z.string(),
   discount_share: money.optional(), returned_discount_amount: money.optional(), returned_refund_amount: money.optional(),
+  commission_allocations: z.array(z.object({ staff_id: z.uuid(), staff_user_id: z.uuid().nullable(), staff_name: z.string(), share_basis_points: z.number().int().min(1).max(10000) })).default([]),
 });
 export type CartLine = z.infer<typeof lineSchema>;
 

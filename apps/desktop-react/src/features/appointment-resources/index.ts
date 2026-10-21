@@ -1,4 +1,5 @@
 export { ResourceManagerDialog, type ResourceManagerDialogProps } from './ResourceManagerDialog';
+export { BranchManagerDialog } from './BranchManagerDialog';
 export { StaffAvailabilityDialog, kstIso, type StaffAvailabilityDialogProps } from './StaffAvailabilityDialog';
 export { ResourcePicker, autoSelectResources, missingRequirements, describeRequirements, type ResourcePickerProps } from './ResourcePicker';
 export { resourceApi, type CallApi } from './api';

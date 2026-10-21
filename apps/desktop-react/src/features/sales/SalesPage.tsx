@@ -11,11 +11,12 @@ import { visitExportColumns } from '../../lib/io/domainColumns';
 import { PaymentDialog } from './PaymentDialog';
 import { PaymentHistoryPanel } from './PaymentHistoryPanel';
 import { WalletUseDialog } from '../catalog/WalletDialogs';
+import { resourceApi } from '../appointment-resources/api';
 import type { CartBundle, CartLine, CatalogItem, SaleDraft, SalePayment, Visit } from './types';
 import './sales.css';
 
 type DiscountForm = { kind: 'none' | 'amount' | 'percent'; value: string; reason: string; confirmed: boolean };
-type LineForm = { quantity: string; price: string; staff: string; reason: string };
+type LineForm = { quantity: string; price: string; staff: string; staffId: string; reason: string; assistants: Array<{ staffId: string; percent: string }> };
 type Pending = { kind: string; run: () => Promise<CartBundle> };
 
 const cartStatusLabel: Record<string, string> = { draft: '작성 중', ready: '검토 완료', collecting: '수납 중', paid: '수납 완료', void: '취소' };
@@ -23,8 +24,9 @@ const discountFromCart = (bundle: CartBundle | null): DiscountForm => bundle
   ? { kind: bundle.cart.discount_kind, value: bundle.cart.discount_kind === 'none' ? '' : bundle.cart.discount_value, reason: bundle.cart.discount_reason, confirmed: false }
   : { kind: 'amount', value: '', reason: '', confirmed: false };
 const lineForm = (line: CartLine | undefined): LineForm => line
-  ? { quantity: String(line.quantity), price: line.unit_price, staff: line.staff_name_snapshot, reason: line.removal_reason }
-  : { quantity: '1', price: '', staff: '', reason: '' };
+  ? { quantity: String(line.quantity), price: line.unit_price, staff: line.staff_name_snapshot, staffId: line.commission_allocations.find((row) => row.staff_id === line.staff_id || row.staff_user_id === line.staff_id)?.staff_id ?? line.staff_id ?? '', reason: line.removal_reason,
+      assistants: line.commission_allocations.filter((row) => row.staff_id !== line.staff_id && row.staff_user_id !== line.staff_id).map((row) => ({ staffId: row.staff_id, percent: (row.share_basis_points / 100).toFixed(2) })) }
+  : { quantity: '1', price: '', staff: '', staffId: '', reason: '', assistants: [] };
 const sameForm = (a: object, b: object) => JSON.stringify(a) === JSON.stringify(b);
 const discountLabel = (cart: CartBundle['cart']) => {
   const detail = cart.discount_kind === 'amount' ? `정액 ${formatWon(cart.discount_value)}` : cart.discount_kind === 'percent' ? `비율 ${cart.discount_value}%` : '수동 할인 없음';
@@ -85,6 +87,7 @@ function CartView({ api, organizationId, readOnly, openRequest, organizationName
   const [visits, setVisits] = useState<Visit[]>([]);
   const [drafts, setDrafts] = useState<SaleDraft[]>([]);
   const [catalog, setCatalog] = useState<CatalogItem[]>([]);
+  const [commissionStaff,setCommissionStaff]=useState<{id:string;name:string}[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [warning, setWarning] = useState('');
@@ -145,13 +148,14 @@ function CartView({ api, organizationId, readOnly, openRequest, organizationName
   const load = useCallback(async () => {
     setLoading(true);
     setLoadError('');
-    const [c, v, d, p] = await Promise.allSettled([api.listCustomers(organizationId), salesApi.visits(api, organizationId), salesApi.drafts(api, organizationId), salesApi.catalog(api, organizationId)]);
+    const [c, v, d, p, staff] = await Promise.allSettled([api.listCustomers(organizationId), salesApi.visits(api, organizationId), salesApi.drafts(api, organizationId), salesApi.catalog(api, organizationId), resourceApi.listStaff(api,organizationId)]);
     if (c.status === 'rejected') { setLoadError('고객 목록을 불러오지 못했습니다.'); setLoading(false); return; }
     setCustomers(c.value);
     if (v.status === 'fulfilled') setVisits(v.value);
     if (d.status === 'fulfilled') setDrafts(d.value);
     if (p.status === 'fulfilled') setCatalog(p.value);
-    const failures = [v, d, p].filter((item) => item.status === 'rejected').length;
+    if(staff.status==='fulfilled')setCommissionStaff(staff.value.filter(item=>item.is_active).map(item=>({id:item.id,name:item.name})));
+    const failures = [v, d, p, staff].filter((item) => item.status === 'rejected').length;
     setWarning(failures ? `일부 자료 ${failures}개를 불러오지 못했습니다. 성공한 자료는 유지했습니다.` : '');
     setLoading(false);
   }, [api, organizationId]);
@@ -235,9 +239,15 @@ function CartView({ api, organizationId, readOnly, openRequest, organizationName
     if (!editable || !bundle || !selectedLine) return;
     const quantity = Number(editor.quantity);
     const price = editor.price.trim();
-    const staff = editor.staff.trim();
-    if (!Number.isInteger(quantity) || quantity < 1 || quantity > 999 || !moneyText.test(price) || staff.length > 200) { say('수량(1~999)과 단가(소수 둘째 자리까지)를 확인하세요.', 'error'); return; }
-    void mutate('update', (id) => salesApi.updateLine(api, organizationId, bundle.visit.id, selectedLine.id, bundle.cart.version, id, { quantity, unit_price: price, staff_id: selectedLine.staff_id, staff_name: staff }), saved);
+    const staff=commissionStaff.find(item=>item.id===editor.staffId);
+    const assistantShares = editor.assistants.map((row) => ({ row, staff: commissionStaff.find((candidate) => candidate.id === row.staffId), bps: Math.round(Number(row.percent) * 100) }));
+    const assistantTotal = assistantShares.reduce((sum, row) => sum + row.bps, 0);
+    const duplicate = new Set(assistantShares.map((row) => row.row.staffId)).size !== assistantShares.length || assistantShares.some((row) => row.row.staffId === editor.staffId);
+    if (!Number.isInteger(quantity) || quantity < 1 || quantity > 999 || !moneyText.test(price) || (editor.staffId&&!staff)
+      || assistantShares.some((row) => !row.staff || !Number.isInteger(row.bps) || row.bps < 1 || row.bps >= 10000)
+      || duplicate || (editor.assistants.length > 0 && (!staff || assistantTotal >= 10000))) { say('수량·단가와 직원 배분을 확인하세요. 직원별 배분 합계는 100%를 넘을 수 없습니다.', 'error'); return; }
+    const allocations = editor.staffId && staff ? [{ staff_id: staff.id, share_basis_points: 10000 - assistantTotal }, ...assistantShares.map((row) => ({ staff_id: row.row.staffId, share_basis_points: row.bps }))] : [];
+    void mutate('update', (id) => salesApi.updateLine(api, organizationId, bundle.visit.id, selectedLine.id, bundle.cart.version, id, { quantity, unit_price: price, staff_id: staff?.id??null, staff_name: staff?.name??'', commission_allocations: allocations }), saved);
   };
   const removeLine = () => {
     if (!editable || !bundle || !selectedLine) return;
@@ -325,14 +335,24 @@ function CartView({ api, organizationId, readOnly, openRequest, organizationName
           <div className="data-surface"><table><caption>현재 장바구니</caption><thead><tr><th>항목</th><th>수량</th><th>단가</th><th>담당자</th><th>상태</th></tr></thead>
             <tbody>{bundle.lines.map((line) => <tr key={line.id} className={line.id === lineId ? 'is-selected' : ''} aria-selected={line.id === lineId}>
               <td><button type="button" className="sales-link" disabled={busy || pending !== null} onClick={async () => { if (line.id === lineId || !await allowChange()) return; setLineId(line.id); setEditor(lineForm(line)); }}>{line.description_snapshot}</button></td>
-              <td>{line.quantity}</td><td>{formatWon(line.unit_price)}</td><td>{line.staff_name_snapshot}</td><td>{line.status === 'removed' ? '제거됨' : '활성'}</td></tr>)}</tbody></table>
+              <td>{line.quantity}</td><td>{formatWon(line.unit_price)}</td><td>{line.commission_allocations.length ? line.commission_allocations.map((row) => `${row.staff_name} ${(row.share_basis_points / 100).toFixed(2)}%`).join(' · ') : line.staff_name_snapshot}</td><td>{line.status === 'removed' ? '제거됨' : '활성'}</td></tr>)}</tbody></table>
             {bundle.lines.length === 0 && <p className="empty-state">담긴 항목이 없습니다.</p>}
           </div>
           {selectedLine && <div className="sales-form" aria-label="항목 편집">
             <div className="sales-form__row">
               <label>수량<input inputMode="numeric" disabled={!editable} value={editor.quantity} onChange={(e) => setEditor({ ...editor, quantity: e.target.value })} /></label>
               <label>단가<input inputMode="decimal" disabled={!editable} value={editor.price} onChange={(e) => setEditor({ ...editor, price: e.target.value })} /></label>
-              <label>담당자<input maxLength={200} disabled={!editable} value={editor.staff} onChange={(e) => setEditor({ ...editor, staff: e.target.value })} /></label>
+              <label>담당자<select disabled={!editable} value={editor.staffId} onChange={(e) => {const staff=commissionStaff.find(item=>item.id===e.target.value);setEditor({...editor,staffId:e.target.value,staff:staff?.name??''});}}><option value="">담당 미지정</option>{commissionStaff.map(staff=><option key={staff.id} value={staff.id}>{staff.name}</option>)}</select></label>
+              <fieldset className="sales-commission-splits" disabled={!editable || !editor.staffId}>
+                <legend>수당 배분</legend>
+                <p className="muted">주 담당자 {editor.staffId ? Math.max(0, 100 - editor.assistants.reduce((sum, row) => sum + (Number(row.percent) || 0), 0)).toFixed(2) : 0}% · 배분 합계 100%</p>
+                {editor.assistants.map((row, index) => <div className="sales-form__row" key={`${index}`}>
+                  <label>추가 담당 직원<select value={row.staffId} onChange={(event) => setEditor({ ...editor, assistants: editor.assistants.map((item, rowIndex) => rowIndex === index ? { ...item, staffId: event.target.value } : item) })}><option value="">직원 선택</option>{commissionStaff.filter((person) => person.id !== editor.staffId).map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}</select></label>
+                  <label>배분 비율 (%)<input aria-label={`추가 직원 ${index + 1} 배분 비율`} inputMode="decimal" type="number" min="0.01" max="99.99" step="0.01" value={row.percent} onChange={(event) => setEditor({ ...editor, assistants: editor.assistants.map((item, rowIndex) => rowIndex === index ? { ...item, percent: event.target.value } : item) })} /></label>
+                  <button type="button" aria-label={`추가 직원 ${index + 1} 제거`} onClick={() => setEditor({ ...editor, assistants: editor.assistants.filter((_, rowIndex) => rowIndex !== index) })}>제거</button>
+                </div>)}
+                <button type="button" disabled={editor.assistants.length >= 9} onClick={() => setEditor({ ...editor, assistants: [...editor.assistants, { staffId: '', percent: '' }] })}>추가 담당자 배분</button>
+              </fieldset>
               <label>제거 사유<input maxLength={1000} disabled={!editable} value={editor.reason} onChange={(e) => setEditor({ ...editor, reason: e.target.value })} /></label>
             </div>
             {canManage && <div className="sales-actions">

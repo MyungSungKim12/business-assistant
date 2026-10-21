@@ -4,7 +4,7 @@ import type { BinarySource, Platform } from '../../platform/types';
 import { validateFile } from './fileValidation';
 import { previewTypeOf } from './filePreview';
 import { uploadWithProgress, type UploadOptions } from './uploadProgress';
-import { consentEventSchema, consentEventsSchema, customerOptionsSchema, evidenceVerificationSchema, documentSchema, documentsSchema, fileSchema, filesSchema, fileFoldersSchema, issuedListSchema, issuedSchema, previewSchema, signedFileSchema, templateSchema, templatesSchema, templateVersionsSchema, treatmentOptionsSchema } from './schemas';
+import { consentEventSchema, consentEventsSchema, customerOptionsSchema, evidenceVerificationSchema, documentSchema, documentsSchema, fileSchema, filesSchema, fileFoldersSchema, fileVersionsSchema, issuedListSchema, issuedSchema, preparedFileVersionSchema, previewSchema, signedFileSchema, signedUploadFileSchema, fileStorageUsageSchema, templateSchema, templatesSchema, templateVersionsSchema, treatmentOptionsSchema } from './schemas';
 import type { ConsentRequest, Scope, TemplateMutation } from './schemas';
 
 const org = (o: string) => `/organizations/${o}`;
@@ -32,11 +32,25 @@ export const documentApi = {
 export type FilePlatform = Platform & { pickFiles?: () => Promise<BinarySource[]> };
 
 export const fileApi = {
+  storageUsage:(api:ApiClient,o:string)=>api.call('GET',`${org(o)}/file-storage/usage`,fileStorageUsageSchema),
+  setStorageQuota:(api:ApiClient,o:string,quota_bytes:number)=>api.call('POST',`${org(o)}/file-storage/quota`,fileStorageUsageSchema,{quota_bytes}),
   list: (api: ApiClient, o: string, includeArchived = false) => api.call('GET', `${org(o)}/files${includeArchived ? '?include_archived=true' : ''}`, filesSchema),
   folders:(api:ApiClient,o:string)=>api.call('GET',`${org(o)}/file-folders`,fileFoldersSchema),
   createFolder:(api:ApiClient,o:string,name:string)=>api.call('POST',`${org(o)}/file-folders`,fileFoldersSchema.element,{name}),
   deleteFolder:(api:ApiClient,o:string,id:string)=>api.call('DELETE',`${org(o)}/file-folders/${id}`,z.object({deleted:z.literal(true)})),
   updateMetadata:(api:ApiClient,o:string,id:string,input:{folder_id:string|null;tags:string[]})=>api.call('PATCH',`${org(o)}/files/${id}/metadata`,fileSchema,input),
+  versions:(api:ApiClient,o:string,id:string)=>api.call('GET',`${org(o)}/files/${id}/versions`,fileVersionsSchema),
+  async uploadVersion(api:ApiClient,o:string,id:string,expectedVersion:number,source:BinarySource){
+    validateFile(source);
+    const request={expected_version:expectedVersion,original_name:source.name.trim(),content_type:source.contentType||'application/octet-stream',size_bytes:source.size};
+    const prepared=await api.call('POST',`${org(o)}/files/${id}/versions/upload-url`,preparedFileVersionSchema,request);
+    try{await api.filePlatform.uploadBinary(prepared.signed_url,source)}catch(error){await api.call('DELETE',`${org(o)}/file-storage/uploads/${prepared.version_operation_id}`,z.object({released:z.boolean()}),undefined).catch(()=>undefined);throw error}
+    const commit={...request,version_upload_path:prepared.version_upload_path,version_operation_id:prepared.version_operation_id};
+    try{return await api.call('POST',`${org(o)}/files/${id}/versions/commit`,fileSchema,commit)}
+    catch{return api.call('POST',`${org(o)}/files/${id}/versions/commit`,fileSchema,commit)}
+  },
+  versionDownloadUrl:(api:ApiClient,o:string,id:string,version:number)=>api.call('POST',`${org(o)}/files/${id}/versions/${version}/download-url`,signedFileSchema,{}),
+  async downloadVersion(api:ApiClient,o:string,id:string,version:number){const signed=await fileApi.versionDownloadUrl(api,o,id,version);const bytes=await api.filePlatform.downloadBinary(signed.signed_url);saveBytes(bytes,signed.file.original_name,signed.file.content_type);},
   archive: (api: ApiClient, o: string, id: string) => api.call('DELETE', `${org(o)}/files/${id}`, fileSchema),
   downloadUrl: (api: ApiClient, o: string, id: string) => api.call('POST', `${org(o)}/files/${id}/download-url`, signedFileSchema, {}),
   /**
@@ -45,7 +59,7 @@ export const fileApi = {
    */
   async upload(api: ApiClient, o: string, source: BinarySource, options?: UploadOptions) {
     validateFile(source);
-    const prepared = await api.call('POST', `${org(o)}/files/upload-url`, signedFileSchema, {
+    const prepared = await api.call('POST', `${org(o)}/files/upload-url`, signedUploadFileSchema, {
       original_name: source.name.trim(), content_type: source.contentType || 'application/octet-stream', size_bytes: source.size,
     });
     try {
@@ -53,9 +67,10 @@ export const fileApi = {
       else await api.filePlatform.uploadBinary(prepared.signed_url, source);
     } catch (error) {
       await fileApi.archive(api, o, prepared.file.id).catch(() => undefined);
+      await api.call('DELETE',`${org(o)}/file-storage/uploads/${prepared.reservation_id}`,z.object({released:z.boolean()}),undefined).catch(()=>undefined);
       throw error;
     }
-    return prepared.file;
+    return api.call('POST',`${org(o)}/files/${prepared.file.id}/complete-upload`,fileSchema,{reservation_id:prepared.reservation_id});
   },
   /** 미리보기용: 서명 URL로 내려받은 바이트를 형식이 맞는 Blob 으로 돌려준다(미리보기를 지원하지 않는 형식이면 오류). */
   async fetchPreview(api: ApiClient, o: string, id: string): Promise<{ blob: Blob; kind: 'image' | 'pdf' }> {

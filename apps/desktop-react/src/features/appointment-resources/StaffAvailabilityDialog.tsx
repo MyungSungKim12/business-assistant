@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { DataGrid, ErrorState, LoadingState, Modal, confirm, notify, type Column } from '@business-assistant/react-ui';
 import { resourceApi, type CallApi } from './api';
 import { isDefiniteRejection, useOperationTracker } from './operationIds';
-import type { TimeOff } from './schemas';
+import type { TimeOff, TimeOffRequest } from './schemas';
 import './appointment-resources.css';
 
 const DAYS: [number, string][] = [[1, '월'], [2, '화'], [3, '수'], [4, '목'], [5, '금'], [6, '토'], [7, '일']];
@@ -30,6 +30,10 @@ export function StaffAvailabilityDialog({ api, organizationId, staff, readOnly =
   const [version, setVersion] = useState(1);
   const [timeOff, setTimeOff] = useState<TimeOff[]>([]);
   const [selectedLeave, setSelectedLeave] = useState<string | null>(null);
+  const [leaveRequests, setLeaveRequests] = useState<TimeOffRequest[]>([]);
+  const [currentStaffId, setCurrentStaffId] = useState<string | null>(null);
+  const [requestError, setRequestError] = useState('');
+  const [reviewNote, setReviewNote] = useState('');
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [error, setError] = useState('');
@@ -39,11 +43,27 @@ export function StaffAvailabilityDialog({ api, organizationId, staff, readOnly =
   const hoursOp = useOperationTracker();
   const leaveOp = useOperationTracker();
   const cancelOp = useOperationTracker();
+  const requestOp = useOperationTracker();
+  const reviewOp = useOperationTracker();
+  const withdrawOp = useOperationTracker();
 
   const load = useCallback(async () => {
     setLoadError('');
     try {
-      const result = await resourceApi.getAvailability(api, organizationId, staff.id);
+      const [availabilityResult,requestResult] = await Promise.allSettled([
+        resourceApi.getAvailability(api, organizationId, staff.id),
+        resourceApi.listTimeOffRequests(api, organizationId, readOnly ? null : staff.id),
+      ]);
+      if(availabilityResult.status==='rejected')throw availabilityResult.reason;
+      const result=availabilityResult.value;
+      if(requestResult.status==='fulfilled'){
+        setLeaveRequests(requestResult.value.requests);
+        setCurrentStaffId(requestResult.value.current_staff_id);
+        setRequestError('');
+      }else{
+        setLeaveRequests([]);setCurrentStaffId(null);
+        setRequestError('휴무 신청 목록을 불러오지 못했습니다. 계정 연결과 권한을 확인하세요.');
+      }
       const next = defaultDays();
       for (const hour of result.hours) {
         if (hour.weekday in next) next[hour.weekday] = { enabled: true, start: hour.start_time.slice(0, 5), end: hour.end_time.slice(0, 5) };
@@ -52,7 +72,7 @@ export function StaffAvailabilityDialog({ api, organizationId, staff, readOnly =
       setSelectedLeave((current) => (result.time_off.some((item) => item.id === current) ? current : null));
     } catch { setLoadError('근무시간을 불러오지 못했습니다.'); }
     finally { setLoading(false); }
-  }, [api, organizationId, staff.id]);
+  }, [api, organizationId, staff.id, readOnly]);
   useEffect(() => { void load(); }, [load]);
 
   const update = (weekday: number, patch: Partial<Day>) => { setDays((current) => ({ ...current, [weekday]: { ...current[weekday], ...patch } })); setHoursDirty(true); };
@@ -113,6 +133,38 @@ export function StaffAvailabilityDialog({ api, organizationId, staff, readOnly =
     } finally { setBusy(false); }
   }
 
+  async function submitLeaveRequest(){
+    const reason=leave.reason.trim();
+    if(currentStaffId!==staff.id){setError('직원 계정이 현재 담당자와 연결되어 있어야 신청할 수 있습니다.');return;}
+    if(!leave.start||!leave.end||leave.end<=leave.start){setError('휴무 종료는 시작보다 늦어야 합니다.');return;}
+    if(!reason){setError('휴무 사유를 입력하세요.');return;}
+    const input={start_at:kstIso(leave.start),end_at:kstIso(leave.end),reason};setBusy(true);
+    try{await resourceApi.requestTimeOff(api,organizationId,staff.id,{...input,operation_id:requestOp.idFor(JSON.stringify(input))});requestOp.reset();setLeave({start:'',end:'',reason:''});setError('');notify.success('휴무 신청을 보냈습니다.');await load();}
+    catch(failure){if(isDefiniteRejection(failure))requestOp.reset();setError('휴무 신청에 실패했습니다. 기간이 겹치거나 직원 계정 연결을 확인하세요.');}
+    finally{setBusy(false);}
+  }
+
+  async function decideRequest(item:TimeOffRequest,action:'approve'|'reject'){
+    setBusy(true);
+    try{await resourceApi.reviewTimeOffRequest(api,organizationId,item.id,{action,expected_version:item.version,operation_id:reviewOp.idFor(`${item.id}:${item.version}:${action}`),review_note:reviewNote.trim()});reviewOp.reset();setReviewNote('');setError('');notify.success(action==='approve'?'휴무 신청을 승인했습니다.':'휴무 신청을 반려했습니다.');await load();}
+    catch(failure){if(isDefiniteRejection(failure))reviewOp.reset();setError(action==='approve'?'승인하지 못했습니다. 기존 예약과 충돌하는지 확인하세요.':'휴무 신청을 반려하지 못했습니다. 최신 상태를 확인하세요.');}
+    finally{setBusy(false);}
+  }
+
+  async function withdrawRequest(item:TimeOffRequest){
+    setBusy(true);
+    try{await resourceApi.withdrawTimeOffRequest(api,organizationId,item.id,{expected_version:item.version,operation_id:withdrawOp.idFor(`${item.id}:${item.version}`)});withdrawOp.reset();setError('');notify.success('휴무 신청을 철회했습니다.');await load();}
+    catch(failure){if(isDefiniteRejection(failure))withdrawOp.reset();setError('휴무 신청을 철회하지 못했습니다. 최신 상태를 확인하세요.');}
+    finally{setBusy(false);}
+  }
+
+  const requestColumns:Column<TimeOffRequest>[]=[
+    {key:'period',header:'신청 기간',width:260,value:row=>row.start_at,render:row=>`${formatInstant(row.start_at)} ~ ${formatInstant(row.end_at)}`},
+    {key:'reason',header:'사유',width:160,value:row=>row.reason},
+    {key:'status',header:'상태',width:80,value:row=>({pending:'검토 대기',approved:'승인',rejected:'반려',withdrawn:'철회'}[row.status])},
+    {key:'note',header:'검토 메모',width:140,value:row=>row.review_note||'—'},
+  ];
+
   const columns: Column<TimeOff>[] = [
     { key: 'period', header: '기간', width: 260, value: (row) => row.start_at, render: (row) => `${formatInstant(row.start_at)} ~ ${formatInstant(row.end_at)}` },
     { key: 'reason', header: '사유', width: 180, value: (row) => row.reason },
@@ -149,6 +201,24 @@ export function StaffAvailabilityDialog({ api, organizationId, staff, readOnly =
               )}
               <DataGrid rows={timeOff} columns={columns} rowKey={(row) => row.id} selectedKey={selectedLeave} onSelect={(row) => setSelectedLeave(row.id)} ariaLabel="휴무 목록" emptyText="등록된 휴무가 없습니다." />
               {!readOnly && <button type="button" disabled={busy || !selectedLeave} onClick={() => void cancelLeave()}>선택 휴무 취소</button>}
+            </section>
+            <section aria-label="휴무 신청 및 승인">
+              <h3>휴무 신청 및 승인</h3>
+              {currentStaffId===staff.id && <div className="leave-form">
+                <label>신청 시작<input type="datetime-local" value={leave.start} onChange={event=>setLeave({...leave,start:event.currentTarget.value})}/></label>
+                <label>신청 종료<input type="datetime-local" value={leave.end} onChange={event=>setLeave({...leave,end:event.currentTarget.value})}/></label>
+                <label>신청 사유<input value={leave.reason} placeholder="예: 연차, 교육" onChange={event=>setLeave({...leave,reason:event.currentTarget.value})}/></label>
+                <button type="button" disabled={busy||Boolean(requestError)} onClick={()=>void submitLeaveRequest()}>휴무 신청</button>
+              </div>}
+              {requestError&&<p role="status" className="form-hint">{requestError}</p>}
+              <DataGrid rows={leaveRequests} columns={requestColumns} rowKey={row=>row.id} ariaLabel="휴무 신청 목록" emptyText="휴무 신청이 없습니다." />
+              {!readOnly&&leaveRequests.filter(row=>row.status==='pending').map(item=><div className="leave-review-actions" key={item.id}>
+                <span>{item.reason} · {formatInstant(item.start_at)}</span>
+                <input aria-label="검토 메모" maxLength={500} placeholder="선택 메모" value={reviewNote} onChange={event=>setReviewNote(event.currentTarget.value)}/>
+                <button type="button" disabled={busy} onClick={()=>void decideRequest(item,'approve')}>승인</button>
+                <button type="button" disabled={busy} onClick={()=>void decideRequest(item,'reject')}>반려</button>
+              </div>)}
+              {readOnly&&currentStaffId===staff.id&&leaveRequests.filter(row=>row.status==='pending').map(item=><button key={item.id} type="button" disabled={busy} onClick={()=>void withdrawRequest(item)}>선택 신청 철회 · {item.reason}</button>)}
             </section>
           </>
         )}

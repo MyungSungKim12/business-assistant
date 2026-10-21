@@ -37,3 +37,15 @@
 .management-staff-chart__value { text-align: right; }
 .management-actions { display: flex; justify-content: flex-end; margin: 4px 0; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.management-finalization { margin: 12px 0; padding: 12px 14px; border: 1px solid var(--border, #e3e6ea); border-radius: 8px; background: var(--surface, #fff); }
+.management-finalization h2 { margin: 0 0 6px; font-size: 15px; }
+.management-finalization > label { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; max-width: 520px; }
+.management-finalization .management-confirmation { flex-direction: row; align-items: flex-start; }
+.management-finalization ol { margin: 10px 0 0; padding-left: 20px; }
+.management-finalization li { padding: 3px 0; }
+.management-attribution{display:flex;align-items:end;gap:12px;flex-wrap:wrap;margin:12px 0;padding:12px 14px;border:1px solid var(--border-subtle,#ded8cf);border-radius:10px;background:var(--surface-muted,#faf8f5)}
+.management-attribution legend{padding:0 6px;font-weight:600}
+.management-attribution label{display:grid;gap:5px;min-width:190px;font-size:13px}
+.management-attribution input,.management-attribution select{min-height:36px;padding:6px 9px;border:1px solid var(--border-subtle,#d7d1c9);border-radius:7px;background:var(--surface,#fff);font:inherit}
+.management-attribution button{min-height:36px;padding:6px 12px;border:0;border-radius:7px;background:var(--accent,#77624b);color:white;font:inherit;font-weight:600;cursor:pointer}
+.management-attribution button:disabled{opacity:.5;cursor:not-allowed}
