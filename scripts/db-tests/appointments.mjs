@@ -42,6 +42,34 @@ try {
  await db.exec(await readFile(new URL('../../migrations/038_appointment_resources.sql',import.meta.url),'utf8'));
  await db.exec(await readFile(new URL('../../migrations/056_appointment_waitlist.sql',import.meta.url),'utf8'));
  await db.exec(await readFile(new URL('../../migrations/059_waitlist_idempotent_booking.sql',import.meta.url),'utf8'));
+ if(process.argv.includes('--series')){
+  const sql=await readFile(new URL('../../migrations/071_appointment_series.sql',import.meta.url),'utf8');
+  await db.exec(sql);await db.exec(sql);
+  await db.exec(await readFile(new URL('../../migrations/081_appointment_series_list.sql',import.meta.url),'utf8'));
+  await db.exec(await readFile(new URL('../../migrations/082_appointment_series_future_cancel.sql',import.meta.url),'utf8'));
+  await db.exec(await readFile(new URL('../../migrations/083_appointment_series_future_update.sql',import.meta.url),'utf8'));
+  const rescheduleSql=await readFile(new URL('../../migrations/085_appointment_series_reschedule.sql',import.meta.url),'utf8');await db.exec(rescheduleSql);await db.exec(rescheduleSql);
+ }
+ if(process.argv.includes('--offers')){
+  const sql=await readFile(new URL('../../migrations/072_waitlist_ranked_offers.sql',import.meta.url),'utf8');
+  await db.exec(sql);await db.exec(sql);
+ }
+ if(process.argv.includes('--branches')){
+  await db.exec('reset role');
+  const profileSql=await readFile(new URL('../../migrations/063_staff_profile_lifecycle.sql',import.meta.url),'utf8');await db.exec(profileSql);
+  for(const name of ['073_organization_branches.sql','074_appointment_branch_scope.sql']){const sql=await readFile(new URL(`../../migrations/${name}`,import.meta.url),'utf8');await db.exec(sql);await db.exec(sql);}
+  await user();
+  const branches=await one('select list_organization_branches($1) data',[org]);assert.equal(branches.data.length,1);assert.equal(branches.data[0].name,'본점');
+  const branch2=(await one('select create_organization_branch($1,$2,$3,$4,$5) data',[org,'BR-2','2호점','Asia/Seoul',randomUUID()])).data;
+  await fail(()=>one('select list_organization_branches($1)',[other]),'42501');
+  const staff=(await one('select create_appointment_staff($1,$2) data',[org,'지점 직원'])).data;
+  assert.equal(staff.branch_id,branches.data[0].id);
+  await one('select assign_appointment_staff_branch($1,$2,$3,$4)',[org,staff.id,branch2.id,staff.profile_version]);
+  const service=(await one('select create_appointment_service($1,$2,$3,$4) data',[org,'지점 관리',30,0])).data;
+  const apt=(await one('select save_appointment_with_resources($1,null,$2,$3,$4,$5,$6,null,$7,$8) data',[org,customer,staff.id,service.id,'2027-03-01T10:00:00+09:00','phone',randomUUID(),[]])).data;
+  assert.equal(apt.branch_id,branch2.id);
+  await fail(()=>one('select assign_appointment_staff_branch($1,$2,$3,$4)',[other,staff.id,branch2.id,staff.profile_version]),'42501');
+ }
  if(process.argv.includes('--history')){
   // 034의 사유 없는 성공 노쇼 + 응답 유실을 그대로 남긴 업그레이드 상황.
   await q("insert into appointment_operations(organization_id,operation_id,actor_id,fingerprint,result_snapshot) values($1,$2,$3,md5(jsonb_build_object('id',$4::uuid,'status','no_show','reason',null,'version',1)::text),jsonb_build_object('id',$4::uuid,'status','no_show'))",[org,legacyOperation,owner,legacyAppointment]);
@@ -61,8 +89,128 @@ try {
   assert.deepEqual((await one('select update_appointment_staff_profile($1,$2,$3,$4,$5,$6) data',args)).data,saved);
   await fail(()=>one('select update_appointment_staff_profile($1,$2,$3,$4,$5,$6)',[org,worker.id,'다른 입력',true,1,randomUUID()]),'P0001');
  }
+ if(process.argv.includes('--staff-account')){
+  await db.exec('reset role');
+  const profileSql=await readFile(new URL('../../migrations/063_staff_profile_lifecycle.sql',import.meta.url),'utf8');
+  const accountSql=await readFile(new URL('../../migrations/077_staff_account_link.sql',import.meta.url),'utf8');
+  await db.exec(profileSql);await db.exec(accountSql);await db.exec(accountSql);await user();
+  const worker=(await one('select create_appointment_staff($1,$2) data',[org,'연결 직원'])).data;
+  const operation=randomUUID(),args=[org,worker.id,member,1,operation];
+  const linked=(await one('select assign_appointment_staff_account($1,$2,$3,$4,$5) data',args)).data;
+  assert.equal(linked.auth_user_id,member);assert.equal(linked.profile_version,2);
+  assert.deepEqual((await one('select assign_appointment_staff_account($1,$2,$3,$4,$5) data',args)).data,linked);
+  await fail(()=>one('select assign_appointment_staff_account($1,$2,$3,$4,$5)',[org,worker.id,member,1,randomUUID()]),'P0001');
+  const duplicate=(await one('select create_appointment_staff($1,$2) data',[org,'중복 연결 직원'])).data;
+  await fail(()=>one('select assign_appointment_staff_account($1,$2,$3,$4,$5)',[org,duplicate.id,member,1,randomUUID()]),'23505');
+  await fail(()=>one('select assign_appointment_staff_account($1,$2,$3,$4,$5)',[org,duplicate.id,outsider,1,randomUUID()]),'P0002');
+  await user(member);await fail(()=>one('select assign_appointment_staff_account($1,$2,$3,$4,$5)',[org,duplicate.id,owner,1,randomUUID()]),'42501');
+  await user(outsider);await fail(()=>one('select assign_appointment_staff_account($1,$2,$3,$4,$5)',[org,duplicate.id,owner,1,randomUUID()]),'42501');
+  await user();
+  const unlinked=(await one('select assign_appointment_staff_account($1,$2,null,$3,$4) data',[org,worker.id,2,randomUUID()])).data;
+  assert.equal(unlinked.auth_user_id,null);assert.equal(unlinked.profile_version,3);
+  await db.exec('reset role;set role anon');await fail(()=>one('select assign_appointment_staff_account($1,$2,$3,$4,$5)',args),'42501');
+  await user();
+ }
+ if(process.argv.includes('--staff-leave')){
+  await db.exec('reset role');
+  for(const name of ['063_staff_profile_lifecycle.sql','077_staff_account_link.sql','078_staff_time_off_requests.sql']){
+   const sql=await readFile(new URL(`../../migrations/${name}`,import.meta.url),'utf8');await db.exec(sql);await db.exec(sql);
+  }
+  await user();
+  const worker=(await one('select create_appointment_staff($1,$2) data',[org,'휴무 신청 직원'])).data;
+  await one('select assign_appointment_staff_account($1,$2,$3,$4,$5)',[org,worker.id,member,worker.profile_version,randomUUID()]);
+  const start='2027-05-05T10:00:00+09:00',end='2027-05-05T12:00:00+09:00',requestOp=randomUUID();
+  await user(member);
+  const createArgs=[org,worker.id,start,end,'가족 일정',requestOp];
+  const request=(await one('select create_appointment_staff_time_off_request($1,$2,$3,$4,$5,$6) data',createArgs)).data;
+  assert.equal(request.status,'pending');assert.equal(request.version,1);assert.equal(request.requested_by,member);
+  assert.deepEqual((await one('select create_appointment_staff_time_off_request($1,$2,$3,$4,$5,$6) data',createArgs)).data,request);
+  const ownList=(await one('select list_appointment_staff_time_off_requests($1) data',[org])).data;
+  assert.equal(ownList.current_staff_id,worker.id);assert.equal(ownList.requests.length,1);
+  await fail(()=>one('select list_appointment_staff_time_off_requests($1,$2)',[org,worker.id]),'42501');
+  await fail(()=>one('select review_appointment_staff_time_off_request($1,$2,$3,$4,$5,$6)',[org,request.id,'approve',1,randomUUID(),'']), '42501');
+  await fail(()=>one('select create_appointment_staff_time_off_request($1,$2,$3,$4,$5,$6)',[org,worker.id,start,end,'겹친 신청',randomUUID()]),'P0001');
+  await user();
+  const approvalOp=randomUUID(),reviewArgs=[org,request.id,'approve',1,approvalOp,'승인'];
+  const approved=(await one('select review_appointment_staff_time_off_request($1,$2,$3,$4,$5,$6) data',reviewArgs)).data;
+  assert.equal(approved.status,'approved');assert.equal(approved.version,2);assert.ok(approved.time_off_id);
+  assert.deepEqual((await one('select review_appointment_staff_time_off_request($1,$2,$3,$4,$5,$6) data',reviewArgs)).data,approved);
+  assert.equal((await one('select count(*)::int n from appointment_staff_time_off where id=$1',[approved.time_off_id])).n,1);
+  const serviceRow=(await one('select create_appointment_service($1,$2,$3,$4) data',[org,'휴무 검증',30,0])).data;
+  await fail(()=>slot(null,worker.id,serviceRow.id,start),'P0001');
+  const events=(await q('select event_type from appointment_staff_time_off_request_events where request_id=$1 order by created_at,id',[request.id])).rows;
+  assert.deepEqual(events.map(row=>row.event_type),['requested','approved']);
+  await user(member);
+  const rejectedReq=(await one('select create_appointment_staff_time_off_request($1,$2,$3,$4,$5,$6) data',[org,worker.id,'2027-06-01T10:00:00+09:00','2027-06-01T11:00:00+09:00','교육',randomUUID()])).data;
+  await user();
+  const rejected=(await one('select review_appointment_staff_time_off_request($1,$2,$3,$4,$5,$6) data',[org,rejectedReq.id,'reject',1,randomUUID(),'일정 중복'])).data;
+  assert.equal(rejected.status,'rejected');assert.equal(rejected.time_off_id,null);
+  await user(member);
+  const withdrawnReq=(await one('select create_appointment_staff_time_off_request($1,$2,$3,$4,$5,$6) data',[org,worker.id,'2027-07-01T10:00:00+09:00','2027-07-01T11:00:00+09:00','개인 일정',randomUUID()])).data;
+  const withdrawn=(await one('select withdraw_appointment_staff_time_off_request($1,$2,$3,$4) data',[org,withdrawnReq.id,1,randomUUID()])).data;
+  assert.equal(withdrawn.status,'withdrawn');assert.equal(withdrawn.version,2);
+  await fail(()=>one('select withdraw_appointment_staff_time_off_request($1,$2,$3,$4)',[org,request.id,2,randomUUID()]),'P0001');
+  await user(outsider);await fail(()=>one('select list_appointment_staff_time_off_requests($1)',[org]),'42501');
+  await user();
+ }
  const staff=(await one('select create_appointment_staff($1,$2) data',[org,'담당자'])).data;
  const service=(await one('select create_appointment_service($1,$2,$3,$4) data',[org,'관리',60,10])).data;
+ if(process.argv.includes('--series')){
+  const conflict=await resourceSlot(null,staff.id,service.id,'2027-01-11T15:00:00+09:00',[]);
+  const args=[org,customer,staff.id,service.id,'2026-12-28T15:00:00+09:00','weekly',1,5,[],'manual',['2027-01-04'],randomUUID()];
+  const created=(await one('select create_appointment_series($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) data',args)).data;
+  const listed=(await one('select list_appointment_series($1,50) data',[org])).data;assert.equal(listed.length,1);assert.equal(listed[0].series.id,created.series_id);assert.equal(listed[0].occurrences.length,created.created.length);
+  await fail(()=>one('select list_appointment_series($1,101)',[org]),'22023');
+  assert.equal(created.created.length,3);assert.equal(created.skipped.length,2);
+  assert.deepEqual(created.skipped.map(x=>x.reason).sort(),['conflict','exception_date']);
+  const replay=(await one('select create_appointment_series($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) data',args)).data;
+  assert.deepEqual(replay,created);
+  const row=created.created[0].appointment;
+  const moved=await resourceSlot(row.id,staff.id,service.id,'2026-12-28T16:00:00+09:00',[],row.version,randomUUID());
+  assert.equal((await one('select is_exception from appointment_series_occurrences where appointment_id=$1',[moved.id])).is_exception,true);
+  const replacementStaff=(await one('select create_appointment_staff($1,$2) data',[org,'시리즈 변경 담당자'])).data;
+  const replacementService=(await one('select create_appointment_service($1,$2,$3,$4) data',[org,'시리즈 변경 서비스',45,5])).data;
+  const blocker=await resourceSlot(null,replacementStaff.id,service.id,'2027-01-25T15:00:00+09:00',[]);
+  await fail(()=>one('select update_appointment_series_future($1,$2,$3,$4,$5)',[org,created.series_id,replacementStaff.id,replacementService.id,randomUUID()]),'P0001');
+  assert.equal((await one('select staff_id from appointments where id=$1',[created.created[1].appointment.id])).staff_id,staff.id,'a conflict on a later occurrence rolls earlier updates back');
+  const blockerRow=await one('select version from appointments where id=$1',[blocker.id]);await move(blocker.id,'canceled',blockerRow.version,'테스트 충돌 해제');
+  const updateOp=randomUUID(),updated=(await one('select update_appointment_series_future($1,$2,$3,$4,$5) data',[org,created.series_id,replacementStaff.id,replacementService.id,updateOp])).data;
+  assert.equal(updated.updated.length,2,'only future, unmodified reserved occurrences are updated');
+  assert.equal(updated.updated[0].staff_id,replacementStaff.id);assert.equal(updated.updated[0].service_id,replacementService.id);
+  assert.equal(updated.updated[0].duration_minutes,45);
+  assert.equal((await one('select is_exception from appointment_series_occurrences where appointment_id=$1',[updated.updated[0].id])).is_exception,false);
+  assert.equal((await one('select is_exception from appointment_series_occurrences where appointment_id=$1',[moved.id])).is_exception,true);
+  const replayUpdate=(await one('select update_appointment_series_future($1,$2,$3,$4,$5) data',[org,created.series_id,replacementStaff.id,replacementService.id,updateOp])).data;assert.equal(replayUpdate.replayed,true);assert.equal(replayUpdate.updated.length,2);
+  assert.equal((await one('select staff_id from appointment_series where id=$1',[created.series_id])).staff_id,replacementStaff.id);
+  const recurringRoom=(await one('select create_appointment_resource($1,$2,$3,$4) data',[org,'반복 예약실','room',randomUUID()])).data;
+  const scheduleArgs=[org,created.series_id,4,'2027-02-01T17:00:00+09:00','monthly',1,[recurringRoom.id],randomUUID()];
+  const rescheduleBlocker=await resourceSlot(null,replacementStaff.id,replacementService.id,'2027-03-01T17:00:00+09:00',[recurringRoom.id]);
+  await fail(()=>one('select reschedule_appointment_series_future($1,$2,$3,$4,$5,$6,$7,$8)',scheduleArgs),'P0001');
+  assert.equal((await one('select start_at from appointments where id=$1',[updated.updated[1].id])).start_at.toISOString(),'2027-01-25T06:00:00.000Z','a later schedule conflict rolls back earlier rescheduled occurrences');
+  const blockedRow=await one('select version from appointments where id=$1',[rescheduleBlocker.id]);await move(rescheduleBlocker.id,'canceled',blockedRow.version,'테스트 충돌 해제');
+  const rescheduleOp=randomUUID();scheduleArgs[7]=rescheduleOp;
+  const rescheduled=(await one('select reschedule_appointment_series_future($1,$2,$3,$4,$5,$6,$7,$8) data',scheduleArgs)).data;
+  assert.equal(rescheduled.updated.length,2);assert.equal(rescheduled.frequency,'monthly');assert.equal(rescheduled.interval_count,1);
+  assert.equal((await one('select start_at from appointments where id=$1',[updated.updated[0].id])).start_at.toISOString(),'2027-02-01T08:00:00.000Z');
+  assert.equal((await one('select start_at from appointments where id=$1',[updated.updated[1].id])).start_at.toISOString(),'2027-03-01T08:00:00.000Z');
+  assert.deepEqual((await one('select resource_ids from appointments where id=$1',[updated.updated[0].id])).resource_ids,[recurringRoom.id]);
+  const replaySchedule=(await one('select reschedule_appointment_series_future($1,$2,$3,$4,$5,$6,$7,$8) data',scheduleArgs)).data;assert.equal(replaySchedule.replayed,true);
+  await fail(()=>one('select reschedule_appointment_series_future($1,$2,$3,$4,$5,$6,$7,$8)',[org,created.series_id,4,'2027-02-01T17:00:00+09:00','daily',1,[recurringRoom.id],randomUUID()]),'22023');
+  await fail(()=>one('select reschedule_appointment_series_future($1,$2,$3,$4,$5,$6,$7,$8)',[org,created.series_id,4,'2027-02-01T17:00:00+09:00','weekly',1,[recurringRoom.id,recurringRoom.id],randomUUID()]),'22023');
+  await user(member);await fail(()=>one('select reschedule_appointment_series_future($1,$2,$3,$4,$5,$6,$7,$8)',scheduleArgs),'42501');await user(outsider);await fail(()=>one('select reschedule_appointment_series_future($1,$2,$3,$4,$5,$6,$7,$8)',[other,created.series_id,...scheduleArgs.slice(2)]),'P0002');await user();
+  const cancelOp=randomUUID(),canceled=(await one('select cancel_future_appointment_series($1,$2,$3,$4,$5) data',[org,created.series_id,'2027-01-12','일정 종료',cancelOp])).data;
+  assert.equal(canceled.canceled.length,2);assert.ok(canceled.canceled.every(row=>row.status==='canceled'));assert.equal((new Date(canceled.canceled[0].start_at)).toISOString(),'2027-02-01T08:00:00.000Z');
+  const replayCancel=(await one('select cancel_future_appointment_series($1,$2,$3,$4,$5) data',[org,created.series_id,'2027-01-12','일정 종료',cancelOp])).data;assert.equal(replayCancel.replayed,true);assert.equal(replayCancel.canceled.length,2);
+  assert.equal((await one('select status from appointments where id=$1',[row.id])).status,'reserved');
+  await user(member);await fail(()=>one('select cancel_future_appointment_series($1,$2,$3,$4,$5)',[org,created.series_id,'2027-01-01','구성원 거절',randomUUID()]),'42501');await fail(()=>one('select update_appointment_series_future($1,$2,$3,$4,$5)',[org,created.series_id,replacementStaff.id,replacementService.id,randomUUID()]),'42501');await user();
+  await user(outsider);
+  await fail(()=>one('select create_appointment_series($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)',args),'42501');
+  await fail(()=>one('select list_appointment_series($1,50)',[org]),'42501');
+  await fail(()=>one('select update_appointment_series_future($1,$2,$3,$4,$5)',[org,created.series_id,replacementStaff.id,replacementService.id,randomUUID()]),'42501');
+  await user();
+  for(const occurrence of created.created){const current=await one('select id,version,status from appointments where id=$1',[occurrence.appointment.id]);if(current.status!=='canceled')await move(current.id,'canceled',current.version,'테스트 정리');}
+  const conflictCurrent=await one('select id,version from appointments where id=$1',[conflict.id]);await move(conflictCurrent.id,'canceled',conflictCurrent.version,'테스트 정리');
+ }
  const otherStaff=(await one('select create_appointment_staff($1,$2) data',[org,'다른 담당자'])).data;
  const roomCreateOp=randomUUID();
  const room=(await one('select create_appointment_resource($1,$2,$3,$4) data',[
@@ -84,6 +232,29 @@ try {
  const waitOperation=randomUUID();
  const waitInput=[org,customer,service.id,staff.id,'2026-10-16','오전 연락',waitOperation];
  const waitEntry=(await one('select create_appointment_waitlist($1,$2,$3,$4,$5,$6,$7) data',waitInput)).data;
+ if(process.argv.includes('--offers')){
+  const offerWaitlist=(await one('select create_appointment_waitlist($1,$2,$3,$4,$5,$6,$7) data',[org,customer,service.id,staff.id,'2026-11-20','offer test',randomUUID()])).data;
+  const expiry=new Date(Date.now()+60*60*1000).toISOString();const offerOperation=randomUUID();
+  const requiredResources=[room.id,equipment.id];
+  const offerPayload=JSON.stringify([{staff_id:staff.id,start_at:'2026-11-20T15:00:00+09:00',resource_ids:requiredResources},{staff_id:otherStaff.id,start_at:'2026-11-21T15:00:00+09:00',resource_ids:requiredResources}]);
+  const offerArgs=[org,offerWaitlist.id,offerPayload,expiry,offerOperation];
+  const offers=(await one('select create_appointment_waitlist_offers($1,$2,$3::jsonb,$4,$5) data',offerArgs)).data;
+  assert.equal(offers.length,2);assert.equal(offers[0].rank,1);
+  assert.deepEqual((await one('select create_appointment_waitlist_offers($1,$2,$3::jsonb,$4,$5) data',offerArgs)).data,offers);
+  const listed=(await one('select list_appointment_waitlist_offers($1,$2) data',[org,offerWaitlist.id])).data;assert.equal(listed.length,2);
+  const dismissed=(await one('select act_on_appointment_waitlist_offer($1,$2,$3,$4,$5) data',[org,offers[1].id,'dismiss',1,randomUUID()])).data;
+  assert.equal(dismissed.offer.status,'dismissed');
+  const acceptOperation=randomUUID();const acceptArgs=[org,offers[0].id,'accept',1,acceptOperation];
+  const accepted=(await one('select act_on_appointment_waitlist_offer($1,$2,$3,$4,$5) data',acceptArgs)).data;
+  assert.equal(accepted.offer.status,'accepted');assert.equal(accepted.appointment.customer_id,customer);
+  const acceptReplay=(await one('select act_on_appointment_waitlist_offer($1,$2,$3,$4,$5) data',acceptArgs)).data;assert.equal(acceptReplay.replayed,true);assert.equal(acceptReplay.appointment.id,accepted.appointment.id);
+  assert.equal((await one("select count(*)::int n from appointment_waitlist_offer_events where organization_id=$1 and action='accepted'",[org])).n,1);
+  const expiring=(await one('select create_appointment_waitlist($1,$2,$3,$4,$5,$6,$7) data',[org,customer,service.id,staff.id,'2026-11-22','',randomUUID()])).data;
+  const expOffer=(await one('select create_appointment_waitlist_offers($1,$2,$3::jsonb,$4,$5) data',[org,expiring.id,JSON.stringify([{staff_id:staff.id,start_at:'2026-11-22T15:00:00+09:00',resource_ids:requiredResources}]),expiry,randomUUID()])).data[0];
+  await db.exec('reset role');await q('update appointment_waitlist_offer_groups set expires_at=now()-interval \'1 second\' where id=$1',[expOffer.offer_group_id]);await user();
+  const expired=(await one('select act_on_appointment_waitlist_offer($1,$2,$3,$4,$5) data',[org,expOffer.id,'accept',1,randomUUID()])).data;
+  assert.equal(expired.offer.status,'expired');assert.equal(expired.appointment,null);
+ }
  assert.equal(waitEntry.status,'waiting');
  assert.deepEqual((await one('select create_appointment_waitlist($1,$2,$3,$4,$5,$6,$7) data',waitInput)).data,waitEntry);
  await fail(()=>one('select create_appointment_waitlist($1,$2,$3,$4,$5,$6,$7) data',[
@@ -260,5 +431,5 @@ try {
   assert.equal((await one('select status from appointments where id=$1',[past])).status,'reserved');
   assert.equal((await one('select count(*)::int n from customer_visits where appointment_id=$1',[past])).n,0);
  }
- console.log(process.argv.includes('--staff-profile')?'063 PASS: profile/version/replay, roles, future booking and checked-in guards, inactive assignment, history retention, reactivation, reapply':process.argv.includes('--history')?'062 PASS: no-show reasons, status events, legacy retries, atomic rollback, stale versions, direct DML/anonymous/tenant denial, check-in carts, reapply':'PASS appointments: staff/resource conflicts, retries, transitions, roles, tenants');
+ console.log(process.argv.includes('--staff-leave')?'078 PASS: linked-user submission, pending overlap, approve/reject/withdraw, active blocking, event history, roles, tenant isolation and retries':process.argv.includes('--staff-account')?'077 PASS: membership-only links, one-to-one uniqueness, version/replay, unlink, roles, tenant isolation and anon denial':process.argv.includes('--staff-profile')?'063 PASS: profile/version/replay, roles, future booking and checked-in guards, inactive assignment, history retention, reactivation, reapply':process.argv.includes('--history')?'062 PASS: no-show reasons, status events, legacy retries, atomic rollback, stale versions, direct DML/anonymous/tenant denial, check-in carts, reapply':'PASS appointments: staff/resource conflicts, retries, transitions, roles, tenants');
 } finally {await db.close();}

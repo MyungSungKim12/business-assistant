@@ -18,7 +18,7 @@ try{
  create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
  create table auth.users(id uuid primary key);create table organizations(id uuid primary key);
  create table memberships(organization_id uuid,user_id uuid,role text);
- create table customers(id uuid primary key,organization_id uuid not null,name text);
+ create table customers(id uuid primary key,organization_id uuid not null,name text,status text not null default 'active',unique(organization_id,id));
  create function private.has_organization_role(target uuid,roles text[]) returns boolean language sql stable security definer set search_path='' as $$select exists(select 1 from public.memberships where organization_id=target and user_id=auth.uid() and role=any(roles))$$;
  create table treatment_sale_drafts(id uuid primary key,organization_id uuid not null,customer_id uuid not null,description text not null,amount numeric(14,2) not null,source_snapshot jsonb not null);
  create table finance_transactions(id uuid primary key default gen_random_uuid(),organization_id uuid not null,transaction_type text not null,amount numeric(14,2) not null,transaction_date date not null,category text not null,counterparty text not null default '',memo text not null default '',is_archived boolean not null default false,created_by uuid not null,created_at timestamptz default now(),updated_at timestamptz default now());
@@ -27,7 +27,7 @@ try{
  await q('insert into organizations values($1),($2)',[org,otherOrg]);
  await q("insert into memberships values($1,$2,'owner'),($1,$3,'member'),($4,$5,'owner')",[org,owner,member,otherOrg,outsider]);
  await q("insert into customers values($1,$2,'고객'),($3,$2,'다른 고객')",[customer,org,otherCustomer]);
- for(const name of ['024_visit_sale_carts.sql','025_visit_payments.sql','026_sale_cart_hardening_upgrade.sql','027_catalog_sales.sql','028_wallet_usage.sql'])
+ for(const name of ['024_visit_sale_carts.sql','025_visit_payments.sql','026_sale_cart_hardening_upgrade.sql','027_catalog_sales.sql','028_wallet_usage.sql','029_payment_refunds.sql'])
   await db.exec(await readFile(new URL(`../../migrations/${name}`,import.meta.url),'utf8'));
  await user();
  const fresh=async(customerId=customer)=>(await one('select create_customer_visit($1,$2,$3) data',[org,customerId,randomUUID()])).data;
@@ -92,8 +92,118 @@ try{
  });
  await db.exec('reset role');
  await db.exec(await readFile(new URL('../../migrations/035_wallet_lifecycle.sql',import.meta.url),'utf8'));
+ if(process.argv.includes('--transfer')||process.argv.includes('--refund')){const sql=await readFile(new URL('../../migrations/075_wallet_transfer.sql',import.meta.url),'utf8');await db.exec(sql);await db.exec(sql);}
+ if(process.argv.includes('--refund')){
+  await db.exec(`
+   create function private.sale_cart_line_discount(uuid,uuid) returns numeric language sql stable as $$select 0::numeric$$;
+   create table appointment_staff(id uuid primary key,organization_id uuid not null,auth_user_id uuid,name text,unique(organization_id,id));
+   create table staff_commission_rules(id uuid primary key,organization_id uuid not null,commission_scope text not null,staff_id uuid,product_id uuid,service_id uuid,rate_basis_points int not null,effective_from date not null,effective_to date,created_at timestamptz default now());
+   create table staff_commission_settlements(id uuid primary key default gen_random_uuid(),organization_id uuid not null,from_date date not null,to_date date not null);
+   create function private.staff_commission_preview(uuid,date,date) returns jsonb language sql stable as $$select '[]'::jsonb$$;
+  `);
+  const refundMigration=await readFile(new URL('../../migrations/087_wallet_partial_refunds.sql',import.meta.url),'utf8');
+  await db.exec(refundMigration);await db.exec(refundMigration);
+  await db.exec(await readFile(new URL('../../migrations/092_wallet_manual_refunds.sql',import.meta.url),'utf8'));
+  await db.exec(await readFile(new URL('../../migrations/092_wallet_manual_refunds.sql',import.meta.url),'utf8'));
+  const productRow=await save({sku:'CASH-ONLY',name:'현금 금액권',kind:'membership',sale_price:'100',benefit_money:'100',benefit_count:0});
+  let sale=await addCatalog(await fresh(),productRow.id);sale=await ready(sale);await record(sale,'100');
+  const cashWallet=(await wallets()).find(row=>row.product_id===productRow.id);
+  const preview=await one('select preview_wallet_purchase_refund($1,$2,$3) data',[org,customer,cashWallet.id]);
+  assert.equal(preview.data.refund_cap,'100');
+  await check('a real-price cash membership exposes its safe refund cap',async()=>{
+   assert.equal(preview.data.balance_version,1);assert.equal(preview.data.money_balance,'100');
+   await user(member);await fails(()=>one('select preview_wallet_purchase_refund($1,$2,$3)',[org,customer,cashWallet.id]),'42501');await user();
+   const mismatched=await save({sku:'CASH-BONUS',name:'보너스 금액권',kind:'membership',sale_price:'100',benefit_money:'110',benefit_count:0});
+   let mismatchSale=await addCatalog(await fresh(),mismatched.id);mismatchSale=await ready(mismatchSale);await record(mismatchSale,'100');
+   const bonusWallet=(await wallets()).find(row=>row.product_id===mismatched.id);
+   await fails(()=>one('select preview_wallet_purchase_refund($1,$2,$3)',[org,customer,bonusWallet.id]),'P0001');
+  });
+  await check('partial refund reduces wallet and adds finance, history, and negative commission records',async()=>{
+   const reason='고객 요청 환불',op=randomUUID(),version=preview.data.balance_version;
+   await db.exec(`reset role;create function private.reject_test_wallet_refund() returns trigger language plpgsql as $$begin if new.amount=40 then raise exception 'forced ledger failure' using errcode='P0001';end if;return new;end$$;create trigger reject_test_wallet_refund before insert on wallet_purchase_refund_events for each row execute function private.reject_test_wallet_refund();`);
+   await user();const beforeFinance=(await one("select count(*)::int n from finance_transactions where category='Membership refund'")).n;
+   await fails(()=>one('select refund_wallet_purchase($1,$2,$3,$4,$5,$6,$7,true)',[org,customer,cashWallet.id,'40','원자성 시험',version,randomUUID()]),'P0001');
+   assert.equal((await wallets()).find(row=>row.id===cashWallet.id).money_balance,'100');
+   assert.equal((await one("select count(*)::int n from finance_transactions where category='Membership refund'")).n,beforeFinance);
+   await db.exec('reset role;drop trigger reject_test_wallet_refund on wallet_purchase_refund_events;drop function private.reject_test_wallet_refund();');await user();
+   const args=[org,customer,cashWallet.id,'30',reason,version,op,true];
+   const result=(await one('select refund_wallet_purchase($1,$2,$3,$4,$5,$6,$7,$8) data',args)).data;
+   assert.equal(result.previous_balance,'100');assert.equal(result.new_balance,'70');assert.equal(result.lifecycle_status,'active');
+   assert.deepEqual((await one('select refund_wallet_purchase($1,$2,$3,$4,$5,$6,$7,$8) data',args)).data,result);
+   await fails(()=>one('select refund_wallet_purchase($1,$2,$3,$4,$5,$6,$7,true)',[org,customer,cashWallet.id,'29',reason,version,op]),'P0001');
+   assert.equal((await wallets()).find(row=>row.id===cashWallet.id).money_balance,'70');
+   assert.equal((await one('select amount from finance_transactions where id=$1',[result.finance_transaction_id])).amount,'30.00');
+   assert.equal((await one('select list_wallet_history($1,$2,$3) data',[org,customer,cashWallet.id])).data.some(event=>event.event_type==='refund'&&event.money_delta==='-30'),true);
+   const event=(await one('select id,amount,finance_transaction_id from wallet_purchase_refund_events where wallet_id=$1',[cashWallet.id]));
+   await db.exec('reset role');
+   const lines=(await one(`select private.staff_commission_preview($1,current_date,current_date) data`,[org])).data;
+   assert.equal(lines.filter(event=>event.event_kind==='refund'&&event.net_paid_amount==='-30').length,1);
+   await fails(()=>q("update wallet_purchase_refund_events set reason='변경'"),'P0001');await user();
+   await db.exec('reset role');await fails(()=>q('update finance_transactions set amount=99 where id=$1',[event.finance_transaction_id]),'P0001');await user();
+   await fails(()=>one('select refund_wallet_purchase($1,$2,$3,$4,$5,$6,$7,$8)',[org,customer,cashWallet.id,'71','초과',2,randomUUID(),true]),'22023');
+   await fails(()=>one('select refund_wallet_purchase($1,$2,$3,$4,$5,$6,$7,$8)',[org,customer,cashWallet.id,'1','오래된 버전',1,randomUUID(),true]),'P0001');
+   await user(member);await fails(()=>one('select refund_wallet_purchase($1,$2,$3,$4,$5,$6,$7,$8)',[org,customer,cashWallet.id,'1','권한 없음',2,randomUUID(),true]),'42501');await user();
+   assert.equal((await one('select amount from wallet_purchase_refund_events where id=$1',[event.id])).amount,'30');
+  });
+  await check('manual refund migration backfills immutable legacy event rows',async()=>{
+   await db.exec('reset role;drop trigger immutable on wallet_purchase_refund_events');
+   await q('update wallet_purchase_refund_events set cash_refund_amount=0,money_removed=0 where wallet_id=$1',[cashWallet.id]);
+   await db.exec('create trigger immutable before update or delete on wallet_purchase_refund_events for each row execute function private.prevent_catalog_ledger_change()');
+   await db.exec(await readFile(new URL('../../migrations/092_wallet_manual_refunds.sql',import.meta.url),'utf8'));
+   const legacy=await one('select amount,cash_refund_amount,money_removed,count_removed from wallet_purchase_refund_events where wallet_id=$1',[cashWallet.id]);
+   assert.equal(legacy.cash_refund_amount,legacy.amount);assert.equal(legacy.money_removed,legacy.amount);assert.equal(legacy.count_removed,0);await user();
+  });
+  await check('manual refund records cash and money/count benefit removals independently',async()=>{
+   const mixed=await save({sku:'MIXED-MANUAL',name:'복합 회원권',kind:'membership',sale_price:'80',benefit_money:'100',benefit_count:2});
+   let sale=await addCatalog(await fresh(),mixed.id);sale=await ready(sale);await record(sale,'80');
+   const mixedWallet=(await wallets()).find(row=>row.product_id===mixed.id);
+   const preview=(await one('select preview_wallet_purchase_refund_benefits($1,$2,$3) data',[org,customer,mixedWallet.id])).data;
+   assert.equal(preview.refund_cap,'80');assert.equal(preview.money_balance,'100');assert.equal(preview.count_balance,2);
+   const op=randomUUID(),args=[org,customer,mixedWallet.id,'25','10',1,'수기 환불 정책',preview.balance_version,op,true];
+   await user(member);await fails(()=>one('select refund_wallet_purchase_benefits($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',args),'42501');await user();
+   const result=(await one('select refund_wallet_purchase_benefits($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) data',args)).data;
+   assert.equal(result.amount,'25');assert.equal(result.money_removed,'10');assert.equal(result.count_removed,1);
+   assert.equal(result.new_balance,'90');assert.equal(result.new_count_balance,1);
+   assert.deepEqual((await one('select refund_wallet_purchase_benefits($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) data',args)).data,result);
+   const stored=(await wallets()).find(row=>row.id===mixedWallet.id);assert.equal(stored.money_balance,'90');assert.equal(stored.count_balance,1);
+   assert.equal((await one('select amount from finance_transactions where id=$1',[result.finance_transaction_id])).amount,'25.00');
+   const history=(await one('select list_wallet_history($1,$2,$3) data',[org,customer,mixedWallet.id])).data;
+   assert.equal(history.some(event=>event.event_type==='refund'&&event.money_delta==='-10'&&event.count_delta===-1),true);
+   await db.exec('reset role');const commission=(await one('select private.staff_commission_preview($1,current_date,current_date) data',[org])).data;assert.equal(commission.some(event=>event.event_kind==='refund'&&event.net_paid_amount==='-25'),true);await user();
+   await fails(()=>one('select refund_wallet_purchase_benefits($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',[org,customer,mixedWallet.id,'56','0',0,'초과 환불',result.balance_version,randomUUID(),true]),'22023');
+   await fails(()=>one('select refund_wallet_purchase_benefits($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',[org,customer,mixedWallet.id,'1','0',2,'초과 횟수',result.balance_version,randomUUID(),true]),'22023');
+  });
+  await check('full refund closes the wallet and settled periods block dated adjustments',async()=>{
+   const cashWallet=(await wallets()).find(row=>row.product_id===productRow.id);
+   const cap=(await one('select preview_wallet_purchase_refund($1,$2,$3) data',[org,customer,cashWallet.id])).data;
+   const closed=(await one('select refund_wallet_purchase($1,$2,$3,$4,$5,$6,$7,true) data',[org,customer,cashWallet.id,'70','잔액 환불',cap.balance_version,randomUUID()])).data;
+   assert.equal(closed.new_balance,'0');assert.equal(closed.lifecycle_status,'refunded');
+   await db.exec('reset role');await fails(()=>q('update customer_wallets set money_balance=1 where id=$1',[cashWallet.id]),'P0001');await user();
+   const forbiddenUse=await treatmentCart('10');await fails(()=>use(forbiddenUse,cashWallet.id,forbiddenUse.lines[0].id,'money','1'),'P0001');
+   const second=await save({sku:'CASH-2',name:'금액권 2',kind:'membership',sale_price:'100',benefit_money:'100',benefit_count:0});
+   let sale=await addCatalog(await fresh(),second.id);sale=await ready(sale);await record(sale,'100');
+   const secondWallet=(await wallets()).find(row=>row.product_id===second.id);
+   await db.exec('reset role');await q('insert into staff_commission_settlements(organization_id,from_date,to_date) values($1,current_date,current_date)',[org]);await user();
+   const secondCap=(await one('select preview_wallet_purchase_refund($1,$2,$3) data',[org,customer,secondWallet.id])).data;
+   await fails(()=>one('select refund_wallet_purchase($1,$2,$3,$4,$5,$6,$7,true)',[org,customer,secondWallet.id,'10','기간 마감',secondCap.balance_version,randomUUID()]),'P0001');
+  });
+ }
+ await db.exec('reset role');
  await q("update customer_wallets set expires_on=current_date+30 where id=$1",[wallet.id]);
  await user();
+ if(process.argv.includes('--transfer')) await check('unused wallet transfer is manager-only, replay-safe and keeps its ledger',async()=>{
+  let freshIssue=await addCatalog(await fresh(),membership.id);freshIssue=await ready(freshIssue);await record(freshIssue,'100');
+  const transferWallet=(await one('select * from customer_wallets where sale_line_id=$1',[freshIssue.lines.find(line=>line.source_type==='membership').id]));
+  const args=[org,customer,otherCustomer,transferWallet.id,1,'고객 양도 요청',randomUUID()];
+  const moved=(await one('select transfer_customer_wallet($1,$2,$3,$4,$5,$6,$7) data',args)).data;
+  assert.equal(moved.customer_id,otherCustomer);assert.equal(moved.owner_version,2);
+  assert.deepEqual((await one('select transfer_customer_wallet($1,$2,$3,$4,$5,$6,$7) data',args)).data,moved);
+  assert.equal((await wallets(customer)).some(row=>row.id===transferWallet.id),false);
+  assert.equal((await wallets(otherCustomer)).some(row=>row.id===transferWallet.id),true);
+  assert.equal((await one('select list_wallet_history($1,$2,$3) data',[org,otherCustomer,transferWallet.id])).data.some(event=>event.event_type==='transfer'),true);
+  await user(member);await fails(()=>one('select transfer_customer_wallet($1,$2,$3,$4,$5,$6,$7)',args),'42501');await user();
+  await fails(()=>one('select transfer_customer_wallet($1,$2,$3,$4,$5,$6,$7)',[org,customer,otherCustomer,transferWallet.id,1,'다른 내용',randomUUID()]),'P0002');
+ });
  const lifecycle=async(action,version,days=null,reason='고객 요청',op=randomUUID())=>(await one(
   'select manage_customer_wallet($1,$2,$3,$4,$5,$6,$7,$8) data',
   [org,customer,wallet.id,action,days,reason,version,op])).data;

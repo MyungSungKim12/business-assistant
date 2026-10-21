@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node treatment-lifecycle.mjs && node treatment-consultation.mjs && node document-versions.mjs && node document-issuance.mjs && node document-consent.mjs && node treatment-sale-drafts.mjs && node visit-sale-carts.mjs && node visit-payments.mjs && node catalog-sales.mjs && node wallet-usage.mjs && node payment-refunds.mjs && node appointments.mjs && node treatment-consumables.mjs && node ops-047.mjs && node ops-048.mjs && node ops-049.mjs && node ops-050.mjs && node ops-051.mjs && node ops-052.mjs && node ops-053.mjs && node ops-054.mjs && node ops-055.mjs && node purchase-orders.mjs && node customer-merge-065.mjs",
+    "test": "node treatment-lifecycle.mjs && node treatment-consultation.mjs && node document-versions.mjs && node document-issuance.mjs && node document-consent.mjs && node treatment-sale-drafts.mjs && node visit-sale-carts.mjs && node visit-payments.mjs && node catalog-sales.mjs && node wallet-usage.mjs && node payment-refunds.mjs && node appointments.mjs --series --offers && node treatment-consumables.mjs && node ops-047.mjs && node ops-048.mjs && node ops-049.mjs && node ops-050.mjs && node ops-051.mjs && node ops-052.mjs && node ops-053.mjs && node ops-054.mjs && node ops-055.mjs && node purchase-orders.mjs && node customer-merge-065.mjs",
     "test:consultation": "node treatment-consultation.mjs",
     "test:documents": "node document-versions.mjs",
     "test:issuance": "node document-issuance.mjs",
@@ -13,8 +13,16 @@
     "test:visit-payments": "node visit-payments.mjs",
     "test:catalog-sales": "node catalog-sales.mjs",
     "test:wallet-usage": "node wallet-usage.mjs",
+    "test:wallet-transfer": "node wallet-usage.mjs --transfer",
+    "test:wallet-refunds": "node wallet-usage.mjs --refund",
     "test:payment-refunds": "node payment-refunds.mjs",
-    "test:appointments": "node appointments.mjs",
+    "test:appointments": "node appointments.mjs --series --offers",
+    "test:appointment-branches": "node appointments.mjs --branches",
+    "test:staff-account": "node appointments.mjs --staff-account",
+    "test:staff-leave": "node appointments.mjs --staff-leave",
+    "test:commission-settlements": "node commission-settlements.mjs",
+    "test:management-recorded-tax": "node management-recorded-tax.mjs",
+    "test:catalog-product-images": "node catalog-product-images.mjs",
     "test:treatment-consumables": "node treatment-consumables.mjs",
     "test:ops-047": "node ops-047.mjs",
     "test:ops-048": "node ops-048.mjs",
@@ -27,7 +35,12 @@
     "test:ops-055": "node ops-055.mjs",
     "test:purchase-orders": "node purchase-orders.mjs",
     "test:customer-merge-065": "node customer-merge-065.mjs",
-    "test:storage-060": "node storage-060.mjs"
+    "test:customer-erasure-095": "node customer-erasure-095.mjs",
+    "test:customer-retention-097": "node customer-retention-097.mjs",
+    "test:storage-060": "node storage-060.mjs",
+    "test:file-versions": "node file-versions.mjs",
+    "test:file-storage-plan-quota-096": "node file-storage-plan-quota-096.mjs",
+    "test:management-profit-finalization": "node management-profit-finalization.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.5.8"

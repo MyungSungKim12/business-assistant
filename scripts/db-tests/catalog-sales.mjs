@@ -149,7 +149,14 @@ try{
   assert.equal(p.stock_quantity,8);
  });
  await db.exec('reset role');
+ for(const name of ['058_purchase_orders.sql','066_inventory_lots_fefo.sql','067_catalog_category_barcode.sql','068_inventory_cost_basis.sql']) await db.exec(await readFile(new URL(`../../migrations/${name}`,import.meta.url),'utf8'));
  await db.exec(await readFile(new URL('../../migrations/036_management_preview.sql',import.meta.url),'utf8'));
+ const costReportMigration=await readFile(new URL('../../migrations/070_management_cost_basis.sql',import.meta.url),'utf8');await db.exec(costReportMigration);await db.exec(costReportMigration);
+ await db.exec('reset role');
+ const costed=(await one('select save_catalog_product($1,null,null,$2,$3::jsonb) data',[org,randomUUID(),JSON.stringify({sku:'COST-BASIS',name:'원가 상품',kind:'product',unit_name:'개',sale_price:'5000',benefit_money:'0',benefit_count:0,valid_days:null,is_active:true})])).data;
+ await one('select receive_catalog_stock($1,$2,3,$3,$4,null,$5,1200)',[org,costed.id,'원가 검증 입고',randomUUID(),'KNOWN-COST']);
+ await q('update catalog_products set stock_quantity=stock_quantity-2 where organization_id=$1 and id=$2',[org,costed.id]);
+ await q("insert into catalog_stock_ledger(organization_id,product_id,quantity,reason,operation_id,created_by,movement_kind) values($1,$2,-2,'원가 검증 시술 소모',$3,$4,'treatment_use')",[org,costed.id,randomUUID(),owner]);
  await user();
  await check('management preview distinguishes recorded net and unallocated staff basis',async()=>{
   const report=(await one('select get_management_preview($1,$2,$3) data',
@@ -157,6 +164,9 @@ try{
   assert.equal(report.organization_id,org);
   assert.equal(report.is_final_profit,false);
   assert.equal(report.staff_basis_is_commission,false);
+  assert.equal(report.inventory_cogs,'2400');
+  assert.ok(report.inventory_cost_unknown_units>=0);
+  assert.ok(report.operating_profit_before_commission_tax===null||typeof report.operating_profit_before_commission_tax==='string');
   assert.ok(report.staff_sales_basis.length>=1);
   assert.ok(Number(report.recorded_income)>0);
   await user(member);
