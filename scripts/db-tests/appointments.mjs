@@ -432,4 +432,34 @@ try {
   assert.equal((await one('select count(*)::int n from customer_visits where appointment_id=$1',[past])).n,0);
  }
  console.log(process.argv.includes('--staff-leave')?'078 PASS: linked-user submission, pending overlap, approve/reject/withdraw, active blocking, event history, roles, tenant isolation and retries':process.argv.includes('--staff-account')?'077 PASS: membership-only links, one-to-one uniqueness, version/replay, unlink, roles, tenant isolation and anon denial':process.argv.includes('--staff-profile')?'063 PASS: profile/version/replay, roles, future booking and checked-in guards, inactive assignment, history retention, reactivation, reapply':process.argv.includes('--history')?'062 PASS: no-show reasons, status events, legacy retries, atomic rollback, stale versions, direct DML/anonymous/tenant denial, check-in carts, reapply':'PASS appointments: staff/resource conflicts, retries, transitions, roles, tenants');
+ if(process.argv.includes('--booking-policy')){
+  if(!process.argv.includes('--series'))throw new Error('--booking-policy requires --series');
+  await db.exec('reset role;create role service_role;');
+  await db.exec(await readFile(new URL('../../migrations/040_audit_log.sql',import.meta.url),'utf8'));
+  const policySql=await readFile(new URL('../../migrations/102_organization_booking_policies.sql',import.meta.url),'utf8');await db.exec(policySql);await db.exec(policySql);await user();
+  const worker=(await one('select create_appointment_staff($1,$2) data',[org,'정책 직원'])).data;
+  const short=(await one('select create_appointment_service($1,$2,$3,$4) data',[org,'짧은 시술',30,0])).data;
+  const long=(await one('select create_appointment_service($1,$2,$3,$4) data',[org,'긴 시술',150,0])).data;
+  const legacy=await resourceSlot(null,worker.id,short.id,'2030-01-07T17:00:00+09:00',[]);
+  const cancelLegacy=await resourceSlot(null,worker.id,short.id,'2030-01-08T17:00:00+09:00',[]);
+  const policy={enabled:true,timezone_name:'Asia/Seoul',minimum_notice_minutes:0,same_day_cutoff_time:null,hours:Array.from({length:7},(_,i)=>({weekday:i+1,start_time:'09:00',end_time:'12:00'})),blocks:[{start_at:'2030-01-14T10:00:00+09:00',end_at:'2030-01-14T11:00:00+09:00',reason:'휴무'}]};
+  const savePolicy=(p,v)=>one('select save_organization_booking_policy($1,$2,$3,$4)',[org,v,randomUUID(),p]);
+  await savePolicy(policy,0);
+  await fail(()=>slot(null,worker.id,short.id,'2030-01-07T12:00:00+09:00'),'23514');
+  await fail(()=>resourceSlot(null,worker.id,short.id,'2030-01-07T12:00:00+09:00',[]),'23514');
+  let checked=await move(legacy.id,'checked_in',legacy.version);checked=await move(checked.id,'completed',checked.version);assert.equal(checked.status,'completed');
+  assert.equal((await move(cancelLegacy.id,'canceled',cancelLegacy.version,'정책 이전 예약 취소')).status,'canceled');
+  const args=[org,customer,worker.id,short.id,'2030-01-07T10:00:00+09:00','weekly',1,2,[],'manual',[],randomUUID()];
+  const countBefore=(await one('select count(*)::int n from appointments')).n;
+  await fail(()=>one('select create_appointment_series($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)',args),'23514');
+  assert.equal((await one('select count(*)::int n from appointments')).n,countBefore,'later policy rejection rolls back earlier occurrence');
+  await savePolicy({...policy,blocks:[]},1);
+  const created=(await one('select create_appointment_series($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) data',args)).data;assert.equal(created.created.length,2);
+  await fail(()=>one('select update_appointment_series_future($1,$2,$3,$4,$5)',[org,created.series_id,worker.id,long.id,randomUUID()]),'23514');
+  await fail(()=>one('select reschedule_appointment_series_future($1,$2,$3,$4,$5,$6,$7,$8)',[org,created.series_id,1,'2030-01-07T12:00:00+09:00','weekly',1,[],randomUUID()]),'23514');
+  const first=created.created[0].appointment;
+  assert.equal((await one('select start_at from appointments where id=$1',[first.id])).start_at.toISOString(),'2030-01-07T01:00:00.000Z');
+  assert.equal((await one('select service_id from appointment_series where id=$1',[created.series_id])).service_id,short.id);
+  console.log('102 INTEGRATION PASS: actual save_appointment/resources, create series atomic rollback, future template/reschedule rejection, old check-in/completion/cancel, reapply.');
+ }
 } finally {await db.close();}

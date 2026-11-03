@@ -1,5 +1,26 @@
 # Isolated treatment lifecycle SQL verification
 
+2026-11-03 customer messaging outbox (SQL 109) focused verification:
+
+```powershell
+node scripts/db-tests/customer-messaging-109.mjs
+```
+
+This runs SQL 109 in an isolated PGlite database and checks tenant/role
+boundaries, consent and customer eligibility, idempotent enqueue, cancellation,
+retry, audit records, and RPC-only table access. It never sends messages or
+connects to Supabase.
+
+2026-10-30 customer photo completion/pending recovery (SQL 100) focused verification:
+
+```powershell
+node scripts/db-tests/customer-photo-upload-100.mjs
+```
+
+This runs an isolated PostgreSQL engine and checks legacy migration/re-run safety,
+actual Storage metadata size/MIME, idempotency, crash recovery, expiry, and role/org
+boundaries. It never connects to Supabase or changes real customer data.
+
 From the repository root:
 
 ```powershell
@@ -152,3 +173,15 @@ that members can preview but not issue or call the renderer directly, and that m
 ## Customer merge (065)
 
 Run `npm run test:customer-merge-065 --prefix scripts/db-tests` to execute the real `merge_customers` function from migration 065 (twice applied) against a fresh in-memory PostgreSQL database with minimal stand-in tables. It checks that every table carrying `customer_id` (including the appointment waitlist) moves to the primary customer with matching counts, that other customers and other organizations stay untouched, that the secondary customer is archived rather than deleted, field merging, same-request retry versus conflicting operation id, rejection of already merged customers and customers with immutable sale handoff records, and member/anonymous permission denial. It fails when a new migration adds a `customer_id` table that the merge and this test do not know about.
+
+## 104 영속 전화 수신함 집중 검증
+
+`node scripts/db-tests/phone-inbox-104.mjs`를 저장소 루트에서 실행한다. SQL104를 새 PGlite DB에 두 번 적용해 동의/수신자·배정/조직·권한/멱등·충돌/기한·정리/원장 보존을 확인한다. API를 먼저 `pnpm --filter @business-assistant/api build`한 다음 `node scripts/db-tests/phone-inbox-104.mjs --api`로 실행하면 두 독립 real gateway/App 객체의 공유 SQL 전달, 동시 재시도와 서버 객체 재생성 복구도 확인한다. 원격 DB/실제 앱/OS 다중 프로세스 시험은 아니다.
+
+## 110 복수 시술 방문 그룹
+
+`node scripts/db-tests/appointment-visit-groups-110.mjs`를 저장소 루트에서 실행한다. SQL110을 격리 PGlite DB에 적용해 그룹 생성·멱등·권한/조직/지점 범위·직원 자격·충돌 시 전체 롤백·단일 구간 편집 차단·그룹 교체/취소·체크인 시 방문 및 카트 1건·완료/노쇼 버전 동기화와 RLS/ACL을 검사한다. 원격 사용자 세션과 Tauri 업무 인수는 포함하지 않는다.
+
+## 111/112 고객 모바일 동의서 서명
+
+`node scripts/db-tests/customer-document-signatures-111.mjs`를 실행한다. SQL111/112를 격리 PGlite에 적용해 토큰 해시만 저장, 최소 공개 미리보기, owner/admin 제어, 링크 철회/교체 행위자 기록, 만료/일회 사용, 동일 요청 재시도, 문서 버전 고정, 불변 서명 증빙 hash 일치와 직접 테이블 접근 차단을 검사한다. Supabase 원격 적용·실제 HTTPS 모바일 링크·고객 인수는 포함하지 않는다.

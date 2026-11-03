@@ -40,7 +40,11 @@
     "test:storage-060": "node storage-060.mjs",
     "test:file-versions": "node file-versions.mjs",
     "test:file-storage-plan-quota-096": "node file-storage-plan-quota-096.mjs",
-    "test:management-profit-finalization": "node management-profit-finalization.mjs"
+    "test:management-profit-finalization": "node management-profit-finalization.mjs",
+    "test:customer-photo-upload-100": "node customer-photo-upload-100.mjs",
+    "test:customer-photo-maintenance-106": "node customer-photo-maintenance-106.mjs",
+    "test:business-permissions-107": "node business-permissions-107.mjs",
+    "test:customer-messaging-109": "node customer-messaging-109.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.5.8"
