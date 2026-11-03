@@ -19,6 +19,7 @@ if ($null -eq $pnpm) {
 }
 
 $envFile = Join-Path $repositoryRoot '.env'
+$apiHostOverride = $env:APP_API_HOST
 $skipSecrets = @('APP_SUPABASE_SERVICE_KEY', 'APP_PLATFORM_ADMIN_USER_IDS', 'APP_DATABASE_URL', 'BUSINESS_ASSISTANT_DEV_AUTO_LOGIN', 'BUSINESS_ASSISTANT_DEV_EMAIL', 'BUSINESS_ASSISTANT_DEV_PASSWORD')
 if (Test-Path -LiteralPath $envFile) {
     foreach ($line in Get-Content -LiteralPath $envFile -Encoding UTF8) {
@@ -28,6 +29,7 @@ if (Test-Path -LiteralPath $envFile) {
         $value = $value.Trim().Trim('"').Trim("'")
         # 앱·일반 API 프로세스가 상속하지 않아야 하는 비밀값(서비스 키, DB 주소, 개발용 계정)은 읽지 않는다.
         if ($skipSecrets -contains $name.Trim()) { continue }
+        if ($name.Trim() -eq 'APP_API_HOST' -and -not [string]::IsNullOrWhiteSpace($apiHostOverride)) { continue }
         Set-Item -LiteralPath "Env:$($name.Trim())" -Value $value
     }
 }

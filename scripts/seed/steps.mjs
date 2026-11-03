@@ -1,5 +1,5 @@
 // 단계별 시드 실행. 모든 쓰기는 Node API(=서버 RPC)를 거치며, 먼저 [데모] 표식 데이터를 조회해 이미 있으면 건너뛴다.
-import { MARK, addDays, kstDateTime, seedUuid, wonOf, wonText, redact } from './util.mjs';
+import { MARK, addDays, isoWeekday, kstDateTime, seedUuid, wonOf, wonText, redact } from './util.mjs';
 import { SeedHttpError } from './client.mjs';
 import { STEP_META, STEP_ORDER, TREATMENT_ACTIONS } from './plan.mjs';
 
@@ -109,10 +109,18 @@ async function resources(ctx) {
 
 async function requirements(ctx) {
   const a = api(ctx);
+  const prior = await a.get('/appointments', { from_date: addDays(ctx.plan.today, -300), to_date: addDays(ctx.plan.today, 60) });
+  const resources = await a.get('/appointment-resources');
   for (const [index, spec] of ctx.plan.services.entries()) {
     const service = need(ctx.state.services, index, '서비스');
     const setup = await a.get(`/appointment-services/${service.id}/resource-setup`);
     if (setup.requirements.length > 0) { ctx.existed('기준'); continue; }
+    if (prior.some(row => row.service_id === service.id && ['reserved', 'confirmed', 'checked_in'].includes(row.status)
+      && spec.requirements.some(requirement => resources.filter(resource => resource.is_active && resource.kind === requirement.kind && (row.resource_ids ?? []).includes(resource.id)).length < requirement.quantity))) {
+      ctx.existed('기존 예약 보존');
+      ctx.out(`  기존 예약의 자원 조건을 보존합니다: ${service.name ?? service.id}`);
+      continue;
+    }
     await a.put(`/appointment-services/${service.id}/resource-requirements`, { requirements: spec.requirements, expected_version: setup.resource_version, operation_id: ctx.uid(`service:${index}:requirements`) });
     ctx.created('기준');
   }
@@ -128,6 +136,7 @@ export function remainingChain(chain, status) {
 
 async function appointments(ctx) {
   const a = api(ctx);
+  const availabilityCache = new Map();
   const rows = await a.get('/appointments', { from_date: addDays(ctx.plan.today, -300), to_date: addDays(ctx.plan.today, 60) });
   for (const spec of ctx.plan.appointments) {
     const customer = need(ctx.state.customers, spec.customer, '고객');
@@ -136,19 +145,32 @@ async function appointments(ctx) {
     let row = rows.find((item) => item.customer_id === customer.id && item.service_id === service.id);
     if (row) ctx.existed('예약');
     else {
+      if (!availabilityCache.has(staffRow.id)) availabilityCache.set(staffRow.id, await a.get(`/appointment-staff/${staffRow.id}/availability`));
+      const availability = availabilityCache.get(staffRow.id);
+      let date = spec.date;
+      let validDate = false;
+      for (let attempt = 0; attempt < 30; attempt++) {
+        const start = Date.parse(kstDateTime(date, spec.time));
+        const end = start + (service.duration_minutes + service.buffer_minutes) * 60_000;
+        const working = availability.hours.some(hour => hour.weekday === isoWeekday(date) && start >= Date.parse(kstDateTime(date, hour.start_time.slice(0, 5))) && end <= Date.parse(kstDateTime(date, hour.end_time.slice(0, 5))));
+        const off = availability.time_off.some(item => start < Date.parse(item.end_at) && end > Date.parse(item.start_at));
+        if (working && !off) { validDate = true; break; }
+        date = addDays(date, spec.date < ctx.plan.today ? -1 : 1);
+      }
+      if (!validDate) throw new Error(`데모 예약 가능한 근무일을 찾지 못했습니다: ${staffRow.name}`);
       const rooms = ctx.state.resources.rooms;
       const equipment = ctx.state.resources.equipment;
       const resourceIds = [need(rooms, spec.index % 5, '공간').id];
       if (ctx.plan.services[spec.service].requirements.some((item) => item.kind === 'equipment')) resourceIds.push(need(equipment, spec.index % 5, '장비').id);
       row = await a.post('/appointments', {
-        customer_id: customer.id, staff_id: staffRow.id, service_id: service.id, start_at: kstDateTime(spec.date, spec.time), source: spec.source,
+        customer_id: customer.id, staff_id: staffRow.id, service_id: service.id, start_at: kstDateTime(date, spec.time), source: spec.source,
         operation_id: ctx.uid(`appointment:${spec.index}`), resource_ids: resourceIds,
       });
       ctx.created('예약');
     }
     for (const target of remainingChain(spec.chain, row.status)) {
       row = await a.post(`/appointments/${row.id}/transitions`, {
-        target_status: target, reason: target === 'canceled' ? spec.reason : null, expected_version: row.version, operation_id: ctx.uid(`appointment:${spec.index}:${target}`),
+        target_status: target, reason: target === 'canceled' ? spec.reason : target === 'no_show' ? `${MARK} 연락 없이 미방문한 상황의 테스트 기록` : null, expected_version: row.version, operation_id: ctx.uid(`appointment:${spec.index}:${target}`),
       });
       ctx.created('상태전이');
     }
