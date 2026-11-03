@@ -1,0 +1,53 @@
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:background="#F7F5F1" android:fillViewport="true">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="vertical" android:padding="24dp">
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="Business Assistant" android:textColor="#44382E" android:textSize="24sp" android:textStyle="bold" />
+        <TextView android:id="@+id/serverText" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="4dp" android:text="테스트 API 연결" android:textColor="#6D6256" android:textSize="13sp" />
+
+        <EditText android:id="@+id/emailInput" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="18dp" android:hint="로그인 이메일" android:inputType="textEmailAddress" android:autofillHints="emailAddress" />
+        <EditText android:id="@+id/passwordInput" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:hint="비밀번호" android:inputType="textPassword" android:autofillHints="password" />
+        <Button android:id="@+id/loginButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="로그인" />
+        <Button android:id="@+id/logoutButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="로그아웃 및 기기 데이터 삭제" android:visibility="gone" />
+
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="22dp"
+            android:text="연결할 매장" android:textColor="#44382E" android:textStyle="bold" />
+        <Spinner android:id="@+id/organizationSpinner" android:layout_width="match_parent" android:layout_height="48dp" />
+        <CheckBox android:id="@+id/syncConsent" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="선택한 매장의 활성 고객 이름과 전화번호를 이 기기에 암호화해 저장하는 데 동의합니다." />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="번호부 동기화를 끄면 기기에 저장한 고객 번호를 삭제합니다. 통화 내용은 녹음하지 않습니다." android:textColor="#6D6256" android:textSize="12sp" />
+        <Button android:id="@+id/syncButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="동의하고 고객 번호 동기화" />
+        <Button android:id="@+id/clearDirectoryButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="동기화 해제 및 번호 삭제" />
+        <CheckBox android:id="@+id/pcRelayConsent" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="등록된 고객의 수신 번호와 시각을 서버로 보내 같은 계정·매장의 PC 프로그램에 알림을 표시하는 데 동의합니다. (선택)" />
+        <CheckBox android:id="@+id/historyConsent" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="수신 기록을 서버에 30일 보관하여 PC 전화 수신함에서 응대·담당자·콜백을 관리하는 데 동의합니다. (선택, 기본 꺼짐) 철회 이후 새 기록은 보관하지 않으며 기존 기록은 원래 만료일까지 보관합니다. 저장한 고객 메모·콜백 할 일은 업무 기록으로 별도 유지합니다." />
+        <Button android:id="@+id/historyRevokeButton" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="서버 보관 동의 철회 (실패 시 재시도)" />
+        <Button android:id="@+id/roleButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="수신 전화 고객 식별 권한 켜기" />
+        <Button android:id="@+id/contactCallsButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="연락처에 저장된 번호도 식별하기 (선택)" />
+        <TextView android:id="@+id/phonePermissionStatus" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:padding="10dp" android:textSize="13sp" android:textColor="#44382E" />
+        <TextView android:id="@+id/directoryStatus" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:padding="10dp" android:text="전화 식별은 고객 번호를 동기화한 뒤 사용할 수 있습니다." android:textColor="#44382E" />
+
+        <View android:layout_width="match_parent" android:layout_height="1dp" android:layout_marginTop="14dp" android:background="#DED8CF" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="14dp"
+            android:text="수동 전화번호 확인 및 통화 메모" android:textColor="#44382E" android:textStyle="bold" />
+        <EditText android:id="@+id/phoneInput" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:hint="전화번호" android:inputType="phone" android:autofillHints="phone" />
+        <Button android:id="@+id/identifyButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="고객 확인" />
+        <Spinner android:id="@+id/matchSpinner" android:layout_width="match_parent" android:layout_height="48dp" />
+        <EditText android:id="@+id/memoInput" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:gravity="top" android:hint="통화 메모" android:inputType="textCapSentences|textMultiLine" android:minLines="3" />
+        <Button android:id="@+id/saveMemoButton" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="고객 활동에 메모 저장" />
+        <TextView android:id="@+id/statusText" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:paddingTop="12dp" android:textColor="#7A342E" android:textSize="13sp" />
+    </LinearLayout>
+</ScrollView>
