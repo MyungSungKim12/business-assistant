@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "call-popup",
+  "description": "Local call popup: listen for refresh events only; all caller data and actions use label-checked native commands",
+  "windows": ["call-popup"],
+  "permissions": ["core:event:allow-listen", "core:event:allow-unlisten"]
+}

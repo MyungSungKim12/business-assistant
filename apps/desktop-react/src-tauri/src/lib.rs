@@ -7,6 +7,7 @@ mod network;
 mod logfile;
 mod tray;
 mod update;
+mod call_popup;
 
 use std::time::Duration;
 
@@ -56,6 +57,7 @@ fn autostart_set(app: AppHandle, enabled: bool) -> Result<(), String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(call_popup::PopupState::default())
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             ba_log!("INFO", "두 번째 실행 감지: 기존 창을 앞으로 가져옵니다.");
             show_window(app);
@@ -96,12 +98,20 @@ pub fn run() {
                 }
             }
         })
-        .invoke_handler(tauri::generate_handler![
+        .invoke_handler(|invoke| {
+            if !call_popup::command_allowed(invoke.message.webview_ref().label(), invoke.message.command()) {
+                invoke.resolver.reject("Window not allowed");
+                return true;
+            }
+            let handler: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![
             config::get_config, http::http_request, credentials::token_load, credentials::token_save,
             credentials::token_clear, files::pick_images, files::pick_files, files::upload_binary, files::upload_cancel, files::download_binary, files::pick_data_file, files::save_data_file,
             autostart_is_enabled, autostart_set, show_main, app_exit, tray_set_status, logfile::log_write,
             update::update_check, update::update_install, update::update_autocheck_get, update::update_autocheck_set
-        ])
+            , call_popup::call_popup_show, call_popup::call_popup_read, call_popup::call_popup_action, call_popup::call_popup_ack
+            ];
+            handler(invoke)
+        })
         .run(tauri::generate_context!())
         .expect("Business Assistant 실행에 실패했습니다.");
 }
