@@ -8,7 +8,7 @@
 
 기준일: 2026-10-21. React/Tauri 데스크톱과 Node/Fastify API 전환은 코드 기준 완료됐다. 앱 설치·배포가 끝났거나 모든 기능이 실환경 인수됐다는 뜻은 아니다.
 
-2026-11-03 진행 현황: N1030-09 APT-021 복수 시술 방문 예약은 코드·SQL 집중 검증과 원격 SQL110 적용까지 완료했다. N1030-10 INV-009 바코드 입고·실사·안전재고 발주 제안도 코드 집중 검증을 마쳤으며, 실제 USB 스캐너 인수는 남아 있다. N1030-11 DOC-012 모바일 서명은 코드/SQL 검증과 SQL111/112 원격 적용을 마쳤고 HTTPS 공개 주소·실제 휴대폰 인수를 기다린다. N1030-12 OPS 배포 준비는 설정 계약·세션/번호부 철회 한계·진단·DB+Storage 복구 절차를 정리했다. 실제 배포는 하지 않았다. [예약 그룹 검증](audits/2026-11-03-appointment-visit-groups.md) · [재고 입력 검증](audits/2026-11-03-inventory-input-shortcuts.md) · [모바일 서명 감사](audits/2026-11-03-customer-mobile-signature.md).
+2026-11-03 진행 현황(최신): N1030-01~12의 코드·SQL 또는 운영문서 범위 작업을 한정 검증까지 마쳤다. Supabase 원격 이력 066~112 확인, API 466건·화면 851건 집중 테스트와 API/React 빌드 통과, 변경분 8개 한글 커밋 푸시를 완료했다. 이는 전체 테스트·실제 운영 인수 완료가 아니다. 다음 우선순위는 테스트 매장의 고객→예약/방문·시술→수납/재고→정산 통합 흐름, S23 수신과 PC 팝업, 새 PC 설치/업데이트, DB+Storage 복구 리허설이다. SMS/알림톡·온라인 예약·결제/세무 연동은 업체 및 운영 정책 결정 뒤 진행한다. [현재 잔여 작업과 선행조건](current-remaining-work-2026-11-03.md) · [완료 추적표](product-completion-2026-10-30.md) · [예약 그룹 검증](audits/2026-11-03-appointment-visit-groups.md) · [재고 입력 검증](audits/2026-11-03-inventory-input-shortcuts.md) · [모바일 서명 감사](audits/2026-11-03-customer-mobile-signature.md).
 
 N1030-11/12 작업 코드 범위는 2026-11-03 기준으로 검증된 구간을 마쳤다. 다음은 우선순위가 높은 남은 제품 코드가 아니라 설치본 실사용 인수와 외부 운영 준비다: 운영 API/TLS·서명 링크 origin, updater 서명, S23/Windows 인수, 그리고 격리 DB+Storage 복구 리허설. 각 준비물이 없으면 운영 완료로 표시하지 않는다. [배포·복구 준비 점검](audits/2026-11-03-ops-deployment-readiness.md).
 

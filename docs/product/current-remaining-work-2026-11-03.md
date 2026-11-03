@@ -5,6 +5,8 @@
 - 후속 작업 N1030-01~12는 각각의 코드/SQL/문서 범위에서 한정 검증을 마쳤다. 이것은 전체 제품의 실사용 인수나 운영 배포 완료를 뜻하지 않는다.
 - Supabase 원격 migration 이력에서 066~112를 확인했다. 107/108 migration은 이력에 `business_member_permissions`, `business_permission_role_ceiling` 이름으로 등록되어 있다.
 - 1~12 작업에 대한 증거와 제한은 [완료 추적표](product-completion-2026-10-30.md), 메뉴별 전체 백로그는 [기능 백로그](backlog.md)에 있다. 실사용 확인은 사용자가 요청한 시점에 진행한다.
+- 마지막 코드 확인: API 집중 테스트 466건 및 변경 화면 집중 테스트 851건 통과, API와 React production build 성공. 전체 프로젝트 테스트는 실행하지 않았다.
+- 해당 작업 소스는 DB/API/화면/Native 앱/Android/검증 스크립트/운영 스크립트/문서 단위의 한글 커밋 8개로 분리되어 `main`에 푸시됐다. 커밋 상세는 [변경 이력](changelog.md)에 기록한다.
 
 ## 우선순위 0 — 운영 전 반드시 필요한 인수
 
