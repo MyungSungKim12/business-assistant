@@ -12,6 +12,12 @@ beforeEach(() => {
 });
 
 describe('SettingsDialog 개인정보·보안', () => {
+  it('shows the server retention consent for the current store separately from desktop alerts',async()=>{
+    const {useSessionStore}=await import('../../store/session');
+    useSessionStore.setState({organization:{id:'a9cc39fd-8e8c-4df8-a623-1f23a3a936bd',name:'매장',slug:'shop',role:'member'}});
+    render(<SettingsDialog platform={platform} onClose={()=>undefined} api={{getPhoneRetentionConsent:async()=>({enabled:false,version:0,retention_days:30})} as never}/>);
+    expect(await screen.findByText('수신 기록 보관: 꺼짐 · 보유기간 30일')).toBeInTheDocument();
+  });
   it('기본값은 가림 끔, 자동 잠금 끔이다', () => {
     render(<SettingsDialog platform={platform} onClose={() => undefined} />);
     expect(screen.getByRole('checkbox', { name: /전화번호 가려서 표시/ })).not.toBeChecked();
@@ -45,7 +51,7 @@ describe('SettingsDialog 개인정보·보안', () => {
     } as unknown as Platform;
     render(<SettingsDialog platform={tauriPlatform} onClose={() => undefined} />);
 
-    const osNotifications = screen.getByRole('checkbox', { name: /운영체제 알림/ });
+    const osNotifications = screen.getByRole('checkbox', { name: 'Windows 알림' });
     expect(osNotifications).not.toBeChecked();
     fireEvent.click(osNotifications);
 

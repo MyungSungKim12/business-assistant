@@ -1,0 +1,29 @@
+:root { font-family: "Segoe UI Variable", "Segoe UI", "Malgun Gothic", sans-serif; color: #352e27; background: #f5f1eb; font-synthesis: none; }
+* { box-sizing: border-box; }
+body { margin: 0; padding: 12px; overflow-y: auto; scrollbar-width: thin; }
+#calls { display: grid; gap: 12px; }
+.call { min-height: 168px; padding: 16px 18px; border: 1px solid #c9b69c; border-radius: 12px; background: #fffdf9; box-shadow: 0 4px 14px #39291914; animation: arrive 320ms cubic-bezier(.2,.8,.2,1), attention 900ms ease-in-out 320ms 3; }
+header { font-size: 12px; color: #7b6249; margin-bottom: 9px; }
+strong { display: block; font-size: 19px; font-weight: 650; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+p { margin: 5px 0 13px; font-size: 13px; color: #73675b; }
+footer { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+button { cursor: pointer; font: inherit; font-size: 13px; border: 1px solid #d8caba; border-radius: 6px; padding: 7px 14px; background: #fffdf9; color: inherit; }
+button:first-child { background: #735a43; color: white; border-color: #735a43; }
+button:hover { filter: brightness(.94); }
+button:focus-visible { outline: 2px solid #a67a49; outline-offset: 2px; }
+#status:empty { display: none; }
+.call-summary { display: grid; gap: 8px; }
+.call-summary:empty { display: none; }
+.call-summary p { margin: 0; font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; white-space: pre-wrap; }
+.call-summary .call-notes-preview { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; color: #453b31; }
+.call-summary .call-caution { background: #fff0dc; color: #855220; border-left: 3px solid #ba884b; padding: 7px 9px; border-radius: 4px; }
+.call-summary .call-tags { color: #896344; font-weight: 600; }
+.call-summary summary { cursor: pointer; font-size: 12px; color: #846344; }
+.call-summary summary img { vertical-align: middle; object-fit: cover; border-radius: 6px; }
+.call-summary details > p { padding: 6px 0; }
+.call-summary details[open] summary { margin-bottom: 7px; }
+.call-photo { width: 100%; max-height: 280px; object-fit: contain; border-radius: 8px; }
+.call-summary .call-loading { color: #8e7965; font-size: 11px; }
+@keyframes arrive { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes attention { 50% { border-color: #ad773c; box-shadow: 0 0 0 3px #b68c5a38, 0 4px 16px #39291920; } }
+@media (prefers-reduced-motion: reduce) { .call { animation: none; } }

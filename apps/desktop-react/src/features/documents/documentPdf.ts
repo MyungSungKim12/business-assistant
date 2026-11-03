@@ -42,7 +42,7 @@ export function verificationCode(document: IssuedDocument, events: ConsentEvent[
 
 function eventRows(events: ConsentEvent[]): Array<[string, string]> {
   return events.map((event) => {
-    const lines = [`기록 시각(서버) ${formatTime(event.occurred_at)}`, `기록자 ID ${event.actor_id}`, `내용 해시 ${event.content_hash}`];
+    const lines = [`기록 시각(서버) ${formatTime(event.occurred_at)}`, `기록 경로 ${event.signer_channel === 'customer_link' ? '고객 모바일 서명' : `직원 기록 ${event.actor_id ?? ''}`}`, `내용 해시 ${event.content_hash}`];
     lines.push(event.evidence ? `증빙 해시 ${event.evidence.hash}\n해시 방식 ${event.evidence.algorithm}` : '증빙 해시 없음 (증빙 기능 적용 이전 기록)');
     const values = event.values as Record<string, unknown>;
     if (event.action === 'deliver') lines.push(`교부 ${deliveryMethodLabel[String(values.method)] ?? text(values.method)} · 수령인 ${text(values.recipient)}`);

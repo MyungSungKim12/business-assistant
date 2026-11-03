@@ -11,6 +11,7 @@ import { OrganizationPicker } from '../features/auth/OrganizationPicker';
 import { NotificationCenter } from '../features/notifications/NotificationCenter';
 import { useNotifications } from '../features/notifications/useNotifications';
 import { useOsNotificationDelivery } from '../features/notifications/osNotificationDelivery';
+import { IncomingCallAlerts } from '../features/phone/IncomingCallAlerts';
 import { SearchPalette } from '../features/search/SearchPalette';
 import type { SearchResult } from '../features/search/searchModel';
 import { TopBar, type MenuId } from '../features/shell/TopBar';
@@ -37,18 +38,19 @@ export function App({ services }: { services: AppServices }) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [focus, setFocus] = useState<WorkspaceFocus | null>(null);
   const [dirty, setDirty] = useState(false);
+  const [phoneDraftDirty, setPhoneDraftDirty] = useState(false);
   const [draftBusy, setDraftBusy] = useState(false);
   const beforeLeave = useCallback(async () => {
     if (draftBusy) { notify.info('처리 중입니다. 결과를 확인한 뒤 이동해 주세요.'); return false; }
-    return !dirty || await confirm({ title: '저장하지 않은 변경', message: '저장하지 않은 입력이 있습니다. 버리고 계속할까요?', confirmLabel: '버리고 계속', cancelLabel: '계속 작성', tone: 'danger' });
-  }, [dirty, draftBusy]);
+    return !(dirty || phoneDraftDirty) || await confirm({ title: '저장하지 않은 변경', message: '저장하지 않은 입력이 있습니다. 버리고 계속할까요?', confirmLabel: '버리고 계속', cancelLabel: '계속 작성', tone: 'danger' });
+  }, [dirty, phoneDraftDirty, draftBusy]);
   const guardedLogout = async () => { if (await beforeLeave()) await logout(); };
   const guardedExit = async () => { if (await beforeLeave()) await services.platform.exitApp?.(); };
   useEffect(() => {
-    const protect = (event: BeforeUnloadEvent) => { if (dirty || draftBusy) { event.preventDefault(); event.returnValue = ''; } };
+    const protect = (event: BeforeUnloadEvent) => { if (dirty || phoneDraftDirty || draftBusy) { event.preventDefault(); event.returnValue = ''; } };
     window.addEventListener('beforeunload', protect);
     return () => window.removeEventListener('beforeunload', protect);
-  }, [dirty, draftBusy]);
+  }, [dirty, phoneDraftDirty, draftBusy]);
   useEffect(() => services.platform.subscribeConnection((state) => { setConnection(state); services.platform.setTrayStatus?.(state); }), [services.platform]);
 
   useTrayActions(services.platform, { signedIn: phase !== 'login' && phase !== 'restoring', logout, beforeLeave });
@@ -123,7 +125,7 @@ export function App({ services }: { services: AppServices }) {
   };
 
   if (phase === 'restoring') return <><main className="center-layout"><p>세션을 확인하고 있습니다…</p></main><ConfirmDialog /></>;
-  if (phase === 'login') return <><LoginView error={error} notice={notice} onLogin={login} onSignUp={services.api.signUp ? signUp : undefined} /><NoticeHost /><ConfirmDialog /></>;
+  if (phase === 'login') return <><LoginView error={error} notice={notice} onLogin={login} onAccountEmail={services.api.sendAccountEmail ? (email,type)=>services.api.sendAccountEmail!(email,type) : undefined} onSignUp={services.api.signUp ? signUp : undefined} /><NoticeHost /><ConfirmDialog /></>;
   if (phase === 'empty') {
     return (
       <>
@@ -170,7 +172,8 @@ export function App({ services }: { services: AppServices }) {
             active={active} readOnly={readOnly} focus={focus} onNavigate={navigate} onDirtyChange={setDirty} onBusyChange={setDraftBusy} onOpenFocus={openFocusedPage} canUseSales={entitlement.features.includes('crm.basic') && entitlement.features.includes('finance.basic')}
             onError={(error) => services.platform.log?.('ERROR', `화면 오류(${active}): ${error.name}: ${error.message.slice(0, 300)}`)} />
         </main>
-        {settings && <SettingsDialog platform={services.platform} onClose={() => setSettings(false)} />}
+        {settings && <SettingsDialog platform={services.platform} api={services.api} onSignedOut={logout} beforeLeave={beforeLeave} onClose={() => setSettings(false)} />}
+        <IncomingCallAlerts key={`${userId}:${organizationId}`} api={api} organizationId={organizationId} userId={userId} enabled={ready && customerEnabled && !idle.locked} platform={services.platform} osEnabled={desktopNotificationsEnabled} onDirtyChange={setPhoneDraftDirty} onOpenCustomer={id => openFocusedPage('customers', { kind: 'customer', id })} />
         {searchOpen && !idle.locked && <SearchPalette api={api} organizationId={organization.id} menus={menus} onClose={() => setSearchOpen(false)} onSelect={(result) => void openSearchResult(result)} />}
         <NoticeHost />
       </div>

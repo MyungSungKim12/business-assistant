@@ -5,6 +5,8 @@ import type { CustomerPhoto } from '../../../api/schemas';
 import { PhotoLightbox } from './PhotoLightbox';
 import { PhotoTrashDialog } from './PhotoTrashDialog';
 import { PhotoThumb } from './PhotoThumb';
+import { PhotoUploadRecovery } from './PhotoUploadRecovery';
+import { useDraftProtection } from '../../../app/DraftBoundary';
 import { groupPhotosByDate, groupTitle, type PhotoGroup } from './photoGroups';
 import { downloadPhotoBlob, ThumbnailLoader } from './thumbnailLoader';
 import { usePhotoLibrary } from './usePhotoLibrary';
@@ -18,6 +20,7 @@ export type PhotoGalleryProps = {
   /** compact ≈ 96px(고객관리), large ≈ 200px(시술관리) */
   size: 'compact' | 'large';
   heading?: string;
+  onBusyChange?: (busy:boolean)=>void;
   /** 지정하면 이 날짜(YYYY-MM-DD)의 사진을 맨 위에 강조해 보여 준다. */
   highlightDate?: string | null;
   highlightLabel?: string;
@@ -53,8 +56,11 @@ function DateSection({ title, photos, collapsed, highlight, emptyText, loader, s
 }
 
 /** 고객 사진을 등록일(KST) 별로 묶어 썸네일 격자로 보여 주고, 크게 보기·등록·삭제(한 장 또는 여러 장 선택)를 제공한다. */
-export function PhotoGallery({ api, organizationId, customerId, readOnly, size, heading = '사진', highlightDate = null, highlightLabel = '시술일 사진' }: PhotoGalleryProps) {
+export function PhotoGallery({ api, organizationId, customerId, readOnly, size, heading = '사진', highlightDate = null, highlightLabel = '시술일 사진',onBusyChange }: PhotoGalleryProps) {
   const library = usePhotoLibrary(api, organizationId, customerId);
+  useDraftProtection(false,library.uploading);
+  useEffect(()=>{onBusyChange?.(library.uploading);},[library.uploading,onBusyChange]);
+  useEffect(()=>()=>{onBusyChange?.(false);},[onBusyChange]);
   const [loader, setLoader] = useState<ThumbnailLoader | null>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [openId, setOpenId] = useState<string | null>(null);
@@ -165,6 +171,7 @@ export function PhotoGallery({ api, organizationId, customerId, readOnly, size, 
       </div>
       {library.loadError && <p className="form-error pg-message" role="alert">{library.loadError} <button type="button" aria-label="사진 목록 다시 시도" onClick={() => void library.reload()}>다시 시도</button></p>}
       {library.notice && <p className="form-error pg-message" role="alert">{library.notice}</p>}
+      {!readOnly&&<PhotoUploadRecovery key={`${organizationId}:${customerId}`} api={api} organizationId={organizationId} customerId={customerId} uploading={library.uploading} onReselect={library.upload} onRefresh={library.reload} />}
       <div className="pg-body">
         {loader && pinned && (
           <DateSection title={`${highlightLabel} · ${groupTitle(pinned)}`} photos={pinned.photos} collapsed={collapsed.has('pinned')} highlight loader={loader} size={size}

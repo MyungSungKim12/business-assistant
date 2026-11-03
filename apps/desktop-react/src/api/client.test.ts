@@ -29,6 +29,8 @@ function platform(handler: (request: HttpRequest) => Promise<HttpResponse>, toke
   return {
     kind: 'browser', apiBase: '/api/v1', tokenStore,
     request: async (request) => {
+      // Logout is now an explicit Auth request; business-race handlers below count only their original routes.
+      if(request.path==='/auth/logout')return json(200,{logged_out:true});
       state = 'checking'; listeners.forEach((listener) => listener(state));
       try { const response = await handler(request); state = 'online'; listeners.forEach((listener) => listener(state)); return response; }
       catch (error) { state = 'offline'; listeners.forEach((listener) => listener(state)); throw error; }
@@ -37,6 +39,136 @@ function platform(handler: (request: HttpRequest) => Promise<HttpResponse>, toke
     subscribeConnection(listener) { listeners.add(listener); listener(state); return () => { listeners.delete(listener); }; },
   };
 }
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((done, fail) => { resolve = done; reject = fail; });
+  return { promise, resolve, reject };
+}
+
+describe('ApiClient session lifecycle isolation (SEC-14)', () => {
+  it('rejects a late refresh after logout without persisting tokens or retrying the original request', async () => {
+    const tokens = memoryTokenStore(); const refresh = deferred<HttpResponse>(); const started = deferred<void>();
+    let protectedCalls = 0;
+    const api = new ApiClient(platform(async request => {
+      if (request.path === '/auth/login') return json(200, session());
+      if (request.path === '/auth/refresh') { started.resolve(); return refresh.promise; }
+      protectedCalls++; return protectedCalls === 1 ? json(401, {}) : json(200, []);
+    }, tokens));
+    await api.login('owner@example.com', 'password');
+    const pending = api.listOrganizations().catch(error => error);
+    await started.promise; await api.logout(); refresh.resolve(json(200, session('late', 'late-refresh')));
+    expect(await pending).toMatchObject({ code: 'SESSION_CHANGED', retryable: false });
+    expect(tokens.value).toBeNull(); expect(protectedCalls).toBe(1);
+  });
+
+  it.each([200, 401, 503])('does not overwrite or clear a new account after an old refresh returns HTTP %s', async status => {
+    const tokens = memoryTokenStore(); const refresh = deferred<HttpResponse>(); const started = deferred<void>();
+    let logins = 0; let oldCalls = 0;
+    const api = new ApiClient(platform(async request => {
+      if (request.path === '/auth/login') return json(200, ++logins === 1 ? session() : session('new-account', 'new-refresh'));
+      if (request.path === '/auth/refresh') { started.resolve(); return refresh.promise; }
+      if (request.headers.Authorization === 'Bearer access-1') { oldCalls++; return json(401, {}); }
+      expect(request.headers.Authorization).toBe('Bearer new-account'); return json(200, []);
+    }, tokens));
+    await api.login('owner@example.com', 'password');
+    const pending = api.listOrganizations().catch(error => error); await started.promise;
+    await api.logout(); await api.login('other@example.com', 'password');
+    refresh.resolve(status === 200 ? json(200, session('old-account', 'old-refresh')) : json(status, {}));
+    expect(await pending).toMatchObject({ code: 'SESSION_CHANGED' });
+    expect(tokens.value).toBe('new-refresh'); expect(oldCalls).toBe(1);
+    await expect(api.listOrganizations()).resolves.toEqual([]);
+  });
+
+  it('does not accept a login response that arrives after logout', async () => {
+    const tokens = memoryTokenStore(); const response = deferred<HttpResponse>(); const started = deferred<void>();
+    const api = new ApiClient(platform(async () => { started.resolve(); return response.promise; }, tokens));
+    const pending = api.login('owner@example.com', 'password').catch(error => error);
+    await started.promise; await api.logout(); response.resolve(json(200, session()));
+    expect(await pending).toMatchObject({ code: 'SESSION_CHANGED' }); expect(tokens.value).toBeNull();
+  });
+
+  it('rejects a previous-account successful data response after switching accounts', async () => {
+    const tokens = memoryTokenStore(); const response = deferred<HttpResponse>(); let logins = 0;
+    const api = new ApiClient(platform(async request => request.path === '/auth/login' ? json(200, ++logins === 1 ? session() : session('new', 'new-refresh')) : response.promise, tokens));
+    await api.login('owner@example.com', 'password');
+    const pending = api.listOrganizations().catch(error => error);
+    await api.login('other@example.com', 'password'); response.resolve(json(200, [{ id: ORG_ID, name: '이전 계정 매장', slug: 'old', role: 'owner' }]));
+    expect(await pending).toMatchObject({ code: 'SESSION_CHANGED' }); expect(tokens.value).toBe('new-refresh');
+  });
+
+  it('does not refresh or replay a void mutation whose 401 response arrives after logout', async () => {
+    const tokens = memoryTokenStore(); const response = deferred<HttpResponse>(); let calls = 0; const started = deferred<void>();
+    const api = new ApiClient(platform(async request => {
+      if (request.path === '/auth/login') return json(200, session());
+      calls++; started.resolve(); return response.promise;
+    }, tokens));
+    await api.login('owner@example.com', 'password');
+    const pending = api.callVoid('DELETE', '/audit-only-fake-path').catch(error => error);
+    await started.promise; await api.logout(); response.resolve(json(401, {}));
+    expect(await pending).toMatchObject({ code: 'SESSION_CHANGED' }); expect(calls).toBe(1);
+  });
+
+  it('serializes logout behind a token save already in progress', async () => {
+    const tokens = memoryTokenStore(); const entered = deferred<void>(); const finish = deferred<void>();
+    tokens.save = async value => { entered.resolve(); await finish.promise; tokens.value = value; };
+    const api = new ApiClient(platform(async () => json(200, session()), tokens));
+    const login = api.login('owner@example.com', 'password').catch(error => error);
+    await entered.promise;
+    const logout = api.logout(); finish.resolve();
+    await logout;
+    expect(await login).toMatchObject({ code: 'SESSION_CHANGED' }); expect(tokens.value).toBeNull();
+  });
+
+  it('does not use a token loaded for an earlier restore attempt after a new account logs in', async () => {
+    const tokens = memoryTokenStore('old-refresh'); const loaded = deferred<string | null>(); const started = deferred<void>();
+    tokens.load = async () => { started.resolve(); return loaded.promise; };
+    let refreshes = 0;
+    const api = new ApiClient(platform(async request => {
+      if (request.path === '/auth/login') return json(200, session('new', 'new-refresh'));
+      if (request.path === '/auth/refresh') { refreshes++; return json(200, session('old', 'old-refresh')); }
+      expect(request.headers.Authorization).toBe('Bearer new'); return json(200, []);
+    }, tokens));
+    const restore = api.restoreSession(); await started.promise;
+    await api.login('other@example.com', 'password'); loaded.resolve('old-refresh');
+    await expect(restore).resolves.toEqual({ authenticated: false });
+    expect(refreshes).toBe(0); expect(tokens.value).toBe('new-refresh');
+    await expect(api.listOrganizations()).resolves.toEqual([]);
+  });
+
+  it('shares startup restoration without rotating the same saved token twice', async () => {
+    const tokens = memoryTokenStore('saved-refresh'); const response = deferred<HttpResponse>(); const started = deferred<void>(); let refreshes = 0;
+    const api = new ApiClient(platform(async () => { refreshes++; started.resolve(); return response.promise; }, tokens));
+    const first = api.restoreSession(), second = api.restoreSession(); await started.promise;
+    response.resolve(json(200, session()));
+    const results = await Promise.all([first, second]);
+    expect(results.every(row => row.authenticated)).toBe(true); expect(refreshes).toBe(1);
+  });
+
+  it('rejects a late signup response without saving its session after logout', async () => {
+    const tokens = memoryTokenStore(); const response = deferred<HttpResponse>(); const started = deferred<void>();
+    const api = new ApiClient(platform(async () => { started.resolve(); return response.promise; }, tokens));
+    const pending = api.signUp('new@example.com', 'password', '사용자').catch(error => error);
+    await started.promise; await api.logout(); response.resolve(json(200, { ...session(), email_confirmation_required: false }));
+    expect(await pending).toMatchObject({ code: 'SESSION_CHANGED' }); expect(tokens.value).toBeNull();
+  });
+
+  it('keeps a temporarily unavailable refresh token for the next restore attempt', async () => {
+    const tokens = memoryTokenStore('saved-refresh');
+    const api = new ApiClient(platform(async () => json(503, { detail: 'unavailable' }), tokens));
+    await expect(api.restoreSession()).resolves.toEqual({ authenticated: false });
+    expect(tokens.value).toBe('saved-refresh');
+  });
+
+  it('allows logout after a failed token save and does not retain an authenticated client', async () => {
+    const tokens = memoryTokenStore(); tokens.save = async () => { throw new Error('keyring unavailable'); };
+    const api = new ApiClient(platform(async () => json(200, session()), tokens));
+    await expect(api.login('owner@example.com', 'password')).rejects.toThrow('keyring unavailable');
+    await expect(api.logout()).resolves.toBeUndefined();
+    await expect(api.listOrganizations()).rejects.toMatchObject({ code: 'NOT_AUTHENTICATED' }); expect(tokens.value).toBeNull();
+  });
+});
 
 describe('ApiClient', () => {
   it('validates login and stores only the refresh token', async () => {

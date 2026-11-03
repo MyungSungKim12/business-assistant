@@ -9,9 +9,11 @@ import { CustomerPage } from '../features/customers/CustomerPage';
 import { DashboardPage } from '../features/dashboard/DashboardPage';
 import { DocumentPage, FilePage, TreatmentDocumentModal } from '../features/documents';
 import { ManagementPage } from '../features/management';
+import { MarketingPage } from '../features/marketing/MarketingPage';
 import { MembersPage } from '../features/members';
 import { FinancePage, MembershipPage, SalesPage } from '../features/sales';
 import type { MenuId } from '../features/shell/TopBar';
+import {PhoneInboxPage} from '../features/phone/PhoneInboxPage';
 import { TaskPage } from '../features/tasks/TaskPage';
 import { TreatmentPage } from '../features/treatments';
 import { ErrorBoundary } from './ErrorBoundary';
@@ -62,6 +64,8 @@ function WorkspacePage({ api, organizationId, active, organizationName, canManag
   const props = { api, organizationId, readOnly };
   switch (active) {
     case 'dashboard': return <DashboardPage api={api} organizationId={organizationId} onNavigate={onNavigate} organizationName={organizationName} readOnly={readOnly} canManage={canManage} currentUserId={currentUserId} />;
+    case 'phone-inbox': return <PhoneInboxPage key={`${currentUserId}:${organizationId}`} api={api} organizationId={organizationId} onOpenCustomer={onOpenFocus ? id=>onOpenFocus('customers',{kind:'customer',id}) : undefined}/>;
+    case 'marketing': return <MarketingPage api={api} organizationId={organizationId} readOnly={readOnly} />;
     case 'tasks': return <TaskPage api={api} organizationId={organizationId} readOnly={readOnly} currentUserId={currentUserId} />;
     case 'customers': return <CustomerPage {...props} focusCustomerId={focus?.kind === 'customer' ? focus.id : undefined} focusNonce={focus?.nonce} />;
     // 예약은 구성원도 등록·변경할 수 있다. 공간·장비 관리는 소유자·관리자만 한다.

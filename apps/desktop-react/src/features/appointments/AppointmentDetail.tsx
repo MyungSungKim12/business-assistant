@@ -18,6 +18,8 @@ export interface AppointmentDetailProps {
   /** 메모를 저장한다. 실패하면 던진다. */
   onSaveMemo: (memo: string) => Promise<void>;
   onEdit: () => void;
+  groupCount?:number;
+  onEditGroup?:()=>void;
   onClose: () => void;
   onDirtyChange?: (dirty: boolean) => void;
   onBusyChange?: (busy: boolean) => void;
@@ -28,9 +30,10 @@ export interface AppointmentDetailProps {
 }
 
 /** 선택한 예약의 내용과 상태 변경·수정 버튼. */
-export function AppointmentDetail({ appointment, customerName, staffName, resourceName, readOnly, busy = false, onTransition, onSaveMemo, onEdit, onClose, onDirtyChange, onBusyChange, onOpenCustomer, onOpenTreatment, onOpenCheckout, history }: AppointmentDetailProps) {
+export function AppointmentDetail({ appointment, customerName, staffName, resourceName, readOnly, busy = false, onTransition, onSaveMemo, onEdit, groupCount, onEditGroup, onClose, onDirtyChange, onBusyChange, onOpenCustomer, onOpenTreatment, onOpenCheckout, history }: AppointmentDetailProps) {
+  const isGrouped=!!appointment.visit_group_id;
   const targets = readOnly ? [] : allowedTransitions(appointment.status);
-  const editable = !readOnly && canEditAppointment(appointment.status);
+  const editable = !readOnly && !isGrouped && canEditAppointment(appointment.status);
   const startDate = kstDateKey(appointment.start_at);
   const endDate = kstDateKey(appointment.end_at);
   return (
@@ -41,7 +44,7 @@ export function AppointmentDetail({ appointment, customerName, staffName, resour
       </header>
       <dl className="apt-detail__list">
         <div><dt>고객</dt><dd>{customerName(appointment.customer_id)}</dd></div>
-        <div><dt>서비스</dt><dd>{appointment.service_name_snapshot}</dd></div>
+        <div><dt>서비스</dt><dd>{isGrouped&&<span className="apt-visit-group__badge">복수 시술 {appointment.visit_order}/{groupCount??'?'}</span>} {appointment.service_name_snapshot}</dd></div>
         <div><dt>담당자</dt><dd>{staffName(appointment.staff_id)}</dd></div>
         <div>
           <dt>시간</dt>
@@ -62,7 +65,7 @@ export function AppointmentDetail({ appointment, customerName, staffName, resour
       {(onOpenCustomer || onOpenTreatment || onOpenCheckout) && <div className="apt-detail__actions" role="group" aria-label="연결된 업무">
         {onOpenCustomer && <button type="button" disabled={busy} onClick={onOpenCustomer}>고객 정보</button>}
         {onOpenTreatment && <button type="button" disabled={busy} onClick={onOpenTreatment}>시술 이력</button>}
-        {onOpenCheckout && (appointment.status==='checked_in'||appointment.status==='completed') && <button type="button" disabled={busy} onClick={onOpenCheckout}>수납 장바구니</button>}
+        {onOpenCheckout && (appointment.status==='checked_in'||appointment.status==='completed') && (!isGrouped||appointment.visit_order===1) && <button type="button" disabled={busy} onClick={onOpenCheckout}>수납 장바구니</button>}
       </div>}
       <AppointmentMemo key={appointment.id} value={appointment.memo} readOnly={readOnly} onSave={onSaveMemo} onDirtyChange={onDirtyChange} onBusyChange={onBusyChange} />
       {history}
@@ -74,6 +77,7 @@ export function AppointmentDetail({ appointment, customerName, staffName, resour
           {editable && <button type="button" disabled={busy} onClick={onEdit}>예약 수정</button>}
         </div>
       )}
+      {isGrouped&&!readOnly&&<div className="apt-detail__actions" role="group" aria-label="복수 시술 예약 처리"><p className="muted">이 예약은 한 고객 방문의 시술 묶음입니다. 상태 변경·취소는 전체 시술에 함께 적용됩니다.</p>{onEditGroup&&(appointment.status==='reserved'||appointment.status==='confirmed')&&<button type="button" disabled={busy} onClick={onEditGroup}>복수 시술 예약 수정</button>}</div>}
       {readOnly && <p className="muted">보기 전용 권한입니다.</p>}
       {!readOnly && !editable && targets.length === 0 && <p className="muted">완료·취소·노쇼 예약은 더 변경할 수 없습니다.</p>}
     </section>

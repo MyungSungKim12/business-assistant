@@ -40,3 +40,9 @@
   font-size: 10px;
   font-style: normal;
 }
+
+.member-permissions { display:grid;gap:12px; }
+.member-permissions__grid { display:grid;grid-template-columns:1fr 1fr;gap:5px 16px; }
+.member-permissions__grid label { display:flex;justify-content:space-between;align-items:center;gap:12px;min-height:36px;border-bottom:1px solid var(--border-subtle); }
+.member-permissions__grid input { flex:none; }
+.member-permissions__actions { display:flex;justify-content:flex-end;gap:8px;margin-top:8px; }

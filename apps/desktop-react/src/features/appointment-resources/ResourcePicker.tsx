@@ -34,6 +34,8 @@ export interface ResourcePickerProps {
   onChange: (ids: string[]) => void;
   /** 필수 기준이 로드되거나 바뀔 때 알려 준다(저장 전 검증용). */
   onRequirementsChange?: (requirements: ResourceRequirement[], resources: AppointmentResource[]) => void;
+  /** 부모가 이미 불러온 지점 자원 목록을 재사용한다. */
+  resourceOptions?: AppointmentResource[];
   /** 서비스가 바뀌면 기준에 맞게 자동으로 고른다. 기존 예약을 편집할 때는 false로 두어 저장된 선택을 유지한다. 기본 true. */
   autoSelect?: boolean;
   disabled?: boolean;
@@ -43,7 +45,7 @@ export interface ResourcePickerProps {
  * 예약 작성 폼에 끼워 넣는 공간·장비 선택. 활성 자원을 체크박스로 보여 주고 서비스의 필수 기준(공간 N개·장비 N개)과
  * 부족 여부를 표시한다. 선택한 ID는 `onChange`로 받아 예약 저장의 `resource_ids`에 넣는다.
  */
-export function ResourcePicker({ api, organizationId, branchId, serviceId, value, onChange, onRequirementsChange, autoSelect = true, disabled = false }: ResourcePickerProps) {
+export function ResourcePicker({ api, organizationId, branchId, serviceId, value, onChange, onRequirementsChange, resourceOptions, autoSelect = true, disabled = false }: ResourcePickerProps) {
   const [resources, setResources] = useState<AppointmentResource[]>([]);
   const [requirements, setRequirements] = useState<ResourceRequirement[]>([]);
   const [error, setError] = useState('');
@@ -57,7 +59,7 @@ export function ResourcePicker({ api, organizationId, branchId, serviceId, value
     (async () => {
       try {
         const [resourceRows, requirementRows] = await Promise.all([
-          resourceApi.listResources(api, organizationId),
+          resourceOptions ? Promise.resolve(resourceOptions) : resourceApi.listResources(api, organizationId),
           serviceId ? resourceApi.listRequirements(api, organizationId, serviceId) : Promise.resolve<ResourceRequirement[]>([]),
         ]);
         if (!alive) return;
@@ -67,13 +69,13 @@ export function ResourcePicker({ api, organizationId, branchId, serviceId, value
         const initial = firstLoad.current;
         firstLoad.current = false;
         // 첫 로드에서는 호출자가 준 선택(편집 중인 예약)을 존중하고, 서비스가 바뀐 뒤에만 자동 선택한다.
-        if (autoSelect && !(initial && callbacks.current.value.length > 0)) callbacks.current.onChange(autoSelectResources(requirementRows, resourceRows));
+        if (autoSelect && !(initial && callbacks.current.value.length > 0)) callbacks.current.onChange(autoSelectResources(requirementRows, scopedResources));
       } catch {
         if (alive) { setError('필수 자원 기준을 불러오지 못했습니다.'); setLoadedFor(serviceId); }
       }
     })();
     return () => { alive = false; };
-  }, [api, organizationId, branchId, serviceId, autoSelect]);
+  }, [api, organizationId, branchId, serviceId, autoSelect, resourceOptions]);
 
   const active = resources.filter((item) => item.is_active);
   const missing = missingRequirements(requirements, resources, value);

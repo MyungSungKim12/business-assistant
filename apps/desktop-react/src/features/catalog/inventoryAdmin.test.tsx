@@ -13,6 +13,17 @@ const pass = product({ id: 'p2', sku: 'PASS', name: '10회 패키지', kind: 'me
 const grid = () => within(screen.getByRole('grid', { name: '상품 목록' }));
 
 describe('INV-10 안전재고 표시·필터', () => {
+  it('재고 부족 초안을 열면 보충 수량만 제안하고 발주를 자동 생성하지 않는다',async()=>{
+    const {api,calls}=server({'GET /catalog-products':()=>[custom],'GET /catalog-suppliers':()=>[],'GET /catalog-purchase-orders':()=>[]});
+    renderInventory(api as never);
+    fireEvent.click(await screen.findByRole('button',{name:'부족 상품 초안 1'}));
+    expect(await screen.findByLabelText('발주 상품 1')).toHaveValue(custom.id);
+    expect(screen.getByLabelText('발주 수량 1')).toHaveValue(2);
+    expect(screen.getByLabelText('매입 단가 1')).toHaveValue('');
+    expect(screen.getByLabelText('발주 메모 1')).toHaveValue('안전재고 부족 제안: 부족 2개 · 입고 후 예상 10개');
+    expect(calls.some(call=>call.method==='POST'&&call.path.endsWith('/catalog-purchase-orders'))).toBe(false);
+  });
+
   it('기준값 이하(기본 5, 상품별 값 우선)인 실물 상품에 부족 배지를 붙이고 회원권에는 붙이지 않는다', async () => {
     renderInventory(server({ 'GET /catalog-products': () => [cream, low, custom, pass] }).api as never);
     await screen.findByText('선크림');

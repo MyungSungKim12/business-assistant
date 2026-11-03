@@ -27,7 +27,7 @@ export const issuedListSchema = z.array(issuedSchema);
 export const evidenceSchema = z.object({ algorithm: z.string(), hash: z.string() });
 export const consentEventSchema = z.object({
   id: z.uuid(), organization_id: z.uuid(), document_id: z.uuid(), revision: z.number(), action: z.enum(['sign', 'deliver', 'revoke']), values: z.record(z.string(), z.unknown()),
-  actor_id: z.uuid(), occurred_at: z.string(), content_hash: z.string(), evidence: evidenceSchema.nullable().default(null),
+  actor_id: z.uuid().nullable(), signer_channel: z.enum(['staff','customer_link']).default('staff'), occurred_at: z.string(), content_hash: z.string(), evidence: evidenceSchema.nullable().default(null),
 });
 export const evidenceStatusSchema = z.enum(['match', 'mismatch', 'no_proof', 'unknown_algorithm']);
 export const evidenceVerificationSchema = z.object({

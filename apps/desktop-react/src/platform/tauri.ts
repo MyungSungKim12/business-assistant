@@ -24,6 +24,8 @@ export async function createTauriPlatform(invoke: TauriInvoke = tauriInvoke as T
   const call = <T>(command: string, args?: Record<string, unknown>) => (args === undefined ? invoke(command) : invoke(command, args)) as Promise<T>;
   const config = await call<NativeConfig>('get_config');
   const monitor = createConnectionMonitor();
+  // Preserve show/clear order when org changes, locking or logout races an IPC call.
+  let popupQueue: Promise<void> = Promise.resolve();
   return {
     kind: 'tauri',
     apiBase: config.apiBase,
@@ -33,7 +35,7 @@ export async function createTauriPlatform(invoke: TauriInvoke = tauriInvoke as T
       clear: () => call<void>('token_clear'),
     },
     async request(request: HttpRequest): Promise<HttpResponse> {
-      monitor.publish('checking');
+      if (!(request.method === 'GET' && /^\/organizations\/[^/]+\/mobile\/incoming-calls(?:\?|$)/.test(request.path))) monitor.publish('checking');
       try {
         const response = await call<HttpResponse>('http_request', { request });
         monitor.publish('online');
@@ -67,6 +69,21 @@ export async function createTauriPlatform(invoke: TauriInvoke = tauriInvoke as T
       return (await requestPermission()) === 'granted';
     },
     async sendOsNotification(title, body) { sendNotification({ title, body }); },
+    showIncomingCalls(calls) {
+      const next = popupQueue.catch(() => undefined).then(() => call<void>('call_popup_show', { calls }));
+      popupQueue = next;
+      return next;
+    },
+    completeIncomingCallAction: id => call<void>('call_popup_ack', { id }),
+    async subscribeIncomingCallAction(handler) {
+      const offMemo = await listen<string>('call-popup:memo', event => handler(event.payload));
+      let offCustomer: (() => void) | undefined;
+      try {
+        offCustomer = await listen<{ id: string; customerId: string }>('call-popup:customer', event => handler(event.payload.id, 'customer', event.payload.customerId));
+        const offRetry = await listen<string>('call-popup:retry', event => handler(event.payload, 'retry'));
+        return () => { offMemo(); offCustomer?.(); offRetry(); };
+      } catch (error) { offMemo(); offCustomer?.(); throw error; }
+    },
     log: (level, message) => { void call<void>('log_write', { level, message }).catch(() => undefined); },
     async pickImages() {
       const selected = await call<Array<{ name: string; contentType: string; size: number; path: string }> | null>('pick_images');

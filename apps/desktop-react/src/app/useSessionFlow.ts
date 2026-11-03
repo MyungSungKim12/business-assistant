@@ -84,9 +84,8 @@ export function useSessionFlow({ api }: AppServices) {
   }, [api, choose]);
 
   const logout = useCallback(async () => {
-    await api.logout();
-    reset();
-    setPhase('login');
+    try{await api.logout();}catch{setNotice('이 기기에서 로그아웃했습니다. 서버 세션 해제는 확인하지 못했습니다. 다시 로그인한 뒤 기기 목록을 확인해 주세요.');}
+    finally{reset();setPhase('login');}
   }, [api, reset]);
 
   return { phase, organizations, error, notice, choose, login, signUp, createOrganization, logout };

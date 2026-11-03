@@ -11,6 +11,26 @@ function api(overrides: Record<string, unknown> = {}) {
 }
 
 describe('PhoneMemoDialog', () => {
+  it('protects the submitted durable memo and number while a deferred save is pending',async()=>{
+    let resolve!:(value:unknown)=>void;const close=vi.fn();
+    const respond=vi.fn(()=>new Promise(r=>{resolve=r;}));
+    const client=api({getPhoneInboxRecord:vi.fn(async()=>({recipient_id:customerId,version:4})),respondPhoneInbox:respond}) as ApiClient;
+    render(<PhoneMemoDialog api={client} organizationId="a9cc39fd-8e8c-4df8-a623-1f23a3a936bd" initialCall={{id:customerId,phone_e164:match.phone_e164,occurred_at:new Date().toISOString(),matches:[match]}} onClose={close}/>);
+    fireEvent.change(screen.getByLabelText('상담 메모'),{target:{value:'전송할 메모'}});fireEvent.click(screen.getByRole('button',{name:'메모 저장'}));
+    await waitFor(()=>expect(respond).toHaveBeenCalledOnce());
+    expect(screen.getByLabelText('상담 메모')).toBeDisabled();expect(screen.getByLabelText('전화번호')).toBeDisabled();expect(screen.getByRole('radio')).toBeDisabled();
+    expect(screen.getByLabelText('상담 메모')).toHaveValue('전송할 메모');expect(close).not.toHaveBeenCalled();
+    resolve({});await waitFor(()=>expect(close).toHaveBeenCalledOnce());
+    expect(respond).toHaveBeenCalledWith(expect.any(String),customerId,expect.objectContaining({memo:'전송할 메모',expected_version:4}));
+  });
+  it('retries a durable history memo with the same version and operation and never duplicates the manual activity path',async()=>{
+    let fail=true;const respond=vi.fn(async()=>{if(fail)throw new Error('offline');return {};});const close=vi.fn();
+    const client=api({getPhoneInboxRecord:vi.fn(async()=>({recipient_id:customerId,version:4})),respondPhoneInbox:respond}) as ApiClient;
+    render(<PhoneMemoDialog api={client} organizationId="a9cc39fd-8e8c-4df8-a623-1f23a3a936bd" initialCall={{id:customerId,phone_e164:match.phone_e164,occurred_at:new Date().toISOString(),matches:[match]}} onClose={close}/>);
+    fireEvent.change(screen.getByLabelText('상담 메모'),{target:{value:'번호가 바뀌어도 당시 고객에게'}});fireEvent.click(screen.getByRole('button',{name:'메모 저장'}));await screen.findByRole('alert');
+    fail=false;fireEvent.click(screen.getByRole('button',{name:'메모 저장'}));await waitFor(()=>expect(close).toHaveBeenCalled());
+    expect(respond.mock.calls[0]).toEqual(respond.mock.calls[1]);expect(client.createMobilePhoneMemo).not.toHaveBeenCalled();expect(client.getPhoneInboxRecord).toHaveBeenCalledTimes(1);
+  });
   it('looks up exact caller and saves a memo to the selected customer', async () => {
     const close = vi.fn(); const client = api() as ApiClient;
     render(<PhoneMemoDialog api={client} organizationId="a9cc39fd-8e8c-4df8-a623-1f23a3a936bd" onClose={close} />);

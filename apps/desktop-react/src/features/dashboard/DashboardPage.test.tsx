@@ -57,13 +57,13 @@ function makeApi(overrides: Overrides = {}) {
     wallets: vi.fn(pick('wallets', wallets)),
   };
   const api = {
-    listCustomers: () => handlers.customers(),
+    getCustomer:async(_o:string,target:string)=>({...customers.find(row=>row.id===target),organization_id:id(999)}),
     listTasks: () => handlers.tasks(),
     listAppointmentStaff: async () => [{ id: id(31), name: '박실장', is_active: true }],
     listAppointmentServices: async () => [],
     listOperationRecords: () => handlers.wallets(),
     call: async (_method: string, path: string) => {
-      if (path.endsWith('/visit-facts')) return customers.map(c=>({organization_id:id(999),customer_id:c.id,last_actual_visit_date:c.last_visit_date,next_appointment_at:c.next_visit_date+'T01:00:00Z',recommended_return_date:null,as_of:NOW.toISOString()}));
+      if(path.includes('/customer-dashboard?')){const rows=await handlers.customers() as typeof customers;const active=rows.filter(row=>row.status!=='archived');const upcoming=active.filter(row=>row.next_visit_date>='2026-10-13'&&row.next_visit_date<='2026-10-20');return {organization_id:id(999),active_count:active.length,upcoming_count:upcoming.length,recent:active,upcoming};}
       if (path.includes('/appointments?')) return handlers.appointments();
       if (path.includes('/finance-transactions')) return handlers.transactions();
       if (path.includes('/receivables')) return handlers.receivables();
@@ -87,6 +87,17 @@ const panel = (name: string | RegExp) => screen.getByRole('region', { name });
 const panelNames = [/^오늘 예약$/, /^할 일$/, /수입·지출/, /다음 예약 임박/, /^최근 방문 고객$/, /^재고 부족$/, /회원권 만료/];
 
 describe('DashboardPage', () => {
+  it('shows exact server counts independently of the bounded customer rows and never lists all customers',async()=>{
+    const {api}=makeApi();
+    const base=api.call.bind(api);
+    api.call=((method:string,path:string,schema:never,body?:unknown)=>path.includes('/customer-dashboard?')?Promise.resolve({organization_id:id(999),active_count:1501,upcoming_count:301,recent:[],upcoming:[]}):base(method as never,path,schema,body as never)) as typeof api.call;
+    const listCustomers=vi.fn(()=>{throw Error('Full list prohibited');});
+    Object.assign(api,{listCustomers});
+    renderPage(api);
+    expect(await screen.findByRole('button',{name:'전체 고객 1,501명 7일 내 예약 301명'})).toBeInTheDocument();
+    expect(listCustomers).not.toHaveBeenCalled();
+  });
+
   it('매장명과 KST 오늘 날짜를 보여 주고 지표 카드를 계산한다', async () => {
     const { api } = makeApi();
     renderPage(api);

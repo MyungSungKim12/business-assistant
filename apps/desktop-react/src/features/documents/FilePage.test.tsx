@@ -1,6 +1,7 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FilePage } from './FilePage';
+import { DraftBoundary } from '../../app/DraftBoundary';
 import { fakeApi as baseFakeApi, FILE, file, httpError, matches, ORG, renderWithHosts } from './testkit';
 
 // 기존 파일 시나리오에는 정상적인 빈 폴더 목록을 명시한다.
@@ -17,6 +18,23 @@ const sized = (name: string, size: number, type = 'application/pdf') => {
 
 afterEach(() => vi.restoreAllMocks());
 
+it('폴더·태그·한도 초안과 진행 중 업로드를 전역 이탈 보호에 등록한다', async () => {
+  const dirty=vi.fn(),busy=vi.fn();
+  const {api}=fakeApi(()=>[file]);
+  renderWithHosts(<DraftBoundary onDirtyChange={dirty} onBusyChange={busy}><FilePage api={api} organizationId={ORG} readOnly={false}/></DraftBoundary>);
+  await screen.findByText('가격표.pdf');
+  fireEvent.change(screen.getByLabelText('새 폴더 이름'),{target:{value:'작성 중'}});
+  await waitFor(()=>expect(dirty).toHaveBeenLastCalledWith(true));
+  fireEvent.change(screen.getByLabelText('새 폴더 이름'),{target:{value:''}});
+  await waitFor(()=>expect(dirty).toHaveBeenLastCalledWith(false));
+  fireEvent.change(screen.getByLabelText('가격표.pdf 태그'),{target:{value:'새 태그'}});
+  await waitFor(()=>expect(dirty).toHaveBeenLastCalledWith(true));
+  fireEvent.change(screen.getByLabelText('가격표.pdf 태그'),{target:{value:file.tags.join(', ')}});
+  await waitFor(()=>expect(dirty).toHaveBeenLastCalledWith(false));
+  fireEvent.change(screen.getByLabelText('조직 저장 한도 GiB'),{target:{value:'7'}});
+  await waitFor(()=>expect(dirty).toHaveBeenLastCalledWith(true));
+});
+
 it('폴더 조회 실패를 빈 폴더 성공으로 숨기지 않고 재시도로 복구한다', async () => {
   let failed = true;
   const { api } = baseFakeApi(call => {
@@ -29,6 +47,19 @@ it('폴더 조회 실패를 빈 폴더 성공으로 숨기지 않고 재시도�
   failed = false;
   fireEvent.click(screen.getByRole('button', { name: '다시 시도' }));
   expect(await screen.findByText('가격표.pdf')).toBeInTheDocument();
+});
+
+it('전송이 끝나거나 취소될 때까지 busy 이탈 보호를 유지한다',async()=>{
+  const dirty=vi.fn(),busy=vi.fn();let finish!:()=>void;
+  const {api,platform}=fakeApi(call=>matches(call,'POST',/upload-url$/)?signed():[file]);
+  platform.uploadBinary.mockImplementation(()=>new Promise<void>(resolve=>{finish=resolve;}));
+  renderWithHosts(<DraftBoundary onDirtyChange={dirty} onBusyChange={busy}><FilePage api={api} organizationId={ORG} readOnly={false}/></DraftBoundary>);
+  await screen.findByText('가격표.pdf');choose(new File(['hello'],'new.pdf',{type:'application/pdf'}));
+  await waitFor(()=>expect(busy).toHaveBeenLastCalledWith(true));
+  expect(dirty).toHaveBeenLastCalledWith(true);
+  await waitFor(()=>expect(platform.uploadBinary).toHaveBeenCalled());finish();
+  await waitFor(()=>expect(busy).toHaveBeenLastCalledWith(false));
+  expect(dirty).toHaveBeenLastCalledWith(false);
 });
 
 describe('FilePage', () => {

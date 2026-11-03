@@ -7,7 +7,7 @@ import { isDateKey } from './appointmentTime';
  * 안내용 계산이므로 저장 시 서버가 근무시간·휴무·예약·자원 충돌을 다시 검사한다.
  */
 const blockSchema = z.object({
-  code: z.enum(['past', 'outside_hours', 'outside_default_window', 'time_off', 'staff_busy', 'resource_unavailable']),
+  code: z.enum(['past', 'outside_hours', 'outside_default_window', 'time_off', 'staff_busy', 'resource_unavailable','booking_policy_hours','booking_policy_block','booking_policy_notice','booking_policy_cutoff','booking_policy_timezone_transition']),
   staff_id: z.string().nullable(),
   kind: z.enum(['room', 'equipment']).optional(),
   needed: z.number().optional(),
@@ -80,6 +80,11 @@ export function describeBlock(block: AvailabilityBlock, staffName: (id: string) 
     case 'outside_default_window': return `${who}근무시간이 설정되지 않아 안내 시간대(09:00~21:00) 밖입니다`;
     case 'time_off': return `${who}휴무입니다`;
     case 'staff_busy': return `${who}다른 예약이 있습니다`;
+    case 'booking_policy_hours': return '매장 영업시간 밖이거나 휴게 시간에 걸칩니다';
+    case 'booking_policy_block': return '매장 휴무·차단 구간입니다';
+    case 'booking_policy_notice': return '매장의 최소 사전 예약 시간이 부족합니다';
+    case 'booking_policy_cutoff': return '오늘 예약의 접수 마감 시각이 지났습니다';
+    case 'booking_policy_timezone_transition': return '매장 시간대의 시계 변경을 가로지르는 예약은 지원하지 않습니다';
     case 'resource_unavailable':
       return block.resource_id && block.needed === undefined
         ? '선택한 공간·장비를 그 시각에 쓸 수 없습니다'

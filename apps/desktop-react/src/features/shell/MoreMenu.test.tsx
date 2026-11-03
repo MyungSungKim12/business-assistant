@@ -5,8 +5,8 @@ import { moreMenuIds, searchMenus, visibleGroups } from './menuCatalog';
 
 describe('menu catalog', () => {
   it('lists every remaining menu once; manager menus need a manager and the subscription menu needs a platform admin', () => {
-    expect(moreMenuIds(true, true)).toEqual(['services', 'staff', 'memberships', 'inventory', 'finance', 'documents', 'files', 'management', 'members', 'audit', 'admin']);
-    expect(moreMenuIds(true)).toEqual(['services', 'staff', 'memberships', 'inventory', 'finance', 'documents', 'files', 'management', 'members', 'audit']);
+    expect(moreMenuIds(true, true)).toEqual(['phone-inbox', 'marketing', 'services', 'staff', 'memberships', 'inventory', 'finance', 'documents', 'files', 'management', 'members', 'audit', 'admin']);
+    expect(moreMenuIds(true)).toEqual(['phone-inbox', 'marketing', 'services', 'staff', 'memberships', 'inventory', 'finance', 'documents', 'files', 'management', 'members', 'audit']);
     expect(moreMenuIds(false)).not.toContain('management');
     expect(moreMenuIds(false)).not.toContain('members');
     expect(moreMenuIds(false)).not.toContain('audit');
@@ -39,7 +39,7 @@ describe('MoreMenu', () => {
     fireEvent.click(screen.getByRole('button', { name: /더보기/ }));
     expect(screen.getByRole('menu', { name: '전체 메뉴' })).toBeInTheDocument();
     expect(screen.getByText('수입·지출, 미수금과 일 마감')).toBeInTheDocument();
-    expect(screen.getAllByRole('menuitem')).toHaveLength(11);
+    expect(screen.getAllByRole('menuitem')).toHaveLength(13);
     fireEvent.click(screen.getByRole('menuitem', { name: /재고/ }));
     expect(onNavigate).toHaveBeenCalledWith('inventory');
     expect(screen.queryByRole('menu')).not.toBeInTheDocument();
@@ -51,7 +51,7 @@ describe('MoreMenu', () => {
     expect(toggle).toHaveClass('active');
     fireEvent.click(toggle);
     expect(screen.getByRole('menuitem', { name: /파일/ })).toHaveAttribute('aria-current', 'page');
-    expect(screen.getAllByRole('menuitem')).toHaveLength(7);
+    expect(screen.getAllByRole('menuitem')).toHaveLength(9);
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(screen.queryByRole('menu')).not.toBeInTheDocument();
     fireEvent.click(toggle);

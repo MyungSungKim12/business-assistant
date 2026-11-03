@@ -8,6 +8,7 @@ import { Panel } from './Panel';
 interface Props {
   state: Source<Customer[]>;
   today: string;
+  total?:number;
   onRetry: () => void;
   onNavigate: (menu: MenuId) => void;
 }
@@ -25,7 +26,7 @@ function CustomerRow({ customer, date, onOpen }: { customer: Customer; date: str
 }
 
 /** 7일 이내 다음 방문 예정 고객. */
-export function UpcomingVisitPanel({ state, today, onRetry, onNavigate }: Props) {
+export function UpcomingVisitPanel({ state, today, total, onRetry, onNavigate }: Props) {
   const open = () => onNavigate('customers');
   return (
     <Panel
@@ -35,7 +36,7 @@ export function UpcomingVisitPanel({ state, today, onRetry, onNavigate }: Props)
       onRetry={onRetry}
       isEmpty={(customers) => upcomingVisits(customers, today).length === 0}
       emptyText="7일 안에 예약된 고객이 없습니다."
-      headerExtra={(customers) => customers && <span className="dash-count">{upcomingVisits(customers, today).length}명</span>}
+      headerExtra={(customers) => customers && <span className="dash-count">{total??upcomingVisits(customers, today).length}명</span>}
     >
       {(customers) => (
         <ul className="dash-list">

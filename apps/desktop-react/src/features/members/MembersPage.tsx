@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
-import { ErrorState, LoadingState, Select, confirm, notify } from '@business-assistant/react-ui';
+import { ErrorState, LoadingState, Modal, Select, confirm, notify } from '@business-assistant/react-ui';
 import { usePrivacy } from '../../lib/privacy';
 import { kstDateKey } from '../notifications/kstTime';
 import { membersApi, type MembersApiClient } from './api';
-import { ROLES, ROLE_LABELS, addableRoles, memberAbilities, memberErrorMessage, type Member, type Role } from './memberRules';
+import { BUSINESS_PERMISSION_LABELS, ROLES, ROLE_LABELS, addableRoles, memberAbilities, memberErrorMessage, type BusinessPermissionCode, type BusinessPermissions, type Member, type Role } from './memberRules';
 import './members.css';
 
 export interface MembersPageProps {
@@ -22,6 +22,7 @@ export function MembersPage({ api, organizationId, currentUserId, currentRole }:
   const [members, setMembers] = useState<Member[] | null>(null);
   const [loadError, setLoadError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [permissionTarget,setPermissionTarget]=useState<Member|null>(null);
   const canManage = currentRole === 'owner' || currentRole === 'admin';
   const actor = { userId: currentUserId, role: currentRole };
 
@@ -71,16 +72,20 @@ export function MembersPage({ api, organizationId, currentUserId, currentRole }:
       {members && (
         <div className="data-surface members-table">
           <table>
-            <thead><tr><th>이메일</th><th>표시 이름</th><th>역할</th><th>가입일</th><th aria-label="작업" /></tr></thead>
+            <thead><tr><th>이메일</th><th>표시 이름</th><th>역할</th><th>가입일</th><th>업무 권한</th><th aria-label="작업" /></tr></thead>
             <tbody>
               {members.map((member) => (
                 <MemberRow key={member.user_id} member={member} self={member.user_id === currentUserId} abilities={memberAbilities(actor, member, members)} busy={busy}
-                  email={privacy.email(member.email)} onRole={(role) => void changeRole(member, role)} onRemove={() => void remove(member)} />
+                  email={privacy.email(member.email)} canEditPermissions={currentRole==='owner'&&member.role!=='owner'} onPermissions={()=>setPermissionTarget(member)} onRole={(role) => void changeRole(member, role)} onRemove={() => void remove(member)} />
               ))}
             </tbody>
           </table>
         </div>
       )}
+      {permissionTarget&&<MemberPermissionsDialog api={api} organizationId={organizationId} member={permissionTarget} busy={busy} onClose={()=>setPermissionTarget(null)} onSave={async permissions=>{
+        const ok=await run(()=>membersApi.setPermissions(api,organizationId,permissionTarget.user_id,permissions),'업무 권한을 저장했습니다.','업무 권한을 저장하지 못했습니다.');
+        if(ok)setPermissionTarget(null);
+      }}/>}
     </section>
   );
 }
@@ -124,9 +129,11 @@ interface MemberRowProps {
   email: string;
   onRole: (role: Role) => void;
   onRemove: () => void;
+  canEditPermissions:boolean;
+  onPermissions:()=>void;
 }
 
-function MemberRow({ member, self, abilities, busy, email, onRole, onRemove }: MemberRowProps) {
+function MemberRow({ member, self, abilities, busy, email, canEditPermissions,onPermissions,onRole, onRemove }: MemberRowProps) {
   const { changeRole, remove } = abilities;
   return (
     <tr>
@@ -139,7 +146,21 @@ function MemberRow({ member, self, abilities, busy, email, onRole, onRemove }: M
         />
       </td>
       <td>{kstDateKey(member.joined_at) || '-'}</td>
+      <td>{canEditPermissions&&<button type="button" className="secondary-button" disabled={busy} onClick={onPermissions}>업무 권한</button>}</td>
       <td><button type="button" className="danger-button" disabled={busy || !remove.allowed} title={remove.reason} onClick={onRemove}>제거</button></td>
     </tr>
   );
+}
+
+function MemberPermissionsDialog({api,organizationId,member,busy,onClose,onSave}:{api:MembersApiClient;organizationId:string;member:Member;busy:boolean;onClose:()=>void;onSave:(permissions:BusinessPermissions)=>Promise<void>}){
+ const [draft,setDraft]=useState<BusinessPermissions|null>(null),[loading,setLoading]=useState(true),[error,setError]=useState('');
+ const load=useCallback(()=>{setLoading(true);setError('');void membersApi.permissions(api,organizationId,member.user_id).then(setDraft).catch(()=>setError('권한을 불러오지 못했습니다. 다시 시도해 주세요.')).finally(()=>setLoading(false))},[api,organizationId,member.user_id]);
+ useEffect(()=>{load()},[load]);
+ const set=(code:BusinessPermissionCode,allowed:boolean)=>setDraft(value=>value?{...value,[code]:allowed}:value);
+ return <Modal title={`${member.display_name||member.email||'구성원'} · 업무 권한`} onClose={onClose} size="md"><div className="member-permissions">
+  <p className="muted">역할 기본값을 유지하면서 필요한 업무 권한만 조정합니다. 소유자 권한은 항상 보호됩니다.{member.role==='member'?' 구성원 역할은 현재 데이터 권한 정책상 조회·내보내기만 조정할 수 있습니다.':''}</p>
+  {loading&&<p role="status">권한을 불러오는 중입니다…</p>}{error&&<p role="alert" className="form-error">{error} <button type="button" onClick={load}>다시 시도</button></p>}
+  {draft&&<div className="member-permissions__grid">{(Object.entries(BUSINESS_PERMISSION_LABELS) as Array<[BusinessPermissionCode,string]>).map(([code,label])=><label key={code}><span>{label}</span><input type="checkbox" checked={draft[code]} disabled={busy||(member.role==='member'&&['customer.manage','appointment.manage','treatment.manage','payment.collect','refund.approve'].includes(code)&&!draft[code])} onChange={event=>set(code,event.target.checked)}/></label>)}</div>}
+  <div className="member-permissions__actions"><button type="button" className="secondary-button" onClick={onClose}>취소</button><button type="button" className="primary-button" disabled={busy||loading||!draft||!!error} onClick={()=>draft&&void onSave(draft)}>권한 저장</button></div>
+ </div></Modal>
 }

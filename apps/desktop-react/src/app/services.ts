@@ -2,6 +2,10 @@ import type { Session, Organization, Entitlement } from '../api/schemas';
 import type { Platform } from '../platform/types';
 
 export interface AppApi {
+  getPhoneRetentionConsent?(organizationId:string):Promise<{enabled:boolean;version:number;retention_days:30}>;
+  sendAccountEmail?(email:string,type:'recovery'|'signup'):Promise<void>;
+  listAccountSessions?(cursor?:string):Promise<{current_session_id:string;items:Array<{session_id:string;created_at:string;last_active_at:string|null;user_agent:string|null;is_current:boolean}>;total:number;next_cursor:string|null}>;
+  revokeAccountSessions?(sessionId:string|null):Promise<{current_revoked:boolean}>;
   login(email: string, password: string): Promise<Session>;
   restoreSession(): Promise<{ authenticated: false } | { authenticated: true; session: Session }>;
   logout(): Promise<void>;

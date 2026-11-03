@@ -16,10 +16,11 @@ export const SORT_LABELS: Record<CustomerSort, string> = { name: '이름순', cr
 const searchResponse = z.object({ items: z.array(customerSchema), total: z.number().int(), next_cursor: z.string().nullable() });
 export type CustomerSearchPage = z.infer<typeof searchResponse>;
 
-export type SearchParams = { q: string; status: StatusFilter; sort: CustomerSort; limit?: number; cursor?: string | null };
+export type SearchParams = { exclude_archived?: boolean; q: string; status: StatusFilter; sort: CustomerSort; limit?: number; cursor?: string | null };
 
 export function searchPath(organizationId: string, params: SearchParams): string {
   const query = new URLSearchParams({ status: params.status, sort: params.sort, limit: String(params.limit ?? PAGE_SIZE) });
+  if (params.exclude_archived !== undefined) query.set('exclude_archived', String(params.exclude_archived));
   if (params.q.trim()) query.set('q', params.q.trim());
   if (params.cursor) query.set('cursor', params.cursor);
   return `/organizations/${organizationId}/customers/search?${query.toString()}`;

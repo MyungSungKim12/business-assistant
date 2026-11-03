@@ -17,12 +17,14 @@ interface Call { method: string; path: string; body?: unknown }
 function fakeApi(initial: Member[], failWith?: Record<string, unknown>) {
   let members = initial;
   const calls: Call[] = [];
+  const permissions={'customer.read':true,'customer.manage':false,'appointment.read':true,'appointment.manage':false,'treatment.read':true,'treatment.manage':false,'payment.read':true,'payment.collect':false,'refund.approve':false,'data.export':false};
   const fail = () => { if (failWith) throw failWith; };
   const api = {
     call: vi.fn(async (method: string, path: string, _schema: unknown, body?: unknown) => {
       calls.push({ method, path, body });
-      if (method === 'GET') return members;
+      if (method === 'GET') return path.endsWith('/permissions')?permissions:members;
       fail();
+      if(method==='PUT')return{user_id:path.split('/').at(-2),permissions:body};
       if (method === 'POST') { const { email, role } = body as { email: string; role: Role }; members = [...members, member(50, role, { email })]; return { user_id: ID(50), role }; }
       const { role } = body as { role: Role };
       const userId = path.split('/').pop()!;
@@ -64,6 +66,27 @@ describe('MembersPage', () => {
     const { api } = setup([member(1, 'member')], 'member');
     expect(screen.getByText(/소유자와 관리자만/)).toBeInTheDocument();
     expect(api.call).not.toHaveBeenCalled();
+  });
+
+  it('소유자는 업무 권한을 읽고 수정해 저장하며 실패하면 화면을 유지한다',async()=>{
+    const {calls}=setup([member(1,'owner'),member(2,'admin')]);
+    await screen.findByText('user2@example.com');
+    fireEvent.click(within(screen.getByText('user2@example.com').closest('tr')!).getByRole('button',{name:'업무 권한'}));
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    const collect=await screen.findByLabelText('수납·정산 처리');
+    expect(collect).not.toBeChecked();fireEvent.click(collect);
+    fireEvent.click(screen.getByRole('button',{name:'권한 저장'}));
+    await waitFor(()=>expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(calls.find(call=>call.method==='PUT')).toMatchObject({path:`/organizations/${ORG}/members/${ID(2)}/permissions`});
+  });
+
+  it('구성원 역할은 기존 DB 역할 정책 밖의 쓰기 권한을 켤 수 없다',async()=>{
+    setup([member(1,'owner'),member(2,'member')]);
+    await screen.findByText('user2@example.com');
+    fireEvent.click(within(screen.getByText('user2@example.com').closest('tr')!).getByRole('button',{name:'업무 권한'}));
+    const manage=await screen.findByLabelText('고객 등록·수정');
+    expect(manage).toBeDisabled();
+    expect(screen.getByText(/구성원 역할은 현재 데이터 권한 정책상 조회·내보내기만/)).toBeInTheDocument();
   });
 
   it('역할을 바꾸면 확인 후 요청하고 목록을 새로 불러온다', async () => {

@@ -182,7 +182,7 @@ export function ConsentModal({ api, scope, document, readOnly, onClose }: { api:
             {events.map((item, index) => <li key={item.id}><button type="button" aria-pressed={selected === index} onClick={() => setSelected(index)}>{item.revision}. {consentActionLabel[item.action]} · {formatTime(item.occurred_at)} · {item.evidence ? `증빙 ${shortHash(item.evidence.hash)}` : '증빙 없음'}</button></li>)}
             {loaded && events.length === 0 && <li className="muted">아직 기록이 없습니다.</li>}
           </ul>
-          {event && <pre className="doc-body" aria-label="기록 상세">{`${consentActionLabel[event.action]}\n기록자 ID: ${event.actor_id}\n기록 시각(서버): ${formatTime(event.occurred_at)}\n${eventDetail(event)}\n증빙 해시: ${event.evidence ? `${shortHash(event.evidence.hash)}… (${event.evidence.algorithm})` : '없음 (증빙 기능 적용 이전 기록)'}`}</pre>}
+          {event && <pre className="doc-body" aria-label="기록 상세">{`${consentActionLabel[event.action]}\n${event.signer_channel === 'customer_link' ? '기록 경로: 고객 모바일 서명' : `기록자 ID: ${event.actor_id ?? '확인 불가'}`}\n기록 시각(서버): ${formatTime(event.occurred_at)}\n${eventDetail(event)}\n증빙 해시: ${event.evidence ? `${shortHash(event.evidence.hash)}… (${event.evidence.algorithm})` : '없음 (증빙 기능 적용 이전 기록)'}`}</pre>}
           {event && <div className="doc-actions">
             <button type="button" disabled={check?.busy} onClick={() => void verify(event)}>{check?.busy ? '확인 중…' : '무결성 확인'}</button>
             {check?.result && <span role="status" className={`doc-verify doc-verify--${check.result.status}`}>{evidenceStatusLabel[check.result.status]}</span>}

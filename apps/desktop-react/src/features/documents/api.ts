@@ -24,6 +24,8 @@ export const documentApi = {
   /** 서버가 저장된 증빙 해시와 지금 기록으로 다시 계산한 값을 비교한 결과. */
   verifyEvent: (api: ApiClient, s: Scope, documentId: string, eventId: string) => api.call('GET', `${treatmentBase(s)}/${documentId}/events/${eventId}/verify`, evidenceVerificationSchema),
   recordEvent: (api: ApiClient, s: Scope, documentId: string, input: ConsentRequest) => api.call('POST', `${treatmentBase(s)}/${documentId}/events`, consentEventSchema, input),
+  createCustomerSignatureLink: (api: ApiClient, s: Scope, documentId: string) => api.call('POST', `${treatmentBase(s)}/${documentId}/signature-links`, z.object({ id: z.uuid(), url: z.url(), expires_at: z.string() }), {}),
+  revokeCustomerSignatureLink: (api: ApiClient, organizationId: string, linkId: string) => api.call('DELETE', `${org(organizationId)}/document-signature-links/${linkId}`, z.object({ revoked: z.literal(true) })),
   listCustomers: (api: ApiClient, o: string) => api.call('GET', `${org(o)}/customers`, customerOptionsSchema),
   listTreatments: (api: ApiClient, o: string) => api.call('GET', `${org(o)}/operations/treatments`, treatmentOptionsSchema),
 };

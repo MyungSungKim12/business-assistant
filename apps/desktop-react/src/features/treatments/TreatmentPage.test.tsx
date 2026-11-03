@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { ConfirmDialog } from '@business-assistant/react-ui';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { z } from 'zod';
@@ -27,6 +27,7 @@ type Call = { method: string; path: string; body: unknown };
 type Handler = (call: Call, state: { records: Treatment[] }) => unknown | undefined;
 
 function setup(options: { records?: Treatment[]; handler?: Handler; customers?: object[]; listCustomers?: () => Promise<object[]>; photos?: object[] } = {}) {
+  const readCustomers=options.listCustomers ?? (async () => options.customers ?? [customer(cust, '김고객'), customer(other, '박고객', { phone: null, allergies: '', skin_type: null, concerns: [] })]);
   const state = { records: options.records ?? [treatment(t1)] };
   const calls: Call[] = [];
   const call = vi.fn(async (method: string, path: string, schema: z.ZodType, body?: unknown) => {
@@ -34,6 +35,7 @@ function setup(options: { records?: Treatment[]; handler?: Handler; customers?: 
     calls.push(entry);
     const custom = options.handler?.(entry, state);
     if (custom !== undefined) return schema.parse(custom);
+    if(method==='GET'&&path.includes('/customers/search?')){const all=await readCustomers();const q=new URLSearchParams(path.split('?')[1]).get('q')??'';const rows=all.filter(row=>JSON.stringify(row).includes(q));return schema.parse({items:rows,total:rows.length,next_cursor:null});}
     if (method === 'GET' && path.endsWith('/treatments')) return schema.parse(state.records);
     if (method === 'POST' && path.endsWith('/treatments')) {
       const created = treatment(other, { ...(body as object), id: '88888888-8888-4888-8888-888888888888' } as Partial<Treatment>);
@@ -64,6 +66,7 @@ function setup(options: { records?: Treatment[]; handler?: Handler; customers?: 
   });
   const api = {
     listCustomers: vi.fn(options.listCustomers ?? (async () => options.customers ?? [customer(cust, '김고객'), customer(other, '박고객', { phone: null, allergies: '', skin_type: null, concerns: [] })])),
+    getCustomer:vi.fn(async(_o:string,id:string)=>{const row=(await readCustomers()).find(row=>(row as {id:string}).id===id);if(!row)throw new ApiError(404,'NOT_FOUND','missing',false);return row;}),
     listCustomerPhotos: vi.fn(async () => options.photos ?? []),
     createPhotoDownloadUrl: vi.fn(async (_o: string, _c: string, id: string) => ({ photo: {}, signed_url: `https://files.test/${id}`, expires_in: 60 })),
     filePlatform: { downloadBinary: vi.fn(async () => new Uint8Array([1, 2, 3])), pickImages: vi.fn(async () => []) },
@@ -80,6 +83,40 @@ const change = (label: string, value: string) => fireEvent.change(screen.getByLa
 const openRecord = async (name = '수분 관리') => { fireEvent.click(await screen.findByText(name)); await waitFor(() => expect(screen.getByLabelText('시술명 *')).toHaveValue(name)); };
 
 describe('TreatmentPage', () => {
+  it('keeps treatment customer selection while a photo re-selection is pending',async()=>{
+    const {api,view}=setup();let finish!:(files:never[])=>void;
+    (api as unknown as {filePlatform:{pickImages:()=>Promise<never[]>}}).filePlatform.pickImages=()=>new Promise(r=>{finish=r;});
+    view();await screen.findByText('수분 관리');fireEvent.click(await screen.findByRole('button',{name:'사진 추가'}));
+    await act(async()=>fireEvent.click(screen.getByRole('button',{name:/박고객/})));
+    expect(screen.getByRole('button',{name:/김고객/})).toHaveAttribute('aria-pressed','true');
+    await act(async()=>finish([]));await act(async()=>fireEvent.click(screen.getByRole('button',{name:/박고객/})));
+    expect(screen.getByRole('button',{name:/박고객/})).toHaveAttribute('aria-pressed','true');
+  });
+  it('search changes keep the selected customer and unsaved treatment outside the results',async()=>{
+    const {api,view}=setup();view();await openRecord();
+    change('시술명 *','작성 중인 초안');
+    change('고객 검색','박고객');
+    await waitFor(()=>expect(screen.getByRole('button',{name:/박고객/})).toBeInTheDocument());
+    expect(screen.getByRole('button',{name:/김고객/})).toHaveAttribute('aria-pressed','true');
+    expect(screen.getByLabelText('시술명 *')).toHaveValue('작성 중인 초안');
+    expect((api as unknown as {listCustomers:ReturnType<typeof vi.fn>}).listCustomers).not.toHaveBeenCalled();
+  });
+  it('a new focused request cannot discard a dirty draft when confirmation is canceled',async()=>{
+    const {api}=setup();
+    const tree=(nonce:number)=><><TreatmentPage api={api} organizationId={org} readOnly={false} initialCustomerId={cust} focusNonce={nonce}/><ConfirmDialog/></>;
+    const rendered=render(tree(1));await openRecord();change('시술명 *','보호할 초안');
+    rendered.rerender(tree(2));
+    fireEvent.click(await screen.findByRole('button',{name:'취소'}));
+    expect(screen.getByLabelText('시술명 *')).toHaveValue('보호할 초안');
+  });
+  it('opens a focused customer by ID even when absent from the bounded search page',async()=>{
+    const {api}=setup({handler:({path})=>path.includes('/customers/search?')?{items:[customer(cust,'김고객')],total:1501,next_cursor:'next'}:undefined});
+    render(<TreatmentPage api={api} organizationId={org} readOnly={false} initialCustomerId={other}/>);
+    await waitFor(()=>expect(screen.getByRole('button',{name:/박고객/})).toHaveAttribute('aria-pressed','true'));
+    expect((api as unknown as {getCustomer:ReturnType<typeof vi.fn>}).getCustomer).toHaveBeenCalledWith(org,other);
+    expect((api as unknown as {listCustomers:ReturnType<typeof vi.fn>}).listCustomers).not.toHaveBeenCalled();
+  });
+
   it('예약에서 다시 열면 연결된 개별 시술을 선택하고 입력 중 연결 창은 막는다',async()=>{
     const {api,calls}=setup({records:[treatment(t1,{appointment_id:doc,visit_id:t2})]});
     render(<TreatmentPage api={api} organizationId={org} readOnly={false} initialCustomerId={cust} initialAppointmentId={doc}/>);
@@ -562,4 +599,29 @@ describe('TreatmentPage 프로토콜 템플릿(TRT-12)', () => {
     await waitFor(() => expect(within(dialog).getByLabelText(/상담 목표/)).toHaveValue('수분 개선'));
     expect(within(dialog).getByLabelText(/예정 관리 내용/)).toHaveValue('4주 간격');
   });
+});
+
+it('keeps the current editor while focus resolves, then guards edits typed during lookup',async()=>{
+ const {api}=setup();let resolveFocus:(value:unknown)=>void=()=>{};
+ const tree=(id:string)=><><TreatmentPage api={api} organizationId={org} readOnly={false} initialCustomerId={id}/><ConfirmDialog/></>;
+ const rendered=render(tree(cust));await openRecord();
+ const lookup=vi.mocked((api as {getCustomer:ReturnType<typeof vi.fn>}).getCustomer);
+ lookup.mockImplementation(async(_o:string,id:string)=>id===other?new Promise<unknown>(resolve=>{resolveFocus=resolve;}):customer(cust,'김고객'));
+ rendered.rerender(tree(other));
+ await waitFor(()=>expect(lookup).toHaveBeenCalledWith(org,other));
+ change('시술명 *','조회 중 작성한 초안');
+ expect(screen.getByRole('button',{name:/김고객/})).toHaveAttribute('aria-pressed','true');
+ resolveFocus(customer(other,'박고객'));
+ fireEvent.click(await screen.findByRole('button',{name:'취소'}));
+ expect(screen.getByLabelText('시술명 *')).toHaveValue('조회 중 작성한 초안');
+ expect(screen.getByRole('button',{name:/김고객/})).toHaveAttribute('aria-pressed','true');
+});
+it('keeps the old selected customer and draft when focused lookup fails',async()=>{
+ const {api}=setup();const tree=(id:string)=><TreatmentPage api={api} organizationId={org} readOnly={false} initialCustomerId={id}/>;
+ const rendered=render(tree(cust));await openRecord();change('시술명 *','실패에도 보존');
+ vi.mocked((api as {getCustomer:ReturnType<typeof vi.fn>}).getCustomer).mockRejectedValue(new Error('offline'));
+ rendered.rerender(tree(other));
+ expect(await screen.findByRole('alert')).toHaveTextContent('작성 중인 기록은 유지');
+ expect(screen.getByLabelText('시술명 *')).toHaveValue('실패에도 보존');
+ expect(screen.getByRole('button',{name:/김고객/})).toHaveAttribute('aria-pressed','true');
 });

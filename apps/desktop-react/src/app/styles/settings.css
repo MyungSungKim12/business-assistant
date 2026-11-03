@@ -1,23 +1,22 @@
-/* settings.css */
-.settings-list {
-  display: grid;
+.settings-list { display: grid; min-width: 0; }
+.settings-list > label, .settings-list .settings-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center;
+  gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--border); min-width: 0;
 }
-
-.settings-list>label,
-.settings-list>div {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--border);
+.settings-list span { display: grid; gap: 3px; min-width: 0; }
+.settings-list strong { font-weight: 600; line-height: 1.5; }
+.settings-list small { color: var(--text-muted); font-weight: 400; line-height: 1.55; overflow-wrap: anywhere; }
+.settings-list input[type="checkbox"] {
+  width: 16px; height: 16px; min-width: 16px; min-height: 16px; max-width: 16px;
+  padding: 0; margin: 0; justify-self: end; align-self: center; accent-color: var(--accent, #8d6c53);
 }
-
-.settings-list span {
-  display: grid;
-}
-
-.settings-list small {
-  color: var(--text-muted);
-  font-weight: 400;
+.settings-list .windows-notification-control, .settings-list .settings-update-group { display: grid; min-width: 0; }
+.settings-list .settings-actions { display: flex; justify-content: flex-end; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.settings-list button { white-space: nowrap; }
+.settings-list .settings-row > button, .settings-list button[role="combobox"] { min-width: 118px; }
+.settings-list .windows-notification-control > p { margin: 4px 0 10px; line-height: 1.5; font-size: 12px; }
+@media (max-width: 480px) {
+  .settings-list > label, .settings-list .settings-row { gap: 10px; }
+  .settings-list .settings-row > button { min-width: 96px; }
 }
 

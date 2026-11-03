@@ -305,3 +305,7 @@
 .pg-tile:focus-within .pg-delete {
   display: grid;
 }
+.pg-recovery { margin: 8px 0; padding: 10px; border: 1px solid var(--border-color, #d4d7dc); border-radius: 8px; font-size: 12px; }
+.pg-recovery__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.pg-recovery ul { max-height: 150px; overflow: auto; padding-left: 20px; }
+.pg-recovery li { margin-bottom: 5px; overflow-wrap: anywhere; }

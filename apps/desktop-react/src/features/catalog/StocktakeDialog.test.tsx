@@ -26,6 +26,27 @@ const confirmApply = async () => {
 };
 
 describe('StocktakeDialog', () => {
+  it('바코드를 읽을 때마다 해당 상품의 실사 수량을 1개씩 늘린다',async()=>{
+    const tagged=product({id:'scan',name:'스캔 상품',stock_quantity:2,barcode:'8801112223334'}) as CatalogProduct;
+    open({},[tagged]);
+    const input=screen.getByLabelText('실사 바코드 스캔');
+    fireEvent.change(input,{target:{value:'8801112223334'}});fireEvent.keyDown(input,{key:'Enter',code:'Enter'});
+    fireEvent.change(input,{target:{value:'8801112223334'}});fireEvent.keyDown(input,{key:'Enter',code:'Enter'});
+    expect(screen.getByLabelText('스캔 상품 실사 수량')).toHaveValue(2);
+    expect(screen.getByText('바코드 스캔 수량: 스캔 상품 2개')).toBeInTheDocument();
+  });
+
+  it('같은 바코드가 여러 상품에 있으면 수량을 임의 변경하지 않는다',async()=>{
+    const first=product({id:'scan-1',name:'중복1',barcode:'880999'}) as CatalogProduct;
+    const second=product({id:'scan-2',name:'중복2',barcode:'880999'}) as CatalogProduct;
+    open({},[first,second]);
+    const input=screen.getByLabelText('실사 바코드 스캔');
+    fireEvent.change(input,{target:{value:'880999'}});fireEvent.keyDown(input,{key:'Enter',code:'Enter'});
+    expect(screen.getByLabelText('중복1 실사 수량')).toHaveValue(null);
+    expect(screen.getByLabelText('중복2 실사 수량')).toHaveValue(null);
+    expect(screen.getByRole('status')).toHaveTextContent('같은 바코드가 여러 상품에 등록되어 있어 실사 수량을 변경하지 않았습니다');
+  });
+
   it('하단 닫기에서도 실사 입력을 버릴지 확인하고 취소하면 입력을 지킨다', async () => {
     const kit=server({}),onClose=vi.fn();
     render(<><ConfirmDialog/><StocktakeDialog api={kit.api} organizationId={ORG} products={[a]} onApplied={()=>undefined} onClose={onClose}/></>);

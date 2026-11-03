@@ -1,12 +1,15 @@
 import { z } from 'zod';
 import type { ApiClient } from '../../api/client';
-import { appointmentsSchema, type Appointment, type AppointmentService, type AppointmentStaff } from '../../api/schemas';
+import { customerSchema, appointmentsSchema, type Appointment, type AppointmentService, type AppointmentStaff } from '../../api/schemas';
 import { salesApi } from '../sales/api';
 import type { Receivables, Transaction } from '../sales/types';
 import { CHART_MAX_DAYS, addDaysKey, monthStartKey, prevMonthStartKey, type StockItem, type WalletRow } from './dashboardMetrics';
 
 /** 대시보드가 쓰는 ApiClient의 부분. 테스트에서는 이 메서드만 가진 가짜를 넣는다. */
-export type DashboardApi = Pick<ApiClient, 'call' | 'listCustomers' | 'listTasks' | 'updateTask' | 'listAppointmentStaff' | 'listAppointmentServices' | 'listOperationRecords'>;
+export type DashboardApi = Pick<ApiClient, 'call' | 'getCustomer' | 'listTasks' | 'updateTask' | 'listAppointmentStaff' | 'listAppointmentServices' | 'listOperationRecords'>;
+
+export const customerDashboardSchema=z.object({organization_id:z.string(),active_count:z.number().int().nonnegative(),upcoming_count:z.number().int().nonnegative(),recent:z.array(customerSchema).max(5),upcoming:z.array(customerSchema).max(10)});
+export type CustomerDashboard=z.infer<typeof customerDashboardSchema>;
 
 const org = (organizationId: string) => `/organizations/${organizationId}`;
 
@@ -34,6 +37,7 @@ export interface TodayAppointments {
 }
 
 export const dashboardApi = {
+  customers(api:DashboardApi,organizationId:string,today:string):Promise<CustomerDashboard>{return api.call('GET',`${org(organizationId)}/customer-dashboard?today=${encodeURIComponent(today)}`,customerDashboardSchema);},
   /** 오늘 전후 하루를 받아 KST 날짜 경계는 화면에서 거른다. 직원·서비스 이름이 없어도 예약은 보여 준다. */
   async appointments(api: DashboardApi, organizationId: string, today: string): Promise<TodayAppointments> {
     const range = `from_date=${addDaysKey(today, -1)}&to_date=${addDaysKey(today, 1)}`;

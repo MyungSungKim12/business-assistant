@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { Modal, confirm, notify } from '@business-assistant/react-ui';
 import type { CallApi } from '../appointment-resources/api';
 import { createOperationTracker, isDefiniteRejection, type OperationTracker } from '../appointment-resources/operationIds';
@@ -24,6 +24,8 @@ export interface StocktakeDialogProps {
 export function StocktakeDialog({ api, organizationId, products, onApplied, onClose }: StocktakeDialogProps) {
   const [counts, setCounts] = useState<Record<string, string>>({});
   const [reason, setReason] = useState(DEFAULT_REASON);
+  const [barcodeScan,setBarcodeScan]=useState('');
+  const [barcodeMessage,setBarcodeMessage]=useState('');
   const [rowStates, setRowStates] = useState<Record<string, RowState>>({});
   const [applied, setApplied] = useState<Record<string, CatalogProduct>>({});
   const [busy, setBusy] = useState(false);
@@ -49,6 +51,18 @@ export function StocktakeDialog({ api, organizationId, products, onApplied, onCl
     return created;
   };
   const setRow = (productId: string, state: RowState) => setRowStates((currentStates) => ({ ...currentStates, [productId]: state }));
+
+  function scanBarcode(event: KeyboardEvent<HTMLInputElement>){
+    if(event.key!=='Enter')return;event.preventDefault();const code=barcodeScan.trim();if(!code)return;setBarcodeScan('');
+    const matches=current.filter(product=>product.is_active&&product.barcode?.trim()===code);
+    if(matches.length===0){setBarcodeMessage('등록된 실물 상품이 없습니다. 상품 바코드를 확인하세요.');return;}
+    if(matches.length>1){setBarcodeMessage('같은 바코드가 여러 상품에 등록되어 있어 실사 수량을 변경하지 않았습니다. 바코드를 정리하세요.');return;}
+    const product=matches[0]!;const currentText=(counts[product.id]??'').trim();
+    if(currentText!==''&&!/^\d+$/.test(currentText)){setBarcodeMessage(`${product.name} 실사 수량을 먼저 정수로 고쳐 주세요.`);return;}
+    const next=(currentText===''?0:Number(currentText))+1;
+    if(!Number.isSafeInteger(next)||next>1_000_000_000){setBarcodeMessage('실사 수량 한도에 도달해 더 늘릴 수 없습니다.');return;}
+    setCounts(old=>({...old,[product.id]:String(next)}));setBarcodeMessage(`바코드 스캔 수량: ${product.name} ${next.toLocaleString('ko-KR')}개`);
+  }
 
   /** 한 상품을 반영한다. 같은 입력의 재시도는 같은 operation_id를 써서 서버에서 중복 없이 처리된다. */
   async function applyOne(entry: StocktakeEntry, text: string): Promise<boolean> {
@@ -101,6 +115,7 @@ export function StocktakeDialog({ api, organizationId, products, onApplied, onCl
     <Modal title="재고 실사" size="lg" onClose={() => void close()}>
       <div className="stocktake">
         <p className="muted">실제로 센 수량을 입력하세요. 입력하지 않은 상품은 바꾸지 않습니다.</p>
+        <div className="inline-form"><label>실사 바코드 스캔<input aria-label="실사 바코드 스캔" placeholder="상품 바코드 스캔 후 Enter" autoComplete="off" spellCheck={false} disabled={busy} value={barcodeScan} onChange={event=>setBarcodeScan(event.currentTarget.value)} onKeyDown={scanBarcode}/></label><span role="status" aria-live="polite">{barcodeMessage}</span></div>
         <div className="stocktake-table" role="region" aria-label="실사 입력">
           <table>
             <thead><tr><th>상품</th><th>SKU</th><th className="num">현재 재고</th><th className="num">실사 수량</th><th className="num">차이</th><th>결과</th></tr></thead>

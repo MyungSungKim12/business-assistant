@@ -205,9 +205,13 @@ describe('InventoryPage', () => {
   });
 
   it('입고는 사유와 수량을 검증하고 재고를 갱신한다', async () => {
-    const { api, calls } = server({ 'GET /catalog-products': () => [cream], 'POST /catalog-products/p1/stock-receipts': () => ({ ...cream, version: 2, stock_quantity: 10 }) });
+    const scanned={...cream,barcode:'8801234567890'};
+    const { api, calls } = server({ 'GET /catalog-products': () => [scanned], 'POST /catalog-products/p1/stock-receipts': () => ({ ...scanned, version: 2, stock_quantity: 10 }) });
     renderInventory(api as never);
-    fireEvent.click(await screen.findByText('보습 크림'));
+    await screen.findByText('보습 크림');
+    fireEvent.change(screen.getByLabelText('바코드 스캔'),{target:{value:'8801234567890'}});
+    fireEvent.keyDown(screen.getByLabelText('바코드 스캔'),{key:'Enter',code:'Enter'});
+    await screen.findByLabelText('수량');
     fireEvent.change(screen.getByLabelText('수량'), { target: { value: '3' } });
     fireEvent.click(screen.getByRole('button', { name: '선택 상품 입고' }));
     expect(await screen.findByText('실물 상품을 선택하고 입고 사유를 입력하세요.')).toBeInTheDocument();

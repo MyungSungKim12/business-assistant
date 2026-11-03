@@ -42,6 +42,8 @@ export function TreatmentDocumentModal({ api, organizationId, customerId, treatm
   const [tab, setTab] = useState<'review' | 'history'>('review');
   const [selected, setSelected] = useState('');
   const [consent, setConsent] = useState<IssuedDocument | null>(null);
+  const [signatureLink, setSignatureLink] = useState<{ id: string; url: string; expires_at: string } | null>(null);
+  const [linkBusy, setLinkBusy] = useState(false);
 
   const load = useCallback(async () => {
     setBusy(true);
@@ -121,6 +123,28 @@ export function TreatmentDocumentModal({ api, organizationId, customerId, treatm
   const unlocked = !busy && pending === null;
   const valid = preview !== null && preview.missing_fields.length === 0;
   const current = issued.find((row) => row.id === selected);
+  const createSignatureLink = async () => {
+    if (!current || readOnly || linkBusy) return;
+    setLinkBusy(true);
+    try {
+      const link = await documentApi.createCustomerSignatureLink(api, scope, current.id);
+      setSignatureLink(link);
+      setStatus('48시간 동안 사용할 수 있는 고객 서명 링크를 만들었습니다. 이 발행본의 이전 미사용 링크는 자동 철회됩니다.');
+    } catch (error) { setStatus(messageFor(error, issueMessages, '서명 링크를 만들지 못했습니다. 운영 API HTTPS 주소 설정과 문서 상태를 확인하세요.')); }
+    finally { setLinkBusy(false); }
+  };
+  const revokeSignatureLink = async () => {
+    if (!signatureLink || linkBusy) return;
+    setLinkBusy(true);
+    try { await documentApi.revokeCustomerSignatureLink(api, organizationId, signatureLink.id); setSignatureLink(null); setStatus('서명 링크를 철회했습니다.'); }
+    catch (error) { setStatus(messageFor(error, issueMessages, '링크를 철회하지 못했습니다. 이미 사용되었거나 만료됐을 수 있습니다.')); }
+    finally { setLinkBusy(false); }
+  };
+  const copySignatureLink = async () => {
+    if (!signatureLink) return;
+    try { await navigator.clipboard.writeText(signatureLink.url); notify.success('링크를 복사했습니다.'); }
+    catch { setStatus('링크를 선택해 복사해 주세요.'); }
+  };
 
   // 동의 창이 열린 동안에는 이 창을 숨겨 Esc·포커스가 한 창에만 적용되게 한다(상태는 유지).
   if (consent) return <ConsentModal api={api} scope={scope} document={consent} readOnly={readOnly} onClose={() => setConsent(null)} />;
@@ -160,8 +184,10 @@ export function TreatmentDocumentModal({ api, organizationId, customerId, treatm
             <pre className="doc-body" aria-label="발행본 내용">{current.content}</pre>
             <div className="doc-actions">
               <button type="button" disabled={busy || pending !== null} onClick={() => setConsent(current)}>선택한 발행본 · 서명·교부·철회</button>
+              {!readOnly && <button type="button" disabled={linkBusy || busy || pending !== null} onClick={() => void createSignatureLink()}>고객 모바일 서명 링크</button>}
               <PdfExportButton disabled={busy || pending !== null} onExport={() => exportConsentPdf(api, scope, current)} />
             </div>
+            {signatureLink && <div className="doc-preview-info"><strong>고객 전달용 링크 · 48시간 유효</strong><br /><a href={signatureLink.url} target="_blank" rel="noreferrer">{signatureLink.url}</a><div className="doc-actions"><button type="button" disabled={linkBusy} onClick={() => void copySignatureLink()}>링크 복사</button><button type="button" disabled={linkBusy} onClick={() => void revokeSignatureLink()}>링크 철회</button></div><small>문서 발행본의 내용과 서식 버전에 고정됩니다. 새 링크를 만들면 이전 미사용 링크는 철회됩니다. 원문 링크는 다시 조회되지 않으니 안전한 방법으로 고객에게 직접 전달하세요.</small></div>}
           </>}
         </div>}
         <p role={failed ? 'alert' : 'status'} className={failed ? 'form-error' : 'muted'}>{status}</p>

@@ -39,7 +39,7 @@ export function usePhotoLibrary(api: ApiClient, organizationId: string, customer
     return () => { generation.current += 1; };
   }, [load]);
 
-  /** 사진을 고르고 서명 URL로 올린다. 올리다 실패하면 서버 기록을 보관 처리해 되돌린다. */
+  /** 전송 결과가 불확실하면 pending을 유지한다. 실제 객체 확인/만료는 서버가 처리한다. */
   const upload = useCallback(async () => {
     const started = scopeRef.current;
     const stillHere = () => scopeRef.current === started;
@@ -51,17 +51,24 @@ export function usePhotoLibrary(api: ApiClient, organizationId: string, customer
       for (const file of files) {
         validatePhoto(file);
         const prepared = await apiRef.current.createPhotoUploadUrl(organizationId, customerId, { original_name: file.name, content_type: file.contentType, size_bytes: file.size, caption: '' });
+        let transferred=false;
         try {
           await platform.uploadBinary(prepared.signed_url, file);
-          if (stillHere()) setItems((old) => [prepared.photo, ...old]);
+          transferred=true;
+          const completed=await apiRef.current.completeCustomerPhotoUpload(organizationId,customerId,prepared.photo.id);
+          if (stillHere()) setItems((old) => [completed, ...old]);
         } catch (uploadError) {
           const reason = describePhotoError(uploadError);
-          platform.log?.('ERROR', `사진 업로드 실패: ${uploadError instanceof Error ? uploadError.message : String(uploadError)}`);
+          if(transferred){
+            if(stillHere())setNotice(`${file.name} 전송 완료 확인에 실패했습니다. 새로고침하면 서버에서 전송 결과를 다시 확인합니다. ${reason}`);
+            continue;
+          }
           try {
-            await apiRef.current.archiveCustomerPhoto(organizationId, customerId, prepared.photo.id);
-            if (stillHere()) setNotice(`${file.name} 업로드에 실패했습니다. ${reason}`);
+            // A failed PUT response does not prove that Storage failed to save the object.
+            const completed=await apiRef.current.completeCustomerPhotoUpload(organizationId,customerId,prepared.photo.id);
+            if(stillHere())setItems(old=>[completed,...old.filter(row=>row.id!==completed.id)]);
           } catch {
-            if (stillHere()) setNotice(`${file.name} 업로드 복구가 필요합니다. 사진 ID: ${prepared.photo.id}`);
+            if(stillHere())setNotice(`${file.name} 전송 결과를 확인하지 못했습니다. 새로고침하면 서버에서 다시 확인하며, 미완료 기록은 자동 정리됩니다. 사진 ID: ${prepared.photo.id} ${reason}`);
           }
         }
       }

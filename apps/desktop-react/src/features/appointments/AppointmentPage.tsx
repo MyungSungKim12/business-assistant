@@ -11,6 +11,8 @@ import { AppointmentList } from './AppointmentList';
 import { AppointmentToolbar, type ViewMode } from './AppointmentToolbar';
 import { WaitlistDialog } from './WaitlistDialog';
 import { AppointmentSeriesDialog } from './AppointmentSeriesDialog';
+import { AppointmentVisitGroupDialog } from './AppointmentVisitGroupDialog';
+import { BookingPolicyDialog } from './BookingPolicyDialog';
 import { DayGrid } from './DayGrid';
 import { ReasonModal, type ReasonKind } from './ReasonModal';
 import { WeekGrid } from './WeekGrid';
@@ -19,10 +21,13 @@ import { canEditAppointment, mergeAppointments, nameLookup, needsReason, statusL
 import { useDraftProtection } from '../../app/DraftBoundary';
 import { addDays, formatKstTime, kstDateKey, kstIso, localInputAt, todayKstKey, toKstLocalInput, weekStartOf } from './appointmentTime';
 import './appointments.css';
+import { z } from 'zod';
 
 /** 서버가 기본으로 돌려주는 범위(오늘 -7일 ~ +60일, KST). 그 밖의 날짜는 기간을 지정해 따로 불러온다. */
 const DEFAULT_PAST_DAYS = 7;
 const DEFAULT_FUTURE_DAYS = 60;
+const visitGroupTransitionResult=z.object({visit_group_id:z.uuid(),organization_id:z.uuid(),customer_id:z.uuid(),version:z.number().int().positive(),status:z.enum(['active','completed','no_show']),updated:appointmentsSchema,replayed:z.boolean()});
+const visitGroupCancelResult=z.object({visit_group_id:z.uuid(),organization_id:z.uuid(),customer_id:z.uuid(),version:z.number().int().positive(),status:z.literal('canceled'),canceled:appointmentsSchema,replayed:z.boolean()});
 
 type Panel =
   | { kind: 'none' }
@@ -60,8 +65,11 @@ export function AppointmentPage({ api, organizationId, readOnly, canManageResour
   const [panel, setPanel] = useState<Panel>(() => (readOnly ? { kind: 'none' } : { kind: 'create', key: 0 }));
   const [resourceDialog, setResourceDialog] = useState(false);
   const [branchDialog, setBranchDialog] = useState(false);
+  const [bookingPolicyDialog,setBookingPolicyDialog]=useState(false);
   const [waitlistDialog,setWaitlistDialog]=useState(false);
   const [seriesDialog,setSeriesDialog]=useState(false);
+  const [visitGroupDialog,setVisitGroupDialog]=useState(false);
+  const [visitGroupEditId,setVisitGroupEditId]=useState<string|null>(null);
   const [reasonTarget, setReasonTarget] = useState<{ appointment: Appointment; kind: ReasonKind } | null>(null);
   const [busy, setBusy] = useState(false);
   const [statusFilter, setStatusFilter] = useState('');
@@ -72,6 +80,7 @@ export function AppointmentPage({ api, organizationId, readOnly, canManageResour
   const [now, setNow] = useState(() => Date.now());
   const dirtyRef = useRef(false);
   const editorBusy = useRef(false);
+  const visitGroupOperation=useRef<{fingerprint:string;id:string}|null>(null);
   const reportBusy = useCallback((saving: boolean) => { editorBusy.current = saving; }, []);
   const createKey = useRef(1);
   const mutationRevision = useRef(0);
@@ -168,6 +177,8 @@ export function AppointmentPage({ api, organizationId, readOnly, canManageResour
     ? items.find((item) => item.id === panel.id) ?? (selectedSnapshot?.id === panel.id ? selectedSnapshot : null)
     : null;
   const selectedId = selected?.id ?? null;
+  const selectedGroupRows=selected?.visit_group_id?items.filter(row=>row.visit_group_id===selected.visit_group_id&&row.is_current!==false).sort((a,b)=>(a.visit_order??0)-(b.visit_order??0)):[];
+  const editingVisitGroup=visitGroupEditId?items.find(row=>row.id===visitGroupEditId):undefined;
   useEffect(() => {
     if (panel.kind !== 'detail' && panel.kind !== 'edit') return;
     const current = items.find(item => item.id === panel.id);
@@ -260,6 +271,7 @@ export function AppointmentPage({ api, organizationId, readOnly, canManageResour
   }
 
   async function transition(item: Appointment, target: TargetStatus, reason: string | null = null) {
+    if(item.visit_group_id){await transitionVisitGroup(item,target,reason);return;}
     mutationRevision.current++;
     setBusy(true);
     try {
@@ -271,6 +283,26 @@ export function AppointmentPage({ api, organizationId, readOnly, canManageResour
       setError(status === 409 ? '다른 곳에서 먼저 변경되었거나 지금 상태에서는 할 수 없는 처리입니다. 목록을 새로 불러옵니다.' : '예약 상태를 변경하지 못했습니다.');
       void load();
     } finally { mutationRevision.current++; setBusy(false); }
+  }
+
+  async function transitionVisitGroup(item:Appointment,target:TargetStatus,reason:string|null){
+    const groupId=item.visit_group_id,expectedVersion=item.visit_group_version;if(!groupId||!expectedVersion){setError('복수 시술 예약 버전을 확인하지 못했습니다. 최신 일정을 불러온 뒤 다시 시도해 주세요.');void load();return;}
+    const input=target==='canceled'?{expected_version:expectedVersion,reason:reason??'',operation_id:''}:{expected_version:expectedVersion,target_status:target,reason,operation_id:''};
+    const fingerprint=JSON.stringify([organizationId,groupId,input]);if(visitGroupOperation.current?.fingerprint!==fingerprint)visitGroupOperation.current={fingerprint,id:crypto.randomUUID()};input.operation_id=visitGroupOperation.current.id;
+    mutationRevision.current++;setBusy(true);
+    try{
+      let rows:Appointment[];
+      if(target==='canceled'){
+        const saved=await api.call('POST',`/organizations/${organizationId}/appointment-visit-groups/${groupId}/cancel`,visitGroupCancelResult,input);
+        if(saved.organization_id!==organizationId||saved.visit_group_id!==groupId)throw new Error('invalid visit group response');rows=saved.canceled;
+      }else{
+        const saved=await api.call('POST',`/organizations/${organizationId}/appointment-visit-groups/${groupId}/transition`,visitGroupTransitionResult,input);
+        if(saved.organization_id!==organizationId||saved.visit_group_id!==groupId)throw new Error('invalid visit group response');rows=saved.updated;
+      }
+      if(rows.some(row=>row.visit_group_id!==groupId||row.organization_id!==organizationId))throw new Error('invalid visit group response');
+      visitGroupOperation.current=null;setItems(old=>mergeAppointments(old,rows));setError('');notify.success(target==='canceled'?'복수 시술 예약 전체를 취소했습니다.':`복수 시술 예약 전체를 ${statusLabels[target]} 처리했습니다.`);
+    }catch(failure){const status=(failure as{status?:number}).status;if(status&&status<500)visitGroupOperation.current=null;setError(status===409?'다른 곳에서 먼저 예약 묶음이 변경되었습니다. 최신 일정을 다시 불러왔습니다.':'복수 시술 예약을 처리하지 못했습니다. 전체 시술 상태를 확인한 뒤 다시 시도해 주세요.');void load();}
+    finally{mutationRevision.current++;setBusy(false);}
   }
 
   async function advance(item: Appointment, target: TargetStatus) {
@@ -355,6 +387,8 @@ export function AppointmentPage({ api, organizationId, readOnly, canManageResour
           onTransition={(target) => void advance(selected, target)}
           onSaveMemo={(memo) => saveMemo(selected, memo)}
           onEdit={startEdit}
+          groupCount={selectedGroupRows.length}
+          onEditGroup={selected?.visit_group_id&&selectedGroupRows.length>=2?()=>{setVisitGroupEditId(selected.id);setVisitGroupDialog(true)}:undefined}
           onClose={() => void closePanel()}
           onDirtyChange={reportDirty}
           onBusyChange={reportBusy}
@@ -383,7 +417,7 @@ export function AppointmentPage({ api, organizationId, readOnly, canManageResour
         onToday={() => setDay(todayKstKey())}
         staffFilter={{ options: branchStaff.map((row) => ({ id: row.id, name: row.name })), value: activeStaffFilter, onChange: setStaffFilter }}
         branchFilter={{ options: branches.map((row) => ({ id: row.id, name: row.name })), value: activeBranchId, onChange: value => void selectBranch(value) }}
-        extra={<><button type="button" aria-label="예약 새로고침" disabled={refreshing} onClick={() => void refreshVisible()}>{refreshing ? '갱신 중…' : '새로고침'}</button><button type="button" onClick={()=>setSeriesDialog(true)}>반복 예약</button>{!readOnly&&<><button type="button" className="primary-button" onClick={() => void startCreate()}>새 예약</button><button type="button" onClick={()=>setWaitlistDialog(true)}>대기 목록</button></>}{canManageResources&&<><button type="button" onClick={() => setResourceDialog(true)}>공간·장비 관리</button><button type="button" onClick={() => setBranchDialog(true)}>지점 관리</button></>}</>}
+        extra={<><button type="button" aria-label="예약 새로고침" disabled={refreshing} onClick={() => void refreshVisible()}>{refreshing ? '갱신 중…' : '새로고침'}</button><button type="button" onClick={()=>setSeriesDialog(true)}>반복 예약</button><button type="button" onClick={()=>setBookingPolicyDialog(true)}>{canManageResources?'매장 예약 정책':'예약 정책 보기'}</button>{!readOnly&&<><button type="button" className="primary-button" onClick={() => void startCreate()}>새 예약</button><button type="button" onClick={()=>{setVisitGroupEditId(null);setVisitGroupDialog(true)}}>복수 시술 예약</button><button type="button" onClick={()=>setWaitlistDialog(true)}>대기 목록</button></>}{canManageResources&&<><button type="button" onClick={() => setResourceDialog(true)}>공간·장비 관리</button><button type="button" onClick={() => setBranchDialog(true)}>지점 관리</button></>}</>}
       />
       <div className="apt-overview" aria-label="예약 현황">
         <div className="apt-overview__counts"><strong>{view === 'week' ? '이번 주' : '선택일'} {summaryRows.length}건</strong>{Object.entries(statusLabels).map(([status,label]) => <span key={status} className="apt-status" data-status={status}>{label} {summaryRows.filter(item => item.status === status).length}</span>)}</div>
@@ -406,7 +440,7 @@ export function AppointmentPage({ api, organizationId, readOnly, canManageResour
               canCreate={!readOnly}
               onSelect={(appointment) => void selectAppointment(appointment)}
               onEmptyClick={(staffId, minutes) => void startCreate({ staff_id: staffId, start_at: localInputAt(day, minutes) })}
-              canMove={(appointment) => !readOnly && !busy && canEditAppointment(appointment.status)}
+              canMove={(appointment) => !readOnly && !busy && !appointment.visit_group_id && canEditAppointment(appointment.status)}
               onMove={(appointment, staffId, minutes) => void moveAppointment(appointment, { date: day, minutes, staffId })}
             />
           )}
@@ -421,7 +455,7 @@ export function AppointmentPage({ api, organizationId, readOnly, canManageResour
               canCreate={!readOnly}
               onSelect={(appointment) => void selectAppointment(appointment)}
               onEmptyClick={(date, minutes) => void startCreate({ start_at: localInputAt(date, minutes) })}
-              canMove={(appointment) => !readOnly && !busy && canEditAppointment(appointment.status)}
+              canMove={(appointment) => !readOnly && !busy && !appointment.visit_group_id && canEditAppointment(appointment.status)}
               onMove={(appointment, date, minutes) => void moveAppointment(appointment, { date, minutes })}
             />
           )}
@@ -441,8 +475,10 @@ export function AppointmentPage({ api, organizationId, readOnly, canManageResour
       </div>
       {resourceDialog && <ResourceManagerDialog api={api} organizationId={organizationId} readOnly={!canManageResources} onClose={() => { setResourceDialog(false); void load(); }} />}
       {branchDialog && <BranchManagerDialog api={api} organizationId={organizationId} onClose={() => { setBranchDialog(false); void load(); }} />}
+      {bookingPolicyDialog&&<BookingPolicyDialog key={organizationId} api={api} organizationId={organizationId} readOnly={!canManageResources} onClose={()=>setBookingPolicyDialog(false)}/>}
       {waitlistDialog&&<WaitlistDialog api={api} organizationId={organizationId} customers={customers} staff={branchStaff} services={services} resources={resources.filter(row=>!row.branch_id||row.branch_id===activeBranchId)} serviceStaff={serviceStaff} readOnly={readOnly} onBooked={appointment=>{mutationRevision.current++;setItems(old=>mergeAppointments(old,[appointment]));setDay(kstDateKey(appointment.start_at));setWaitlistDialog(false)}} onClose={()=>setWaitlistDialog(false)}/>}
       {seriesDialog&&<AppointmentSeriesDialog api={api} organizationId={organizationId} customers={customers} staff={staffDirectory} services={services} resources={resources.filter(row=>!row.branch_id||row.branch_id===activeBranchId)} canManage={canManageResources} onClose={()=>setSeriesDialog(false)}/>}
+      {visitGroupDialog&&<AppointmentVisitGroupDialog key={`${visitGroupEditId??'new'}:${editingVisitGroup?.visit_group_version??0}`} api={api} organizationId={organizationId} branchId={activeBranchId} customers={customers.filter(row=>row.status==='active')} staff={branchStaff} services={services} serviceStaff={serviceStaff} resources={resourceWarning?undefined:resources} startDate={day} existing={editingVisitGroup?.visit_group_id?{visit_group_id:editingVisitGroup.visit_group_id,version:editingVisitGroup.visit_group_version??0,customer_id:editingVisitGroup.customer_id,start_at:editingVisitGroup.start_at,source:editingVisitGroup.source,items:selectedGroupRows}:undefined} onSaved={rows=>{mutationRevision.current++;setItems(old=>mergeAppointments(old,rows));setDay(kstDateKey(rows[0].start_at));setVisitGroupDialog(false);setVisitGroupEditId(null);setSelectedSnapshot(rows[0]);setPanel({kind:'detail',id:rows[0].id});}} onClose={()=>{setVisitGroupDialog(false);setVisitGroupEditId(null)}}/>}
       {reasonTarget && (
         <ReasonModal
           kind={reasonTarget.kind}

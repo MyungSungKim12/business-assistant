@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DateField, Modal, Select, notify } from '@business-assistant/react-ui';
 import type { ApiClient } from '../../api/client';
-import type { Customer } from '../../api/schemas';
+import { useCustomerSelection } from '../customers/useCustomerSelection';
 import { ApiError } from '../../api/errors';
 import { exportTable, type ExportFormat } from '../../lib/io/exportTable';
 import '../../lib/io/io.css';
@@ -32,8 +32,10 @@ function failureText(error: unknown): string {
 
 /** 수납·환불·반품 내역을 조건으로 검색하고 합계를 보여 준다. 읽기 전용이다. */
 export function PaymentHistoryPanel({ api, organizationId, onOpenVisit }: Props) {
-  const [customers, setCustomers] = useState<Customer[]>([]);
+
   const [form, setForm] = useState<HistoryForm>(blankHistoryForm);
+  const customerSearch=useCustomerSelection(api,organizationId,form.customerId||null,true);
+  const customers=customerSearch.rows;
   const [applied, setApplied] = useState<HistoryForm>(blankHistoryForm);
   const [sort, setSort] = useState<HistorySort>(defaultSort);
   const [rows, setRows] = useState<SalePayment[]>([]);
@@ -46,12 +48,6 @@ export function PaymentHistoryPanel({ api, organizationId, onOpenVisit }: Props)
   const [exportOpen, setExportOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
   const ticket = useRef(0);
-
-  useEffect(() => {
-    let live = true;
-    api.listCustomers(organizationId).then((list) => { if (live) setCustomers(list); }, () => { if (live) setMessage('고객 목록을 불러오지 못해 고객 조건은 쓸 수 없습니다.'); });
-    return () => { live = false; };
-  }, [api, organizationId]);
 
   const searchFilter = useMemo(() => toSearchFilter(applied), [applied]);
   const serverSort = serverSortOf(sort);
@@ -124,6 +120,9 @@ export function PaymentHistoryPanel({ api, organizationId, onOpenVisit }: Props)
     <div className="sales-filters" role="search" aria-label="매출 내역 검색">
       <label>시작일<DateField aria-label="시작일" value={form.from} onChange={(from) => setForm({ ...form, from })} /></label>
       <label>종료일<DateField aria-label="종료일" value={form.to} onChange={(to) => setForm({ ...form, to })} /></label>
+      <label>고객 찾기<input aria-label="매출 내역 고객 검색" maxLength={100} value={customerSearch.query} onChange={event=>customerSearch.setQuery(event.currentTarget.value)} /></label>
+      {customerSearch.cursor&&<button type="button" disabled={customerSearch.status==='loading'} onClick={customerSearch.more}>고객 더 보기</button>}
+      {(customerSearch.status==='error'||customerSearch.selectionError)&&<button type="button" onClick={customerSearch.retry}>고객 검색 다시 시도</button>}
       <label>고객<Select aria-label="고객 조건" value={form.customerId} onChange={(customerId) => setForm({ ...form, customerId })} options={customerOptions} /></label>
       <label>수단<Select aria-label="수단" value={form.method} onChange={(method) => setForm({ ...form, method })} options={[...methodOptions]} /></label>
       <label>유형<Select aria-label="유형" value={form.kind} onChange={(kind) => setForm({ ...form, kind })} options={[...kindOptions]} /></label>

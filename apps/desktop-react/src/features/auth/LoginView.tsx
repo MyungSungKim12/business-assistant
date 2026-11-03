@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 
 interface LoginViewProps {
+  onAccountEmail?: (email:string,type:'recovery'|'signup')=>Promise<void>;
   onLogin: (email: string, password: string) => Promise<void>;
   /** 없으면 회원가입 전환을 보여 주지 않는다(웹 미리보기 등). */
   onSignUp?: (email: string, password: string, displayName: string) => Promise<void>;
@@ -8,7 +9,8 @@ interface LoginViewProps {
   notice?: string;
 }
 
-export function LoginView({ onLogin, onSignUp, error, notice }: LoginViewProps) {
+export function LoginView({ onLogin, onSignUp,onAccountEmail, error, notice }: LoginViewProps) {
+  const [emailMessage,setEmailMessage]=useState('');
   const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -41,6 +43,7 @@ export function LoginView({ onLogin, onSignUp, error, notice }: LoginViewProps) 
           {notice && <p className="form-notice" role="status">{notice}</p>}
           <button className="primary-button" disabled={busy}>{busy ? (signup ? '가입 중…' : '로그인 중…') : signup ? '회원가입' : '로그인'}</button>
         </form>
+        {onAccountEmail&&<div><button type="button" className="ba-link" disabled={busy} onClick={()=>void sendEmail('recovery')}>비밀번호 찾기</button>{' '}<button type="button" className="ba-link" disabled={busy} onClick={()=>void sendEmail('signup')}>확인 메일 재전송</button><p role="status">{emailMessage}</p></div>}
         {onSignUp && (
           <p className="auth-switch">
             {signup ? '이미 계정이 있나요?' : '처음 사용하시나요?'}{' '}
@@ -50,4 +53,8 @@ export function LoginView({ onLogin, onSignUp, error, notice }: LoginViewProps) 
       </section>
     </main>
   );
+  async function sendEmail(type:'recovery'|'signup'){
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())){setEmailMessage('이메일을 입력해 주세요.');return;}
+    setBusy(true);try{await onAccountEmail!(email.trim(),type);setEmailMessage('입력한 이메일로 진행할 수 있는 경우 안내 메일을 보냅니다.');}catch{setEmailMessage('메일을 요청하지 못했습니다. 잠시 후 다시 시도해 주세요.');}finally{setBusy(false);}
+  }
 }

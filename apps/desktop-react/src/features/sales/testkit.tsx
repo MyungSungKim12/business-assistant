@@ -54,12 +54,13 @@ export function fakeApi(handlers: Record<string, Handler>, extra: Record<string,
     const record = { method, path: rawPath.replace(`/organizations/${ORG}`, ''), body };
     calls.push(record);
     const route = routes.find((item) => item.method === method && item.regex.test(path));
+    if(method==='GET'&&path==='/customers/search'&&!route){const q=new URLSearchParams(rawPath.split('?')[1]).get('q')??'';const rows=[customer(CUSTOMER,'김고객'),customer(CUSTOMER2,'이고객')].filter(row=>JSON.stringify(row).includes(q));return schema.parse({items:rows,total:rows.length,next_cursor:null});}
     if (!route) throw new ApiError(404, 'HTTP_404', 'not found', false);
     const result = route.handler(body, record);
     if (result instanceof Error) throw result;
     return schema.parse(result);
   });
-  const api = { call, listCustomers: vi.fn(async () => [customer(CUSTOMER, '김고객'), customer(CUSTOMER2, '이고객')]), listOperationRecords: vi.fn(async () => []), ...extra };
+  const api = { call, getCustomer:vi.fn(async(_o:string,id:string)=>[customer(CUSTOMER,'김고객'),customer(CUSTOMER2,'이고객')].find(row=>row.id===id)), listCustomers: vi.fn(async () => [customer(CUSTOMER, '김고객'), customer(CUSTOMER2, '이고객')]), listOperationRecords: vi.fn(async () => []), ...extra };
   return { api: api as never, call, calls };
 }
 

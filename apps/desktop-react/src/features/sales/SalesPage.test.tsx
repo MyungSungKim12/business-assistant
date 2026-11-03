@@ -231,13 +231,24 @@ describe('SalesPage 방문 장바구니', () => {
   });
 
   it('고객 목록을 못 불러오면 오류와 재시도를 보여준다', async () => {
-    const kit = fakeApi({});
-    (kit.api as unknown as { listCustomers: () => Promise<never> }).listCustomers = async () => { throw network(); };
+    const kit = fakeApi({'GET /customers/search':()=>network()});
     render(<SalesPage api={kit.api} organizationId={ORG} readOnly={false} />);
-    expect(await screen.findByText(/고객 목록을 불러오지 못했습니다/)).toBeInTheDocument();
+    expect(await screen.findByText(/고객 조회에 실패했습니다/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '다시 시도' })).toBeInTheDocument();
     expect(CUSTOMER).toBeTruthy();
     expect(VISIT).toBeTruthy();
     expect(CART).toBeTruthy();
   });
+});
+
+it('retries failed related customer names on refresh even with unchanged visit IDs',async()=>{
+ const relatedId=uid(88);const server=cartServer({visits:[visit({customer_id:relatedId})]});const kit=fakeApi(server.handlers as never);
+ let fails=true,calls=0;
+ (kit.api as unknown as {getCustomer:()=>Promise<unknown>}).getCustomer=async()=>{calls++;if(fails)throw Error('offline');return {id:relatedId,organization_id:ORG,name:'복구된 이름'} as never;};
+ const user=userEvent.setup();render(<SalesPage api={kit.api} organizationId={ORG} readOnly={false}/>);
+ expect(await screen.findByRole('alert')).toHaveTextContent('일부 방문 고객 이름');
+ const previous=calls;fails=false;
+ await user.click(screen.getByRole('button',{name:'자료 새로고침'}));
+ await waitFor(()=>expect(calls).toBeGreaterThan(previous));
+ await waitFor(()=>expect(screen.queryByText(/일부 방문 고객 이름/)).not.toBeInTheDocument());
 });

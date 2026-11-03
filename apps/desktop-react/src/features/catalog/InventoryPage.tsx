@@ -10,7 +10,7 @@ import { fileApi } from '../documents/api';
 import { movementLabel, won, type CatalogProduct, type StockMovement, type InventoryLot, type InventoryLotAlert } from './schemas';
 import { StocktakeDialog } from './StocktakeDialog';
 import { PurchaseOrdersDialog } from './PurchaseOrdersDialog';
-import { emptyMovementFilter, filterMovements, isLowStock, lowStockLimit, parseLowStockInput, DEFAULT_LOW_STOCK, type MovementFilter } from './stock';
+import { buildLowStockPurchaseDraft, emptyMovementFilter, filterMovements, isLowStock, lowStockLimit, parseLowStockInput, DEFAULT_LOW_STOCK, type MovementFilter } from './stock';
 import './catalog.css';
 
 type Form = { kind: 'product' | 'membership'; sku: string; name: string; unit_name: string; purchase_unit_name: string; units_per_purchase_unit: string; sale_price: string; benefit_money: string; benefit_count: string; valid_days: string; is_active: boolean };
@@ -65,6 +65,7 @@ export function InventoryPage({ api, organizationId, readOnly }: InventoryPagePr
   const [lowStockText, setLowStockText] = useState('');
   const [stocktakeOpen, setStocktakeOpen] = useState(false);
   const [purchaseOpen,setPurchaseOpen]=useState(false);
+  const [purchaseInitialLines,setPurchaseInitialLines]=useState<{product_id:string;quantity_ordered:string;unit_cost:string;note:string}[]|undefined>();
   const [movementFilter, setMovementFilter] = useState<MovementFilter>(emptyMovementFilter);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [form, setForm] = useState<Form>(emptyForm);
@@ -293,6 +294,7 @@ export function InventoryPage({ api, organizationId, readOnly }: InventoryPagePr
   const lowCount = useMemo(() => rows.filter(isLowStock).length, [rows]);
   const movements = useMemo(() => (history ? filterMovements(history.movements, movementFilter) : []), [history, movementFilter]);
   const stocktakeProducts = useMemo(() => rows.filter((row) => row.kind === 'product'), [rows]);
+  const lowStockDraftLines=useMemo(()=>buildLowStockPurchaseDraft(rows).flatMap(proposal=>{const product=rows.find(row=>row.id===proposal.product_id);return product?[{product_id:product.id,quantity_ordered:String(proposal.quantity_ordered),unit_cost:'',note:`안전재고 부족 제안: 부족 ${proposal.shortage_quantity}${product.unit_name} · 입고 후 예상 ${proposal.projected_stock_quantity}${product.unit_name}`}]:[]}),[rows]);
   /** 실사로 반영된 상품을 목록에 바로 반영한다. */
   const applyStocktake = (saved: CatalogProduct) => { setRows((current) => current.map((row) => (row.id === saved.id ? saved : row))); void loadLotAlerts(); };
   const columns: Column<CatalogProduct>[] = [
@@ -318,7 +320,8 @@ export function InventoryPage({ api, organizationId, readOnly }: InventoryPagePr
         <div className="catalog-toolbar-actions">
           <ExportButton title="상품 목록" columns={productExportColumns} rows={visible} disabled={loading || loadError !== ''} />
           {!readOnly && <button type="button" disabled={busy || loading || loadError !== ''} onClick={() => guarded(() => setStocktakeOpen(true))}>재고 실사</button>}
-          {!readOnly&&<button type="button" disabled={busy||loading||loadError!==''} onClick={()=>setPurchaseOpen(true)}>공급처 · 발주</button>}
+          {!readOnly&&<button type="button" disabled={busy||loading||loadError!==''} onClick={()=>{setPurchaseInitialLines(undefined);setPurchaseOpen(true)}}>공급처 · 발주</button>}
+          {!readOnly&&<button type="button" disabled={busy||loading||loadError!==''||lowStockDraftLines.length===0} onClick={()=>{setPurchaseInitialLines(lowStockDraftLines);setPurchaseOpen(true)}}>부족 상품 초안 {lowStockDraftLines.length}</button>}
           {!readOnly && <button type="button" className="primary-button" disabled={busy} onClick={startNew}>새 상품</button>}
         </div>
       </div>
@@ -451,7 +454,7 @@ export function InventoryPage({ api, organizationId, readOnly }: InventoryPagePr
           ]} />
       </Modal>}
       {stocktakeOpen && <StocktakeDialog api={api} organizationId={organizationId} products={stocktakeProducts} onApplied={applyStocktake} onClose={() => { setStocktakeOpen(false); void load(); void loadLotAlerts(); }} />}
-      {purchaseOpen&&<PurchaseOrdersDialog api={api} organizationId={organizationId} products={rows} readOnly={readOnly} onClose={()=>{setPurchaseOpen(false);void load();void loadLotAlerts()}}/>}
+      {purchaseOpen&&<PurchaseOrdersDialog api={api} organizationId={organizationId} products={rows} readOnly={readOnly} initialLines={purchaseInitialLines} onClose={()=>{setPurchaseOpen(false);setPurchaseInitialLines(undefined);void load();void loadLotAlerts()}}/>}
     </section>
   );
 }

@@ -1,9 +1,9 @@
+import { useCustomerSelection } from '../customers/useCustomerSelection';
 import { useDraftProtection } from '../../app/DraftBoundary';
 import { usePrivacy } from '../../lib/privacy';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Select, confirm } from '@business-assistant/react-ui';
 import type { ApiClient } from '../../api/client';
-import type { Customer } from '../../api/schemas';
 import { salesApi } from './api';
 import { errorMessage, formatWon, isDefinitive, kst, moneyText, newOperationId, visitStatusLabel, wholeAmount } from './format';
 import { ExportButton } from '../../lib/io/ExportButton';
@@ -83,16 +83,20 @@ export function SalesPage({ api, organizationId, readOnly, organizationName = ''
 function CartView({ api, organizationId, readOnly, openRequest, organizationName }: { api: ApiClient; organizationId: string; readOnly: boolean; openRequest: OpenRequest | null; organizationName: string }) {
   const privacy = usePrivacy();
   const canManage = !readOnly;
-  const [customers, setCustomers] = useState<Customer[]>([]);
+
   const [visits, setVisits] = useState<Visit[]>([]);
+  const [visitNames,setVisitNames]=useState<{org:string;names:Map<string,string>}>({org:organizationId,names:new Map()});
   const [drafts, setDrafts] = useState<SaleDraft[]>([]);
   const [catalog, setCatalog] = useState<CatalogItem[]>([]);
   const [commissionStaff,setCommissionStaff]=useState<{id:string;name:string}[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [warning, setWarning] = useState('');
-  const [query, setQuery] = useState('');
+  const [nameRevision,setNameRevision]=useState(0);
+  const [nameError,setNameError]=useState(false);
   const [customerId, setCustomerId] = useState<string | null>(null);
+  const selection=useCustomerSelection(api,organizationId,customerId);
+  const {rows:customers,query,setQuery}=selection;
   const [visitId, setVisitId] = useState<string | null>(null);
   const [bundle, setBundle] = useState<CartBundle | null>(null);
   const [cartLoading, setCartLoading] = useState(false);
@@ -147,10 +151,9 @@ function CartView({ api, organizationId, readOnly, openRequest, organizationName
 
   const load = useCallback(async () => {
     setLoading(true);
+    setNameRevision(n=>n+1);
     setLoadError('');
-    const [c, v, d, p, staff] = await Promise.allSettled([api.listCustomers(organizationId), salesApi.visits(api, organizationId), salesApi.drafts(api, organizationId), salesApi.catalog(api, organizationId), resourceApi.listStaff(api,organizationId)]);
-    if (c.status === 'rejected') { setLoadError('고객 목록을 불러오지 못했습니다.'); setLoading(false); return; }
-    setCustomers(c.value);
+    const [v, d, p, staff] = await Promise.allSettled([ salesApi.visits(api, organizationId), salesApi.drafts(api, organizationId), salesApi.catalog(api, organizationId), resourceApi.listStaff(api,organizationId)]);
     if (v.status === 'fulfilled') setVisits(v.value);
     if (d.status === 'fulfilled') setDrafts(d.value);
     if (p.status === 'fulfilled') setCatalog(p.value);
@@ -161,17 +164,33 @@ function CartView({ api, organizationId, readOnly, openRequest, organizationName
   }, [api, organizationId]);
   useEffect(() => { void load(); }, [load]);
 
+  const visitCustomerIds=JSON.stringify([...new Set(visits.map(row=>row.customer_id))].sort());
+  useEffect(()=>{
+    let alive=true;
+    setVisitNames({org:organizationId,names:new Map()});
+    setNameError(false);
+    void(async()=>{
+      const names=new Map<string,string>(),ids=JSON.parse(visitCustomerIds) as string[];
+      let failed=false;
+      for(let offset=0;offset<ids.length;offset+=20){
+        const rows=await Promise.allSettled(ids.slice(offset,offset+20).map(id=>api.getCustomer(organizationId,id)));
+        if(!alive)return;
+        for(const row of rows){if(row.status==='fulfilled'&&row.value?.organization_id===organizationId)names.set(row.value.id,row.value.name);else failed=true;}
+      }
+      if(alive){setVisitNames({org:organizationId,names});setNameError(failed);}
+    })();
+    return()=>{alive=false;};
+  },[api,organizationId,visitCustomerIds,nameRevision]);
+
   const customerVisits = useMemo(() => visits.filter((visit) => visit.customer_id === customerId && visit.status !== 'canceled'), [visits, customerId]);
   const visitRows = useMemo(() => {
-    const names = new Map(customers.map((customer) => [customer.id, customer.name]));
+    const names = new Map(visitNames.org===organizationId?visitNames.names:[]);
+    for(const customer of customers)names.set(customer.id,customer.name);
     return [...visits]
       .sort((a, b) => b.opened_at.localeCompare(a.opened_at))
       .map((visit) => ({ visit, customerName: names.get(visit.customer_id) ?? '' }));
-  }, [visits, customers]);
-  const filteredCustomers = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    return customers.filter((customer) => customer.status !== 'archived' && `${customer.name} ${customer.phone ?? ''}`.toLowerCase().includes(needle));
-  }, [customers, query]);
+  }, [visits, customers,visitNames,organizationId]);
+  const filteredCustomers = customers;
 
   async function selectCustomer(id: string) {
     if (id === customerId || !await allowChange()) return;
@@ -310,14 +329,18 @@ function CartView({ api, organizationId, readOnly, openRequest, organizationName
     </div>
     {readOnly && <p className="permission-banner">조회 전용입니다. 장바구니 변경과 수납 기록은 관리자만 할 수 있습니다.</p>}
     {warning && <p role="alert" className="form-error">{warning}</p>}
+    {nameError && <p role="alert">일부 방문 고객 이름을 불러오지 못했습니다. 자료 새로고침으로 다시 조회하세요.</p>}
     <div className="sales-layout">
       <aside className="editor-panel sales-col">
         <h2>고객 · 방문</h2>
-        <input aria-label="고객 검색" placeholder="이름, 연락처 검색" value={query} onChange={(event) => setQuery(event.target.value)} />
+        <input maxLength={100} aria-label="고객 검색" placeholder="이름, 연락처 검색" value={query} onChange={(event) => setQuery(event.target.value)} />
+        {selection.status==='loading' && <p role="status">고객 검색 중…</p>}
+        {(selection.status==='error'||selection.selectionError) && <p role="alert">고객 조회에 실패했습니다. <button type="button" onClick={selection.retry}>다시 시도</button></p>}
         <ul className="sales-list" aria-label="고객">
           {filteredCustomers.map((customer) => <li key={customer.id}><button type="button" aria-pressed={customer.id === customerId} className={customer.id === customerId ? 'is-active' : ''} disabled={busy || pending !== null} onClick={() => void selectCustomer(customer.id)}>{customer.name}<small>{privacy.phone(customer.phone) || '연락처 없음'}</small></button></li>)}
         </ul>
         {filteredCustomers.length === 0 && <p className="empty-state">{customers.length ? '검색 결과가 없습니다.' : '등록된 고객이 없습니다.'}</p>}
+        {selection.cursor && <button type="button" disabled={selection.status==='loading'} onClick={selection.more}>고객 더 보기</button>}
         <h3>방문 내역 · 수납 확인</h3>
         <ul className="sales-list" aria-label="방문 내역">
           {customerVisits.map((visit) => <li key={visit.id}><button type="button" aria-pressed={visit.id === visitId} className={visit.id === visitId ? 'is-active' : ''} disabled={busy || pending !== null} onClick={() => void selectVisit(visit.id)}>{kst(visit.opened_at)} · {visitStatusLabel[visit.status] ?? '상태 확인 필요'}</button></li>)}

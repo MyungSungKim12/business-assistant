@@ -1,11 +1,10 @@
-import type { Customer } from '../../../api/schemas';
+import type { Source } from '../sourceState';
 import type { MenuId } from '../../shell/TopBar';
 import {
-  LOW_STOCK_THRESHOLD, VISIT_WINDOW_DAYS, activeCustomers, bucketTasks, changeLabel, compareWithPreviousMonth, groupDigits, lowStock, receivableSummary,
-  summarizeAppointments, appointmentsOnDay, upcomingVisits, wonOf,
+  LOW_STOCK_THRESHOLD, VISIT_WINDOW_DAYS, bucketTasks, changeLabel, compareWithPreviousMonth, groupDigits, lowStock, receivableSummary,
+  summarizeAppointments, appointmentsOnDay, wonOf,
 } from '../dashboardMetrics';
 import type { DashboardSources } from '../useDashboardData';
-import type { Source } from '../sourceState';
 
 type Tone = 'normal' | 'warn' | 'bad';
 interface Card { id: string; label: string; menu: MenuId; value: string; sub: string; tone: Tone; state: 'loading' | 'ready' | 'error'; problem?: string }
@@ -21,11 +20,11 @@ function build<T>(source: Source<T>, label: string, menu: MenuId, id: string, ma
 }
 
 /** 핵심 지표 카드 줄. 카드마다 자기 원본의 상태만 보고 독립적으로 표시한다. */
-export function MetricCards({ sources, today, onNavigate, visitCustomers }: { sources: DashboardSources; today: string; onNavigate: (menu: MenuId) => void; visitCustomers?: Source<Customer[]> }) {
+export function MetricCards({ sources, today, onNavigate }: { sources: DashboardSources; today: string; onNavigate: (menu: MenuId) => void }) {
   const cards: Card[] = [
     build(sources.customers, '전체 고객', 'customers', 'customers', (customers) => ({
-      value: `${groupDigits(activeCustomers(customers).length)}명`,
-      sub: visitCustomers?.status==='ready'?`${VISIT_WINDOW_DAYS}일 내 예약 ${upcomingVisits(visitCustomers.data, today).length}명`:'예약 원장 미확인',
+      value: `${groupDigits(customers.active_count)}명`,
+      sub: `${VISIT_WINDOW_DAYS}일 내 예약 ${customers.upcoming_count}명`,
     })),
     build(sources.appointments, '오늘 예약', 'appointments', 'appointments', ({ appointments }) => {
       const summary = summarizeAppointments(appointmentsOnDay(appointments, today));

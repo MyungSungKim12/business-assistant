@@ -26,7 +26,7 @@ export function AppointmentList({ rows, customerName, staffName, selectedId, rea
               <button type="button" className="apt-list__main" aria-pressed={item.id === selectedId} aria-label={`${formatKstTime(item.start_at)} ${customerName(item.customer_id)} 상세`} onClick={() => onSelect(item)}>
                 <time>{formatKstTime(item.start_at)}</time>
                 <span className="apt-list__text">
-                  <strong>{item.service_name_snapshot}</strong>
+                  <strong>{item.visit_group_id&&<span className="apt-visit-group__badge">복수 {item.visit_order}</span>} {item.service_name_snapshot}</strong>
                   <span>{customerName(item.customer_id)} · {staffName(item.staff_id)}</span>
                 </span>
                 <em data-status={item.status}>{statusLabel(item.status)}</em>

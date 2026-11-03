@@ -46,8 +46,8 @@ export function WeekGrid({ day, items, customerName, staffName, selectedId, now,
       canMove={canMove}
       onMove={onMove ? (appointment, column, minutes) => onMove(appointment, column.date, minutes) : undefined}
       renderBlock={(appointment) => ({
-        title: `${customerName(appointment.customer_id)} · ${appointment.service_name_snapshot} · ${staffName(appointment.staff_id)}`,
-        lines: [`${customerName(appointment.customer_id)} · ${shortName(staffName(appointment.staff_id))}`, appointment.service_name_snapshot],
+        title: `${customerName(appointment.customer_id)} · ${appointment.visit_group_id?`복수 시술 ${appointment.visit_order} · `:''}${appointment.service_name_snapshot} · ${staffName(appointment.staff_id)}`,
+        lines: [`${customerName(appointment.customer_id)} · ${shortName(staffName(appointment.staff_id))}`, `${appointment.visit_group_id?`복수 시술 ${appointment.visit_order} · `:''}${appointment.service_name_snapshot}`],
       })}
       minColumnWidth={96}
     />

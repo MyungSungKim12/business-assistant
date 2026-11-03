@@ -7,7 +7,7 @@ import { ConnectionBadge } from './ConnectionBadge';
 import { MoreMenu } from './MoreMenu';
 import { coreMenus } from './menuCatalog';
 
-export type MenuId = 'dashboard' | 'tasks' | 'customers' | 'appointments' | 'treatments' | 'sales' | 'memberships' | 'inventory' | 'services' | 'staff' | 'finance' | 'documents' | 'files' | 'management' | 'members' | 'audit' | 'admin';
+export type MenuId = 'phone-inbox' | 'marketing' | 'dashboard' | 'tasks' | 'customers' | 'appointments' | 'treatments' | 'sales' | 'memberships' | 'inventory' | 'services' | 'staff' | 'finance' | 'documents' | 'files' | 'management' | 'members' | 'audit' | 'admin';
 
 interface TopBarProps {
   organization: Organization;

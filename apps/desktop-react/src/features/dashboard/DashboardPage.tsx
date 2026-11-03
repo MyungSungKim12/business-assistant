@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Modal, notify } from '@business-assistant/react-ui';
 import type { Task } from '../../api/schemas';
 import { HOME_WIDGET_IDS, usePreferences, type HomeWidgetId } from '../../store/preferences';
@@ -11,11 +11,10 @@ import { QuickActions } from './components/QuickActions';
 import { LowStockPanel, WalletExpiryPanel } from './components/StockWalletPanels';
 import { TaskPanel } from './components/TaskPanel';
 import type { DashboardApi } from './dashboardApi';
-import { formatKstHeading, kstDateKey } from './dashboardMetrics';
+import { appointmentsOnDay, expiringWallets, formatKstHeading, kstDateKey } from './dashboardMetrics';
 import { sourceData } from './sourceState';
 import { useDashboardData } from './useDashboardData';
 import './dashboard.css';
-import { operationalCustomers,useVisitFacts } from '../customers/visitFacts';
 import type { Source } from './sourceState';
 import type { Customer } from '../../api/schemas';
 
@@ -47,11 +46,32 @@ export function DashboardPage({ api, organizationId, onNavigate, organizationNam
   const [refreshKey, setRefreshKey] = useState(0);
   const today = kstDateKey(clock) ?? '';
   const { sources, reload } = useDashboardData(api, organizationId, today, refreshKey);
-  const customers = sourceData(sources.customers);
-  const visitFacts=useVisitFacts(api,organizationId,(customers??[]).map(row=>row.id),refreshKey);
-  const visitCustomers:Source<Customer[]>=sources.customers.status!=='ready'?sources.customers:visitFacts.status==='ready'?{status:'ready',data:operationalCustomers(customers??[],visitFacts.facts)}:visitFacts.status==='loading'?{status:'loading'}:{status:'error',failure:{kind:'error',message:'방문·예약 원장 조회 실패 · SQL 061 적용·권한·연결을 확인하세요.'}};
-
-  const retryVisitFacts = () => { if(sources.customers.status==='error') reload.customers(); else visitFacts.retry(); };
+  const summary=sourceData(sources.customers);
+  const recentCustomers:Source<Customer[]>=sources.customers.status==='ready'?{status:'ready',data:sources.customers.data.recent}:sources.customers;
+  const upcomingCustomers:Source<Customer[]>=sources.customers.status==='ready'?{status:'ready',data:sources.customers.data.upcoming}:sources.customers;
+  const [namedCustomers,setNamedCustomers]=useState<{org:string;rows:Customer[]}>({org:organizationId,rows:[]});
+  // Resolve only IDs consumed by appointment and expiry panels; totals never use these rows.
+  const relevantIds=JSON.stringify([...new Set([
+    ...appointmentsOnDay(sourceData(sources.appointments)?.appointments??[],today).map(row=>row.customer_id),
+    ...expiringWallets(sourceData(sources.wallets)??[],today).flatMap(row=>row.customer_id?[row.customer_id]:[]),
+  ])].sort());
+  useEffect(()=>{
+    let alive=true;
+    setNamedCustomers({org:organizationId,rows:[]});
+    const ids=JSON.parse(relevantIds) as string[];
+    void (async()=>{
+      // Limit concurrency even when many relevant appointments share a day.
+      const rows:Customer[]=[];
+      for(let i=0;i<ids.length;i+=20){
+        const batch=await Promise.allSettled(ids.slice(i,i+20).map(id=>api.getCustomer(organizationId,id)));
+        if(!alive)return;
+        for(const item of batch)if(item.status==='fulfilled'&&item.value.organization_id===organizationId)rows.push(item.value);
+      }
+      if(alive)setNamedCustomers({org:organizationId,rows});
+    })();
+    return()=>{alive=false;};
+  },[api,organizationId,relevantIds,refreshKey]);
+  const customers=namedCustomers.org===organizationId?namedCustomers.rows:null;
 
   const refreshAll = () => {
     setClock(now());
@@ -73,8 +93,8 @@ export function DashboardPage({ api, organizationId, onNavigate, organizationNam
   const widgetNodes:Record<HomeWidgetId,ReactNode>={
     appointments:<AppointmentTimeline state={sources.appointments} customers={customers} today={today} onRetry={reload.appointments} onNavigate={onNavigate} />,
     tasks:<TaskPanel state={sources.tasks} today={today} onRetry={reload.tasks} onNavigate={onNavigate} canComplete={canComplete} onComplete={completeTask} />,
-    visits:<UpcomingVisitPanel state={visitCustomers} today={today} onRetry={retryVisitFacts} onNavigate={onNavigate} />,
-    recent:<RecentVisitorPanel state={visitCustomers} onRetry={retryVisitFacts} onNavigate={onNavigate} />,
+    visits:<UpcomingVisitPanel state={upcomingCustomers} total={summary?.upcoming_count} today={today} onRetry={reload.customers} onNavigate={onNavigate} />,
+    recent:<RecentVisitorPanel state={recentCustomers} onRetry={reload.customers} onNavigate={onNavigate} />,
     chart:<FinanceChartPanel state={sources.transactions} today={today} onRetry={reload.transactions} onNavigate={onNavigate} days={chartDays} onDaysChange={(value) => usePreferences.getState().setHomeChartDays(value)} />,
     stock:<LowStockPanel state={sources.products} onRetry={reload.products} onNavigate={onNavigate} />,
     wallet:<WalletExpiryPanel state={sources.wallets} customers={customers} today={today} onRetry={reload.wallets} onNavigate={onNavigate} />,
@@ -100,7 +120,7 @@ export function DashboardPage({ api, organizationId, onNavigate, organizationNam
         <button type="button" className="dash-customize" onClick={()=>setWidgetsOpen(true)}>홈 구성</button>
         <button type="button" className="dash-refresh" onClick={refreshAll}>새로고침</button>
       </header>
-      <MetricCards sources={sources} today={today} onNavigate={onNavigate} visitCustomers={visitCustomers} />
+      <MetricCards sources={sources} today={today} onNavigate={onNavigate} />
       <div className="dash-grid">
         {homeWidgets.map((id)=><div key={id} className={`dash-widget dash-widget--${id}`} data-widget={id}>{widgetNodes[id]}</div>)}
       </div>

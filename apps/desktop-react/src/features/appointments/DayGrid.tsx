@@ -50,8 +50,8 @@ export function DayGrid({ day, items, staff, customerName, selectedId, now, canC
       canMove={canMove}
       onMove={onMove ? (appointment, column, minutes) => { if (column.staffId) onMove(appointment, column.staffId, minutes); } : undefined}
       renderBlock={(appointment) => ({
-        title: `${customerName(appointment.customer_id)} · ${appointment.service_name_snapshot}`,
-        lines: [customerName(appointment.customer_id), appointment.service_name_snapshot],
+        title: `${customerName(appointment.customer_id)} · ${appointment.visit_group_id?`복수 시술 ${appointment.visit_order} · `:''}${appointment.service_name_snapshot}`,
+        lines: [customerName(appointment.customer_id), `${appointment.visit_group_id?`복수 시술 ${appointment.visit_order} · `:''}${appointment.service_name_snapshot}`],
       })}
       minColumnWidth={120}
     />

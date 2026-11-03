@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {z} from 'zod';
 import { confirm, notify } from '@business-assistant/react-ui';
 import type { ApiClient } from '../../api/client';
 import { customerPayload, emptyCustomer, type Customer } from './types';
@@ -44,17 +45,22 @@ export function CustomerPage({ api, organizationId, readOnly, focusCustomerId, f
   const [actionError, setActionError] = useState('');
   const [dirty, setDirty] = useState(false);
   const [editingBusy, setEditingBusy] = useState(false);
+  const [photoBusy,setPhotoBusy]=useState(false);
+  const focusEditor=useRef({dirty,editingBusy,photoBusy});
+  focusEditor.current={dirty,editingBusy,photoBusy};
   const [importing, setImporting] = useState(false);
   const [tagsOpen, setTagsOpen] = useState(false);
   const [mergeOpen, setMergeOpen] = useState(false);
   const [retentionOpen, setRetentionOpen] = useState(false);
   const [phoneMemoOpen, setPhoneMemoOpen] = useState(false);
+  const [canExport,setCanExport]=useState(false);
   const [restoring, setRestoring] = useState(false);
   const closeImport = useCallback(() => setImporting(false), []);
   const closeTags = useCallback(() => setTagsOpen(false), []);
   const closeMerge = useCallback(() => setMergeOpen(false), []);
 
   const list = useCustomerList(api, organizationId, { query, status, sort });
+  useEffect(()=>{if(typeof api.call!=='function'){setCanExport(true);return}let live=true;void api.call('GET',`/organizations/${organizationId}/permissions`,z.object({'data.export':z.boolean()})).then(result=>{if(live)setCanExport(result['data.export'])}).catch(()=>{if(live)setCanExport(false)});return()=>{live=false}},[api,organizationId]);
   const { rows, setRows, mode } = list;
   const visitFacts=useVisitFacts(api,organizationId,[...rows.map(row=>row.id),...(selected?[selected.id]:[])],focusNonce);
   const selectedFacts=selected?visitFacts.facts.get(selected.id):undefined;
@@ -62,22 +68,42 @@ export function CustomerPage({ api, organizationId, readOnly, focusCustomerId, f
 
   // 목록이 다시 읽히면 선택한 고객을 새 값으로 바꾼다. 전체 모드에서 사라졌으면 선택을 푼다(일부만 읽는 모드는 유지).
   useEffect(() => {
-    if (dirty || editingBusy) return;
+    if (dirty || editingBusy || photoBusy) return;
     setSelected((current) => (current ? rows.find((row) => row.id === current.id) ?? (paged ? current : null) : null));
-  }, [rows, paged, dirty, editingBusy]);
+  }, [rows, paged, dirty, editingBusy,photoBusy]);
 
   // 검색에서 넘어온 고객을 선택한다. 현재 목록에 없으면(보관 고객 등) 상태 필터를 '전체'로 넓혀 한 번 더 찾는다.
   const [pendingFocus, setPendingFocus] = useState<{ id: string; widened: boolean } | null>(null);
   useEffect(() => {
-    if (focusCustomerId) setPendingFocus({ id: focusCustomerId, widened: false });
-  }, [focusCustomerId, focusNonce]);
+    setPendingFocus(focusCustomerId?{ id: focusCustomerId, widened: false }:null);
+  }, [focusCustomerId, focusNonce,organizationId]);
   useEffect(() => {
-    if (!pendingFocus || list.loading) return;
+    if (!pendingFocus || list.loading || photoBusy || editingBusy) return;
+    let alive=true;
+    // Read the latest draft after an asynchronous customer lookup. A profile can
+    // become dirty while that request is in flight; its old closure is unsafe.
+    const applyFocus=async(customer:Customer,addToRows=false)=>{
+      if(!alive||focusEditor.current.photoBusy||focusEditor.current.editingBusy)return;
+      const accepted=await confirmDiscard(focusEditor.current.dirty);
+      if(!alive)return;
+      if(!accepted){setPendingFocus(null);return;}
+      if(focusEditor.current.photoBusy||focusEditor.current.editingBusy)return;
+      if(addToRows)setRows(previous=>[customer,...previous.filter(row=>row.id!==customer.id)]);
+      setSelected(customer);setDirty(false);setPendingFocus(null);
+    };
     const found = rows.find((row) => row.id === pendingFocus.id);
-    if (found) { setSelected(found); setDirty(false); setPendingFocus(null); return; }
+    if (found) { void applyFocus(found); return()=>{alive=false;}; }
     if (!pendingFocus.widened && status !== 'all') { setStatus('all'); setPendingFocus({ ...pendingFocus, widened: true }); return; }
+    if (typeof api.getCustomer === 'function') {
+      void api.getCustomer(organizationId, pendingFocus.id).then(async customer => {
+        if (!alive) return;
+        if (customer.organization_id !== organizationId || customer.id !== pendingFocus.id) throw new Error('Invalid customer scope');
+        await applyFocus(customer,true);
+      }).catch(() => { if (alive) { setActionError('해당 고객 정보를 열지 못했습니다. 권한과 고객 상태를 확인해 주세요.'); setPendingFocus(null); } });
+      return () => { alive = false; };
+    }
     setPendingFocus(null);
-  }, [pendingFocus, rows, list.loading, status]);
+  }, [pendingFocus, rows, list.loading, status, api, organizationId, setRows,photoBusy,editingBusy]);
 
   const filtered = useMemo(
     () => (paged ? rows.filter((customer) => status === 'all' || customer.status === status) : filterCustomers(rows, { query, status, sort })),
@@ -87,7 +113,7 @@ export function CustomerPage({ api, organizationId, readOnly, focusCustomerId, f
   const error = actionError || list.error;
 
   const changeCustomer = async (next: Customer | null) => {
-    if (editingBusy) { notify.info('저장 중입니다. 결과를 확인한 뒤 고객을 변경하세요.'); return; }
+    if (editingBusy || photoBusy) { notify.info('저장 중입니다. 결과를 확인한 뒤 고객을 변경하세요.'); return; }
     if (!await confirmDiscard(dirty)) return;
     setSelected(next);
     setDirty(false);
@@ -157,7 +183,7 @@ export function CustomerPage({ api, organizationId, readOnly, focusCustomerId, f
       <div className="page-toolbar">
         <div><h1>고객관리</h1><p className="muted">고객 프로필과 상담 정보를 관리합니다.</p></div>
         <div className="cx-toolbar-actions">
-          <ExportButton title="고객 목록" columns={customerExportColumns} rows={filtered} allRows={rows} disabled={list.loading} />
+          {canExport&&<ExportButton title="고객 목록" columns={customerExportColumns} rows={filtered} allRows={rows} disabled={list.loading} />}
           {!readOnly && <button onClick={() => setPhoneMemoOpen(true)}>전화 메모</button>}
           {!readOnly && <button onClick={() => setTagsOpen(true)}>태그 관리</button>}
           {!readOnly && <button onClick={() => setMergeOpen(true)}>중복 병합</button>}
@@ -212,11 +238,11 @@ export function CustomerPage({ api, organizationId, readOnly, focusCustomerId, f
         </aside>
 
         <section className="cx-panel cx-insights-slot" aria-label="고객 인사이트 영역">
-          <InsightsPanel customers={rows} selectedId={selected?.id} scopeNote={scopeNote} onSelect={(customer) => void pickFromInsight(customer)} visitFacts={visitFacts} />
+          <InsightsPanel customers={rows} selectedId={selected?.id} scopeNote={scopeNote} onSelect={(customer) => void pickFromInsight(customer)} visitFacts={visitFacts} canExport={canExport} />
         </section>
 
         {selected
-          ? <PhotoPanel api={api} organizationId={organizationId} customerId={selected.id} readOnly={readOnly} />
+          ? <PhotoPanel api={api} organizationId={organizationId} customerId={selected.id} readOnly={readOnly} onBusyChange={setPhotoBusy} />
           : (
             <section className="cx-panel cx-photos" aria-label="고객 사진">
               <h3 className="cx-photos__title">이 고객의 사진</h3>

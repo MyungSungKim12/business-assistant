@@ -16,6 +16,36 @@ function invokeStub(handler?: TauriInvoke): TauriInvoke {
 }
 
 describe('createTauriPlatform', () => {
+  it('orders popup updates and cleanup even if an earlier native request fails', async () => {
+    const invoke = vi.fn(async (command: string, args?: Record<string, unknown>) => {
+      if (command === 'get_config') return { apiBase: 'http://127.0.0.1:8000/api/v1', storageHost: '' };
+      if (command === 'call_popup_show' && (args?.calls as unknown[]).length) throw new Error('window unavailable');
+      return undefined;
+    });
+    const platform = await createTauriPlatform(invoke);
+    const show = platform.showIncomingCalls!([{ id: 'id', title: '고객', phone: '+827012345678', expiresAt: Date.now() + 120_000 }]);
+    const clear = platform.showIncomingCalls!([]);
+    await expect(show).rejects.toThrow('window unavailable');
+    await expect(clear).resolves.toBeUndefined();
+    expect(invoke.mock.calls.filter(([command]) => command === 'call_popup_show').map(([, args]) => (args?.calls as unknown[]).length)).toEqual([1, 0]);
+  });
+  it('keeps the online indicator while waiting for a background phone event', async () => {
+    let finish: (value: unknown) => void = () => {};
+    const invoke = vi.fn(async (command: string, args?: Record<string, unknown>) => {
+      if (command === 'get_config') return { apiBase: 'http://127.0.0.1:8000/api/v1', storageHost: '' };
+      if (command === 'http_request' && (args?.request as { path: string }).path.includes('incoming-calls')) return new Promise(resolve => { finish = resolve; });
+      return { status: 200, body: '{}', headers: {} };
+    });
+    const platform = await createTauriPlatform(invoke);
+    await platform.request({ method: 'GET', path: '/customers', headers: {} });
+    const states: string[] = [];
+    platform.subscribeConnection(state => states.push(state));
+    const request = platform.request({ method: 'GET', path: '/organizations/org/mobile/incoming-calls?wait_ms=8000', headers: {} });
+    expect(states).toEqual(['online']);
+    finish({ status: 200, body: '{}', headers: {} });
+    await request;
+    expect(states).toEqual(['online', 'online']);
+  });
   it('Native 시간 초과를 결과 미확인 상태의 재시도 가능 오류로 전달한다',async()=>{
     const invoke=vi.fn(async(command:string)=>{if(command==='get_config')return {apiBase:'http://127.0.0.1:8000/api/v1',storageHost:''};throw {code:'NATIVE_TIMEOUT',message:'서버 응답 시간이 초과되었습니다.',retryable:true};});
     const platform=await createTauriPlatform(invoke);

@@ -6,6 +6,17 @@ import { fakeApi, ORG, renderWithHosts, USER } from '../documents/testkit';
 const product = (id: string, name: string) => ({ id, organization_id: ORG, sku: id, name, kind: 'product' as const, unit_name: '개', purchase_unit_name: '박스', units_per_purchase_unit: 12, sale_price: '1000', benefit_money: '0', benefit_count: 0, valid_days: null, is_active: true, version: 1, stock_quantity: 0,category:'기타',barcode:null,image_file_id:null });
 
 describe('PurchaseOrdersDialog', () => {
+  it('재고 부족으로 전달된 상품은 매입 단위 환산 수량으로 초안에 제안하고 단가는 미확정으로 둔다',async()=>{
+    const stock=product('33333333-3333-4333-8333-333333333333','부족 크림');
+    const {api}=fakeApi(call=>call.method==='GET'?[]:[]);
+    renderWithHosts(<PurchaseOrdersDialog api={api} organizationId={ORG} products={[stock]} readOnly={false} initialLines={[{product_id:stock.id,quantity_ordered:'2',unit_cost:'',note:'안전재고 부족 제안: 부족 7개 · 입고 후 예상 17개'}]} onClose={()=>undefined}/>);
+    expect(await screen.findByLabelText('발주 상품 1')).toHaveValue(stock.id);
+    expect(screen.getByLabelText('발주 수량 1')).toHaveValue(2);
+    expect(screen.getByLabelText('매입 단가 1')).toHaveValue('');
+    expect(screen.getByLabelText('발주 메모 1')).toHaveValue('안전재고 부족 제안: 부족 7개 · 입고 후 예상 17개');
+    expect(screen.getByRole('status')).toHaveTextContent('기존 미입고 발주량은 차감하지 않았습니다');
+  });
+
   it('공급처 상세정보를 저장하고 여러 품목을 한 발주로 생성한다', async () => {
     const supplierId = '88888888-8888-4888-8888-888888888888';
     const first = product('11111111-1111-4111-8111-111111111111', '클렌저');

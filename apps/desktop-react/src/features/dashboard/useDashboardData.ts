@@ -1,11 +1,11 @@
-import type { Customer, Task } from '../../api/schemas';
+import type { Task } from '../../api/schemas';
 import type { Receivables, Transaction } from '../sales/types';
-import { dashboardApi, type DashboardApi, type TodayAppointments } from './dashboardApi';
+import { dashboardApi, type DashboardApi, type TodayAppointments, type CustomerDashboard } from './dashboardApi';
 import type { StockItem, WalletRow } from './dashboardMetrics';
 import { useSource, type Source } from './sourceState';
 
 export interface DashboardSources {
-  customers: Source<Customer[]>;
+  customers: Source<CustomerDashboard>;
   tasks: Source<Task[]>;
   appointments: Source<TodayAppointments>;
   transactions: Source<Transaction[]>;
@@ -29,7 +29,7 @@ export interface DashboardReloaders {
  * refreshKey가 바뀌면 모두 다시 불러온다.
  */
 export function useDashboardData(api: DashboardApi, organizationId: string, today: string, refreshKey: number): { sources: DashboardSources; reload: DashboardReloaders } {
-  const [customers, reloadCustomers] = useSource(() => api.listCustomers(organizationId), [api, organizationId, refreshKey]);
+  const [customers, reloadCustomers] = useSource(() => dashboardApi.customers(api, organizationId, today), [api, organizationId, today, refreshKey]);
   const [tasks, reloadTasks] = useSource(() => api.listTasks(organizationId), [api, organizationId, refreshKey]);
   const [appointments, reloadAppointments] = useSource(() => dashboardApi.appointments(api, organizationId, today), [api, organizationId, today, refreshKey]);
   const [transactions, reloadTransactions] = useSource(() => dashboardApi.transactions(api, organizationId, today), [api, organizationId, today, refreshKey]);

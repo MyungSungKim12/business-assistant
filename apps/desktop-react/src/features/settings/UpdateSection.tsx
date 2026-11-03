@@ -90,8 +90,8 @@ export function UpdateSection({ platform }: { platform: Platform }) {
 
   const busy = phase.kind === 'checking' || phase.kind === 'installing';
   return (
-    <div>
-      {platform.getAutoUpdateCheckEnabled && platform.setAutoUpdateCheckEnabled ? <label>
+    <section className="settings-update-group">
+      {platform.getAutoUpdateCheckEnabled && platform.setAutoUpdateCheckEnabled ? <label className="settings-row">
         <span>
           <strong>자동 업데이트 확인</strong>
           <small>앱 시작 30초 뒤 한 번 확인합니다. 켜면 다음 실행부터, 끄면 대기 중인 확인도 건너뜁니다.</small>
@@ -117,7 +117,7 @@ export function UpdateSection({ platform }: { platform: Platform }) {
           }}
         />
       </label> : null}
-      <span>
+      <div className="settings-row"><span>
         <strong>업데이트 확인{version ? ` (현재 ${version})` : ''}</strong>
         <small role="status">{describe(phase, supported)}</small>
         {phase.kind === 'available' && phase.notes ? <small>{phase.notes}</small> : null}
@@ -127,6 +127,7 @@ export function UpdateSection({ platform }: { platform: Platform }) {
           ? <button type="button" className="ba-primary" onClick={() => void install()}>지금 설치</button>
           : <button type="button" disabled={busy} onClick={() => void check()}>{phase.kind === 'checking' ? '확인 중…' : '업데이트 확인'}</button>
       ) : null}
-    </div>
+      </div>
+    </section>
   );
 }

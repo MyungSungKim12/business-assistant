@@ -32,6 +32,13 @@ const renderPage = (api: ApiClient, props: { readOnly?: boolean; canManageResour
 const block = () => screen.findByRole('button', { name: /^10:00 김고객/ });
 const putCalls = (api: ApiClient) => (api.call as unknown as ReturnType<typeof vi.fn>).mock.calls.filter((call) => call[0] === 'PUT');
 
+it.each([true,false])('예약 페이지에서 매장 정책을 열고 관리자 권한 %s에 맞게 표시한다',async manager=>{
+ const api=client({},[],async(_method,path)=>path.endsWith('/booking-policy')?{organization_id:ids.org,version:0,enabled:false,timezone_name:'Asia/Seoul',minimum_notice_minutes:0,same_day_cutoff_time:null,hours:[],blocks:[]}:[]);
+ renderPage(api,{canManageResources:manager});
+ fireEvent.click(screen.getByRole('button',{name:manager?'매장 예약 정책':'예약 정책 보기'}));
+ const toggle=await screen.findByLabelText('예약 정책 사용');if(manager)expect(toggle).not.toBeDisabled();else expect(toggle).toBeDisabled();
+});
+
 it('중지된 담당자의 기존 예약 상세에서도 이름을 보존한다',async()=>{
  const api=client({listAppointmentStaff:vi.fn(async()=>[{id:ids.staff,organization_id:ids.org,name:'중지 담당자',is_active:false,schedule_version:1}])},[{...appointment,status:'completed'}]);
  renderPage(api,{readOnly:true});

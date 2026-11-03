@@ -1,6 +1,8 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within, waitFor } from '@testing-library/react';
+import type { ApiClient } from '../../api/client';
 import { describe, expect, it, vi } from 'vitest';
 import { CustomerPage } from './CustomerPage';
+import {ConfirmDialog} from '@business-assistant/react-ui';
 
 const customer = { id:'11111111-1111-4111-8111-111111111111', organization_id:'22222222-2222-4222-8222-222222222222', name:'김고객', email:null, phone:'010-1234-5678', notes:'', birth_date:null, skin_type:null, concerns:[], allergies:'', last_visit_date:null, next_visit_date:null, tags:['재방문'], status:'active' };
 function api(rows: object[] = [customer]) {
@@ -17,6 +19,46 @@ function api(rows: object[] = [customer]) {
 const grid = () => within(screen.getByRole('grid', { name: '고객 목록' }));
 
 describe('CustomerPage', () => {
+  it.each(['loaded','fallback'] as const)('protects a dirty profile after photo work settles before applying external %s focus',async(source)=>{
+    const other={...customer,id:'44444444-4444-4444-8444-444444444444',name:'박고객'};let finish!:(files:never[])=>void;
+    const client={...(api(source==='loaded'?[customer,other]:[customer]) as object),getCustomer:vi.fn(async()=>other),filePlatform:{pickImages:vi.fn(()=>new Promise<never[]>(r=>{finish=r;}))}} as unknown as ApiClient;
+    const tree=(focused?:string,nonce=0)=><><CustomerPage api={client} organizationId={customer.organization_id} focusCustomerId={focused} focusNonce={nonce} readOnly={false}/><ConfirmDialog/></>;
+    const view=render(tree());fireEvent.click(await grid().findByText('김고객'));await screen.findByDisplayValue('김고객');
+    fireEvent.change(screen.getByLabelText('이름'),{target:{value:'보존할 고객 초안'}});
+    fireEvent.click(await screen.findByRole('button',{name:'사진 추가'}));view.rerender(tree(other.id,1));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();expect(screen.getByLabelText('이름')).toHaveValue('보존할 고객 초안');
+    await act(async()=>finish([]));
+    const dialog=await screen.findByRole('dialog');fireEvent.click(within(dialog).getByRole('button',{name:'취소'}));
+    await waitFor(()=>expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(screen.getByRole('heading',{name:'김고객'})).toBeInTheDocument();expect(screen.getByLabelText('이름')).toHaveValue('보존할 고객 초안');
+    view.rerender(tree(other.id,2));const accepted=await screen.findByRole('dialog');fireEvent.click(within(accepted).getByRole('button',{name:'이동'}));
+    expect(await screen.findByRole('heading',{name:'박고객'})).toBeInTheDocument();await waitFor(()=>expect(screen.getByLabelText('이름')).toHaveValue('박고객'));
+  });
+  it('checks the latest profile draft when an external customer lookup returns late',async()=>{
+    const other={...customer,id:'44444444-4444-4444-8444-444444444444',name:'박고객'};let finish!:(value:typeof other)=>void;
+    const client={...(api([customer]) as object),getCustomer:vi.fn(()=>new Promise<typeof other>(r=>{finish=r;}))} as unknown as ApiClient;
+    const tree=(focused?:string)=><><CustomerPage api={client} organizationId={customer.organization_id} focusCustomerId={focused} readOnly={false}/><ConfirmDialog/></>;
+    const view=render(tree());fireEvent.click(await grid().findByText('김고객'));await screen.findByDisplayValue('김고객');
+    view.rerender(tree(other.id));await waitFor(()=>expect(client.getCustomer).toHaveBeenCalled());
+    fireEvent.change(screen.getByLabelText('이름'),{target:{value:'조회 중 작성한 초안'}});await act(async()=>finish(other));
+    const dialog=await screen.findByRole('dialog');fireEvent.click(within(dialog).getByRole('button',{name:'취소'}));
+    await waitFor(()=>expect(screen.queryByRole('dialog')).not.toBeInTheDocument());expect(screen.getByLabelText('이름')).toHaveValue('조회 중 작성한 초안');expect(screen.getByRole('heading',{name:'김고객'})).toBeInTheDocument();
+  });
+  it('keeps the selected customer during a pending photo selection and permits switching after cancellation',async()=>{
+    const other={...customer,id:'44444444-4444-4444-8444-444444444444',name:'박고객'};let finish!:(files:never[])=>void;
+    const client={...(api([customer,other]) as object),filePlatform:{pickImages:vi.fn(()=>new Promise<never[]>(r=>{finish=r;}))}} as unknown as ApiClient;
+    render(<CustomerPage api={client} organizationId={customer.organization_id} readOnly={false}/>);
+    fireEvent.click(await grid().findByText('김고객'));fireEvent.click(await screen.findByRole('button',{name:'사진 추가'}));
+    await act(async()=>fireEvent.click(grid().getByText('박고객')));expect(screen.getByRole('heading',{name:'김고객'})).toBeInTheDocument();
+    await act(async()=>finish([]));await waitFor(()=>expect(screen.queryByText('업로드 중…')).not.toBeInTheDocument());
+    fireEvent.click(grid().getByText('박고객'));expect(await screen.findByRole('heading',{name:'박고객'})).toBeInTheDocument();
+  });
+  it('opens a focused customer outside the currently loaded list without searching manually', async () => {
+    const client = { ...(api([]) as unknown as object), getCustomer: vi.fn(async () => customer) } as unknown as ApiClient;
+    render(<CustomerPage api={client} organizationId={customer.organization_id} focusCustomerId={customer.id} focusNonce={1} readOnly={false} />);
+    await waitFor(() => expect(client.getCustomer).toHaveBeenCalledWith(customer.organization_id, customer.id));
+    expect(await screen.findByRole('heading', { name: '김고객' })).toBeInTheDocument();
+  });
   it('searches customers, saves a selected profile, and exposes a retryable error', async () => {
     const client = api();
     render(<CustomerPage api={client} organizationId={customer.organization_id} readOnly={false} />);

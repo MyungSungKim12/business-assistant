@@ -15,13 +15,14 @@ type Props = {
   treatmentId?: string | null;
   treatmentName?: string;
   readOnly: boolean;
+  onBusyChange?:(busy:boolean)=>void;
 };
 
 /**
  * 시술관리 하단의 고객 사진(큰 썸네일, 왼쪽)과 선택한 시술의 전/후 사진 연결(오른쪽).
  * 높이는 고정이고 각 영역이 안에서 스크롤하며, 접어 둘 수 있다.
  */
-export function TreatmentPhotos({ api, organizationId, customerId, customerName, treatmentDate, treatmentId = null, treatmentName = '', readOnly }: Props) {
+export function TreatmentPhotos({ api, organizationId, customerId, customerName, treatmentDate, treatmentId = null, treatmentName = '', readOnly,onBusyChange }: Props) {
   const [open, setOpen] = useState(true);
   const treatmentLabel = [treatmentName, treatmentDate].filter(Boolean).join(' · ') || '시술 기록';
   return (
@@ -36,7 +37,7 @@ export function TreatmentPhotos({ api, organizationId, customerId, customerName,
             <div className="treatment-photos__split">
               <div className="treatment-photos__gallery">
                 <PhotoGallery key={customerId} api={api} organizationId={organizationId} customerId={customerId} readOnly={readOnly} size="large" heading=""
-                  highlightDate={treatmentDate || null} highlightLabel="시술일 사진" />
+                  highlightDate={treatmentDate || null} highlightLabel="시술일 사진" onBusyChange={onBusyChange} />
               </div>
               {treatmentId
                 ? <TreatmentPhotoLinks key={`${customerId}:${treatmentId}`} api={api} organizationId={organizationId} customerId={customerId} treatmentId={treatmentId} treatmentLabel={treatmentLabel} readOnly={readOnly} />

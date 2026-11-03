@@ -8,7 +8,7 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react()],
     clearScreen: false,
-    build: { target: 'chrome105' },
+    build: { target: 'chrome105', rollupOptions: { input: { main: 'index.html', callPopup: 'call-popup.html' } } },
     server: {
       port: 1420,
       strictPort: true,

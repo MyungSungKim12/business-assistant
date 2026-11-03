@@ -1,3 +1,4 @@
+import { useCustomerSelection } from '../customers/useCustomerSelection';
 import { usePrivacy } from '../../lib/privacy';
 import { useDraftProtection } from '../../app/DraftBoundary';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
@@ -17,7 +18,7 @@ import { TreatmentPhotos } from './TreatmentPhotos';
 import { resourceApi } from '../appointment-resources/api';
 import type { AppointmentServiceRow } from '../appointment-resources/schemas';
 import {
-  ALL_CATEGORIES, consultationReady, emptyForm, errorStatus, filterCustomers, filterRecords, formDirty, formFromRecord, isLocked, localTime, newOperationId,
+  ALL_CATEGORIES, consultationReady, emptyForm, errorStatus, filterRecords, formDirty, formFromRecord, isLocked, localTime, newOperationId,
   sortRecords, statusLabel, todayIso, validateForm, type FormState, type RecordFilters,
 } from './logic';
 import type { MutationBody, Treatment, TreatmentAction } from './schemas';
@@ -52,11 +53,9 @@ async function confirmLeave(dirty: boolean): Promise<boolean> {
 
 export function TreatmentPage({ api, organizationId, readOnly, initialCustomerId, initialAppointmentId, focusNonce, onDirtyChange, documentsPanel }: TreatmentPageProps) {
   const privacy = usePrivacy();
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [customersState, setCustomersState] = useState<'loading' | 'ready' | 'error'>('loading');
-  const customersGeneration=useRef(0);
-  const [customerQuery, setCustomerQuery] = useState('');
-  const [customerId, setCustomerId] = useState<string | null>(null);
+  const [customerId, setCustomerId] = useState<string | null>(initialCustomerId ?? null);
+  const selection=useCustomerSelection(api,organizationId,customerId,true);
+  const {rows:customers,status:customersState,query:customerQuery,setQuery:setCustomerQuery}=selection;
   const [records, setRecords] = useState<Treatment[]>([]);
   const [services, setServices] = useState<AppointmentServiceRow[]>([]);
   const [recordsState, setRecordsState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
@@ -68,6 +67,7 @@ export function TreatmentPage({ api, organizationId, readOnly, initialCustomerId
   const [reason, setReason] = useState('');
   const [cancelReason, setCancelReason] = useState('');
   const [saving, setSaving] = useState(false);
+  const [photoBusy,setPhotoBusy]=useState(false);
   const [conflicted, setConflicted] = useState(false);
   const [message, setMessage] = useState<Message | null>(null);
   const [filters, setFilters] = useState<RecordFilters>({ query: '', from: '', to: '', category: ALL_CATEGORIES });
@@ -86,12 +86,12 @@ export function TreatmentPage({ api, organizationId, readOnly, initialCustomerId
   useEffect(() => { loadTemplates(); }, [loadTemplates]);
 
   const writable = !readOnly;
-  const customer = customers.find((item) => item.id === customerId) ?? null;
+  const customer = selection.selected ?? customers.find((item) => item.id === customerId) ?? null;
   const record = records.find((item) => item.id === recordId);
   const locked = isLocked(record);
   const dirty = writable && (formDirty(form, baseline) || correcting);
-  useDraftProtection(dirty,saving||opening);
-  const busy = saving || recordsState === 'loading' || opening;
+  useDraftProtection(dirty,saving||opening||photoBusy);
+  const busy = saving || recordsState === 'loading' || opening || photoBusy;
   const fieldsReadOnly = !writable || (locked && !correcting);
   const reportDirty = useStable((value: boolean) => onDirtyChange?.(value));
   useEffect(() => { reportDirty(dirty); }, [dirty, reportDirty]);
@@ -131,24 +131,52 @@ export function TreatmentPage({ api, organizationId, readOnly, initialCustomerId
     void loadRecords(id, null);
   }, [loadRecords, populate, resetEditor]);
 
-  const loadCustomers = useCallback(async () => {
-    const ticket=++customersGeneration.current;
-    setCustomersState('loading');
-    try {
-      const rows = await api.listCustomers(organizationId);
-      if(ticket!==customersGeneration.current)return;
-      setCustomers(rows);
-      setCustomersState('ready');
-      const first = initialCustomerId ? rows.find((item) => item.id === initialCustomerId) : rows[0];
-      if(initialCustomerId&&!first){setCustomerId(null);setRecordId(null);setRecords([]);populate(emptyForm());setMessage({tone:'error',text:'요청한 고객을 찾지 못했습니다. 고객 정보와 조회 권한을 확인한 뒤 다시 선택하세요.'});return;}
-      if (first) selectCustomer(first.id);
-    } catch { if(ticket===customersGeneration.current)setCustomersState('error'); }
-  }, [api, organizationId, initialCustomerId, focusNonce, selectCustomer, populate]);
-  useEffect(() => { void loadCustomers(); return () => { generation.current += 1; customersGeneration.current++; }; }, [loadCustomers]);
+  const focusKey=JSON.stringify([organizationId,initialCustomerId,focusNonce]);
+  const [acceptedFocus,setAcceptedFocus]=useState(focusKey);
+  const focusTicket=useRef(0);
+  const applyFocusedCustomer=useStable(async(row:Customer,key:string,ticket:number)=>{
+    if(photoBusy)return;
+    if(!await confirmLeave(dirty)||ticket!==focusTicket.current)return;
+    generation.current++;
+    initialized.current=key;
+    selection.remember(row);
+    setAcceptedFocus(key);
+    selectCustomer(row.id);
+  });
+  const confirmFocus=useStable(async(id:string,key:string,ticket:number)=>{
+    try{
+      const row=await api.getCustomer(organizationId,id);
+      if(ticket!==focusTicket.current)return;
+      if(row.id!==id||row.organization_id!==organizationId)throw Error('Customer mismatch');
+      await applyFocusedCustomer(row,key,ticket);
+    }catch{
+      if(ticket===focusTicket.current)setMessage({tone:'error',text:'요청한 고객을 찾지 못했습니다. 작성 중인 기록은 유지했습니다.'});
+    }
+  });
+  useEffect(()=>{
+    const ticket=++focusTicket.current;
+    if(!photoBusy&&initialCustomerId&&focusKey!==acceptedFocus)void confirmFocus(initialCustomerId,focusKey,ticket);
+    return()=>{focusTicket.current++;};
+  },[focusKey,confirmFocus,photoBusy]);
+  const loadCustomers=selection.retry;
+  const initialized=useRef('');
+  useEffect(()=>{
+    const key=JSON.stringify([organizationId,initialCustomerId,focusNonce]);
+    if(initialized.current===key||key!==acceptedFocus||photoBusy)return;
+    if(initialCustomerId){
+      if(selection.selected?.id!==initialCustomerId)return;
+      initialized.current=key;selectCustomer(initialCustomerId);
+    }else if(selection.status==='ready'){
+      initialized.current=key;
+      if(selection.page[0])selectCustomer(selection.page[0].id);
+    }
+  },[organizationId,initialCustomerId,focusNonce,selection.selected,selection.page,selection.status,selectCustomer,acceptedFocus,photoBusy]);
+  useEffect(()=>()=>{generation.current++;},[api,organizationId]);
+  useEffect(()=>{if(selection.selectionError)setMessage({tone:'error',text:'요청한 고객을 찾지 못했습니다. 고객 정보와 조회 권한을 확인한 뒤 다시 선택하세요.'});},[selection.selectionError]);
   useEffect(() => { void resourceApi.listServiceDetails(api, organizationId).then(setServices).catch(() => setServices([])); }, [api, organizationId]);
 
   const openCustomer = async (id: string) => {
-    if (id === customerId || saving) return;
+    if (id === customerId || saving || opening || photoBusy) return;
     if (!await confirmLeave(dirty)) return;
     selectCustomer(id);
   };
@@ -270,11 +298,10 @@ export function TreatmentPage({ api, organizationId, readOnly, initialCustomerId
     setOpening(true);
     setMessage({ tone: 'info', text: '최신 고객 주의사항과 상담을 불러오는 중…' });
     try {
-      const [freshCustomers, freshRecords] = await Promise.all([api.listCustomers(organizationId), treatmentApi.list(api, organizationId, customerId)]);
-      const freshCustomer = freshCustomers.find((item) => item.id === customerId);
+      const [freshCustomer, freshRecords] = await Promise.all([api.getCustomer(organizationId,customerId), treatmentApi.list(api, organizationId, customerId)]);
       const freshRecord = freshRecords.find((item) => item.id === record.id);
       if (!freshCustomer || !freshRecord) throw new Error('missing');
-      setCustomers(freshCustomers);
+      selection.remember(freshCustomer);
       setRecords((rows) => sortRecords(rows.map((item) => (item.id === freshRecord.id ? freshRecord : item))));
       if (!dirty) populate(formFromRecord(freshRecord));
       setConsultation({ customer: freshCustomer, record: freshRecord });
@@ -293,7 +320,7 @@ export function TreatmentPage({ api, organizationId, readOnly, initialCustomerId
   };
 
   const categories = useMemo(() => [...new Set(records.map((item) => item.category).filter(Boolean))].sort(), [records]);
-  const visibleCustomers = useMemo(() => filterCustomers(customers, customerQuery), [customers, customerQuery]);
+  const visibleCustomers = customers;
   const rangeError = filters.from && filters.to && filters.from > filters.to ? '날짜 범위의 시작일이 종료일보다 늦습니다.' : '';
   const visibleRecords = useMemo(() => (rangeError ? records : filterRecords(records, filters)), [records, filters, rangeError]);
 
@@ -348,15 +375,17 @@ export function TreatmentPage({ api, organizationId, readOnly, initialCustomerId
       <div className="treatment-layout">
         <aside className="data-surface treatment-customers">
           <h2>고객 선택</h2>
-          <input aria-label="고객 검색" placeholder="이름 · 연락처 검색" value={customerQuery} onChange={(event) => setCustomerQuery(event.target.value)} />
+          <input maxLength={100} aria-label="고객 검색" placeholder="이름 · 연락처 검색" value={customerQuery} onChange={(event) => setCustomerQuery(event.target.value)} />
           {customersState === 'loading' && <LoadingState label="고객 목록을 불러오는 중…" />}
           {customersState === 'error' && <ErrorState message="고객 목록을 불러오지 못했습니다." onRetry={() => void loadCustomers()} />}
           {customersState === 'ready' && !customers.length && <p className="empty-state">고객관리에서 고객을 먼저 등록하세요.</p>}
+          {selection.selectionError && <button type="button" onClick={selection.retry}>고객 다시 확인</button>}
           <ul aria-label="고객 목록">
             {visibleCustomers.map((item) => (
               <li key={item.id}><button type="button" aria-pressed={item.id === customerId} onClick={() => void openCustomer(item.id)}><strong>{item.name}</strong><small>{privacy.phone(item.phone) || '연락처 미등록'}</small></button></li>
             ))}
           </ul>
+          {selection.cursor && <button type="button" disabled={customersState==='loading'} onClick={selection.more}>고객 더 보기</button>}
           <div className="treatment-cautions" aria-label="고객 주의사항">
             {customer ? <>
               <div>피부 타입 · {customer.skin_type || '미등록'}</div>
@@ -402,7 +431,7 @@ export function TreatmentPage({ api, organizationId, readOnly, initialCustomerId
         </section>
       </div>
 
-      <TreatmentPhotos api={api} organizationId={organizationId} customerId={customerId} customerName={customer?.name} treatmentDate={record?.treatment_date ?? null} treatmentId={record?.id ?? null} treatmentName={record?.treatment_name} readOnly={readOnly} />
+      <TreatmentPhotos api={api} organizationId={organizationId} customerId={customerId} customerName={customer?.name} treatmentDate={record?.treatment_date ?? null} treatmentId={record?.id ?? null} treatmentName={record?.treatment_name} readOnly={readOnly} onBusyChange={setPhotoBusy} />
 
       {message && <p role={message.tone === 'error' ? 'alert' : 'status'} className={message.tone === 'error' ? 'form-error' : 'muted'}>{message.text}</p>}
 

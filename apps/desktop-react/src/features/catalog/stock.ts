@@ -14,6 +14,19 @@ export function isLowStock(product: Pick<CatalogProduct, 'kind' | 'stock_quantit
   return product.kind === 'product' && product.stock_quantity <= lowStockLimit(product);
 }
 
+export type LowStockPurchaseDraftLine = { product_id: string; quantity_ordered: number; shortage_quantity: number; projected_stock_quantity: number };
+
+/** 안전재고보다 실제 재고가 낮은 활성 실물 상품만 매입 단위로 올림해 발주 초안 후보를 만든다. 실제 발주나 재고는 바꾸지 않는다. */
+export function buildLowStockPurchaseDraft(products: CatalogProduct[]): LowStockPurchaseDraftLine[] {
+  return products.flatMap((product) => {
+    if (!product.is_active || product.kind !== 'product') return [];
+    const shortage_quantity = lowStockLimit(product) - product.stock_quantity;
+    if (shortage_quantity <= 0) return [];
+    const quantity_ordered = Math.ceil(shortage_quantity / product.units_per_purchase_unit);
+    return [{ product_id: product.id, quantity_ordered, shortage_quantity, projected_stock_quantity: product.stock_quantity + quantity_ordered * product.units_per_purchase_unit }];
+  });
+}
+
 /** 안전재고 입력을 서버 값으로 바꾼다. 비우면 null(공통 기본값), 잘못된 값은 오류 문구. */
 export function parseLowStockInput(text: string): number | null | string {
   const trimmed = text.trim();

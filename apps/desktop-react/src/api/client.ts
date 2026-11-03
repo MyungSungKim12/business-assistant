@@ -1,35 +1,52 @@
 import { z } from 'zod';
+import { callerProfileSchema } from './schemas';
 
 import type { Platform } from '../platform/types';
 import { ApiError, apiError } from './errors';
-import { auditEventsPageSchema, customerRetentionPolicyResponseSchema, customerRetentionPolicySchema, customerRetentionStatusSchema, phoneDirectoryPageSchema, phoneIdentificationSchema } from './schemas';
+import { auditEventsPageSchema, customerRetentionPolicyResponseSchema, customerRetentionPolicySchema, customerRetentionStatusSchema, phoneDirectoryPageSchema, phoneIdentificationSchema, incomingCallsPageSchema } from './schemas';
+import {phoneConsentSchema,phoneInboxPageSchema,phoneInboxRecordSchema,type PhoneResponse,type PhoneInboxQuery} from './phoneInbox';
 import { appointmentBranchesSchema } from './schemas';
-import { organizationSchema, signUpResultSchema, appointmentSchema, appointmentsSchema, appointmentStaffListSchema, appointmentServiceListSchema, operationRecordSchema, operationRecordsSchema, customerActivitySchema, customerActivitiesSchema, customerPhotoSchema, customerPhotosSchema, customerSchema, customersSchema, entitlementSchema, organizationsSchema, sessionSchema, signedPhotoSchema, trashedPhotosSchema, taskPeopleSchema, taskSchema, tasksSchema, type Customer, type CustomerActivity, type CustomerPhoto, type TrashedPhoto, type Entitlement, type Organization, type Session, type SignedPhoto, type Task, type Appointment, type AppointmentStaff, type AppointmentService, type OperationRecord } from './schemas';
+import { organizationSchema, signUpResultSchema, appointmentSchema, appointmentsSchema, appointmentStaffListSchema, appointmentServiceListSchema, operationRecordSchema, operationRecordsSchema, customerActivitySchema, customerActivitiesSchema, customerPhotoSchema, customerPhotosSchema, photoUploadStatusSchema, customerSchema, customersSchema, entitlementSchema, organizationsSchema, sessionSchema, signedPhotoSchema, trashedPhotosSchema, taskPeopleSchema, taskSchema, tasksSchema, type Customer, type CustomerActivity, type CustomerPhoto, type TrashedPhoto, type Entitlement, type Organization, type Session, type SignedPhoto, type Task, type Appointment, type AppointmentStaff, type AppointmentService, type OperationRecord } from './schemas';
 import type { HttpRequest, HttpResponse } from './transport';
 
 export class ApiClient {
+  async sendAccountEmail(email:string,type:'recovery'|'signup'):Promise<void>{
+    const response=await this.platform.request({method:'POST',path:'/auth/email',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,type})});this.parse(z.object({message:z.string()}),response);
+  }
+  listAccountSessions(cursor?:string){return this.call('GET',`/auth/sessions${cursor?'?cursor='+encodeURIComponent(cursor):''}`,z.object({current_session_id:z.string().uuid(),items:z.array(z.object({session_id:z.string().uuid(),created_at:z.string(),last_active_at:z.string().nullable(),user_agent:z.string().nullable(),is_current:z.boolean()})),total:z.number(),next_cursor:z.string().uuid().nullable()}));}
+  async revokeAccountSessions(sessionId:string|null){
+    const result=await this.call('POST','/auth/sessions/revoke',z.object({current_revoked:z.boolean()}),{session_id:sessionId});
+    if(result.current_revoked){const generation=this.beginSessionChange();await this.persistToken(generation,null);}return result;
+  }
   private accessToken: string | null = null;
   private refreshInFlight: Promise<Session> | null = null;
+  /** Invalidate every response/retry belonging to a previous login intent. */
+  private sessionGeneration = 0;
+  /** Native keyring calls are asynchronous: a late save must finish before logout clears it. */
+  private tokenWriteQueue: Promise<void> = Promise.resolve();
   /** 플랫폼 관리자 여부 확인 결과(세션 동안 유지). 실패는 저장하지 않아 다음에 다시 시도한다. */
   private platformAdmin: Promise<boolean> | null = null;
 
   constructor(private readonly platform: Platform) {}
 
   async login(email: string, password: string): Promise<Session> {
-    this.platformAdmin = null;
-    const response = await this.send({ method: 'POST', path: '/auth/login', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) });
+    const generation = this.beginSessionChange();
+    await this.persistToken(generation, null);
+    const response = await this.sessionResponse({ method: 'POST', path: '/auth/login', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) }, generation);
     const session = this.parse(sessionSchema, response);
-    await this.applySession(session);
+    await this.applySession(session, generation);
     return session;
   }
 
   /** 회원가입. 이메일 확인이 필요하면 세션 없이 { confirmationRequired: true }를 돌려준다. */
   async signUp(email: string, password: string, displayName: string): Promise<{ confirmationRequired: true } | { confirmationRequired: false; session: Session }> {
-    const response = await this.send({ method: 'POST', path: '/auth/signup', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password, display_name: displayName }) });
+    const generation = this.beginSessionChange();
+    await this.persistToken(generation, null);
+    const response = await this.sessionResponse({ method: 'POST', path: '/auth/signup', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password, display_name: displayName }) }, generation);
     const parsed = this.parse(signUpResultSchema, response);
     if (parsed.email_confirmation_required) return { confirmationRequired: true };
     const session = sessionSchema.parse(parsed);
-    await this.applySession(session);
+    await this.applySession(session, generation);
     return { confirmationRequired: false, session };
   }
 
@@ -38,24 +55,25 @@ export class ApiClient {
   }
 
   async restoreSession(): Promise<{ authenticated: false } | { authenticated: true; session: Session }> {
-    const token = await this.platform.tokenStore.load();
-    if (!token) return { authenticated: false };
+    const generation = this.sessionGeneration;
     try {
-      const session = await this.refresh(token);
+      const session = await this.refreshOnce(generation);
+      this.assertSession(generation);
       return { authenticated: true, session };
-    } catch (error) {
-      this.accessToken = null;
-      // 토큰이 거절된 경우(401/403)에만 지운다. 429·5xx·네트워크 오류는 일시적이므로 다음 실행에서 다시 시도한다.
-      const status = error instanceof ApiError ? error.status : 0;
-      if (status === 401 || status === 403) await this.platform.tokenStore.clear();
+    } catch {
+      // refresh owns current-session cleanup; stale restore failures must not clear a newer login.
       return { authenticated: false };
     }
   }
 
   async logout(): Promise<void> {
-    this.accessToken = null;
-    this.platformAdmin = null;
-    await this.platform.tokenStore.clear();
+    const token=this.accessToken;
+    const generation = this.beginSessionChange();
+    await this.persistToken(generation, null);
+    if(token){
+      const response=await this.platform.request({method:'POST',path:'/auth/logout',headers:{Authorization:`Bearer ${token}`}});
+      if(response.status<200||response.status>=300)throw apiError(response.status,response.body);
+    }
   }
 
   /**
@@ -64,9 +82,10 @@ export class ApiClient {
    */
   isPlatformAdmin(): Promise<boolean> {
     if (!this.platformAdmin) {
-      this.platformAdmin = this.call('GET', '/admin/me', z.object({ platform_admin: z.boolean() }))
+      const pending = this.call('GET', '/admin/me', z.object({ platform_admin: z.boolean() }))
         .then((result) => result.platform_admin)
-        .catch(() => { this.platformAdmin = null; return false; });
+        .catch(() => { if (this.platformAdmin === pending) this.platformAdmin = null; return false; });
+      this.platformAdmin = pending;
     }
     return this.platformAdmin;
   }
@@ -91,6 +110,7 @@ export class ApiClient {
   }
 
   listCustomers(organizationId: string): Promise<Customer[]> { return this.authed({ method: 'GET', path: `/organizations/${organizationId}/customers`, headers: {} }, customersSchema); }
+  getCustomer(o:string,c:string):Promise<Customer>{return this.call('GET',`/organizations/${o}/customers/${c}`,customerSchema)}
   createCustomer(organizationId: string, input: Omit<Customer, 'id'|'organization_id'>): Promise<Customer> { return this.authed({ method: 'POST', path: `/organizations/${organizationId}/customers`, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) }, customerSchema); }
   updateCustomer(organizationId: string, customerId: string, patch: Partial<Omit<Customer, 'id'|'organization_id'>>): Promise<Customer> { return this.authed({ method: 'PATCH', path: `/organizations/${organizationId}/customers/${customerId}`, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch) }, customerSchema); }
   archiveCustomer(organizationId: string, customerId: string): Promise<Customer> { return this.updateCustomer(organizationId, customerId, { status: 'archived' }); }
@@ -103,9 +123,19 @@ export class ApiClient {
   createCustomerActivity(organizationId:string, customerId:string, input:{activity_type:string;title:string;description:string;occurred_at:string|null}):Promise<CustomerActivity>{return this.authed({method:'POST',path:`/organizations/${organizationId}/customers/${customerId}/activities`,headers:{'Content-Type':'application/json'},body:JSON.stringify(input)},customerActivitySchema);}
   getMobilePhoneDirectory(organizationId:string,cursor?:string){const suffix=cursor?`?cursor=${encodeURIComponent(cursor)}`:'';return this.call('GET',`/organizations/${organizationId}/mobile/phone-directory${suffix}`,phoneDirectoryPageSchema)}
   identifyMobileCaller(organizationId:string,number:string){return this.call('POST',`/organizations/${organizationId}/mobile/phone-identification`,phoneIdentificationSchema,{number})}
+  listIncomingCalls(organizationId:string,after='',waitMs=8000){const query=new URLSearchParams({after,wait_ms:String(waitMs)});return this.call('GET',`/organizations/${organizationId}/mobile/incoming-calls?${query}`,incomingCallsPageSchema)}
+  getPhoneRetentionConsent(o:string){return this.call('GET',`/organizations/${o}/phone/retention-consent`,phoneConsentSchema)}
+  getPhoneInboxRecord(o:string,id:string,recipientId?:string){return this.call('GET',`/organizations/${o}/phone/inbox/${id}${recipientId?`?recipient_id=${encodeURIComponent(recipientId)}`:''}`,phoneInboxRecordSchema)}
+  acknowledgePhoneInbox(o:string,id:string){return this.call('POST',`/organizations/${o}/phone/inbox/${id}/ack`,z.object({acknowledged:z.boolean()}),{})}
+  setPhoneRetentionConsent(o:string,input:{enabled:boolean;expected_version:number;operation_id:string}){return this.call('PUT',`/organizations/${o}/phone/retention-consent`,phoneConsentSchema,input)}
+  listPhoneInbox(o:string,input:PhoneInboxQuery={}){const query=new URLSearchParams();for(const [k,v] of Object.entries(input))if(v!==undefined)query.set(k,String(v));return this.call('GET',`/organizations/${o}/phone/inbox?${query}`,phoneInboxPageSchema)}
+  respondPhoneInbox(o:string,id:string,input:PhoneResponse){return this.call('POST',`/organizations/${o}/phone/inbox/${id}/response`,phoneInboxRecordSchema,input)}
+  getCallerProfile(o:string,customerId:string,number:string){return this.call('POST',`/organizations/${o}/phone/caller-profile`,callerProfileSchema,{customer_id:customerId,number})}
   createMobilePhoneMemo(organizationId:string,input:{customer_id:string;phone:string;memo:string;occurred_at:string|null}){return this.call('POST',`/organizations/${organizationId}/mobile/phone-memos`,customerActivitySchema,input)}
   async deleteCustomerActivity(organizationId:string,customerId:string,activityId:string):Promise<void>{await this.authedVoid({method:'DELETE',path:`/organizations/${organizationId}/customers/${customerId}/activities/${activityId}`,headers:{}});}
+  getCustomerPhotoUploadStatus(o:string,c:string){return this.authed({method:'GET',path:`/organizations/${o}/customers/${c}/photos/upload-status`,headers:{}},photoUploadStatusSchema)}
   listCustomerPhotos(o:string,c:string):Promise<CustomerPhoto[]>{return this.authed({method:'GET',path:`/organizations/${o}/customers/${c}/photos`,headers:{}},customerPhotosSchema)}
+  completeCustomerPhotoUpload(o:string,c:string,id:string):Promise<CustomerPhoto>{return this.authed({method:'POST',path:`/organizations/${o}/customers/${c}/photos/${id}/complete`,headers:{}},customerPhotoSchema)}
   createPhotoUploadUrl(o:string,c:string,input:{original_name:string;content_type:string;size_bytes:number;caption:string}):Promise<SignedPhoto>{return this.authed({method:'POST',path:`/organizations/${o}/customers/${c}/photos/upload-url`,headers:{'Content-Type':'application/json'},body:JSON.stringify(input)},signedPhotoSchema)}
   createPhotoDownloadUrl(o:string,c:string,id:string):Promise<SignedPhoto>{return this.authed({method:'POST',path:`/organizations/${o}/customers/${c}/photos/${id}/download-url`,headers:{}},signedPhotoSchema)}
   listTrashedPhotos(o:string,c:string):Promise<TrashedPhoto[]>{return this.authed({method:'GET',path:`/organizations/${o}/customers/${c}/photos/trash`,headers:{}},trashedPhotosSchema)}
@@ -137,44 +167,96 @@ export class ApiClient {
   }
 
   private async authed<T>(request: HttpRequest, schema: z.ZodType<T>): Promise<T> {
-    if (!this.accessToken) throw new ApiError(401, 'NOT_AUTHENTICATED', '로그인이 필요합니다.', false);
-    let response = await this.send({ ...request, headers: { ...request.headers, Authorization: `Bearer ${this.accessToken}` } });
-    if (response.status === 401) {
-      const session = await this.refreshOnce();
-      response = await this.send({ ...request, headers: { ...request.headers, Authorization: `Bearer ${session.access_token}` } });
-    }
-    return this.parse(schema, response);
+    return this.parse(schema, await this.authenticatedResponse(request));
   }
-  private async authedVoid(request: HttpRequest): Promise<void> { if (!this.accessToken) throw new ApiError(401,'NOT_AUTHENTICATED','로그인이 필요합니다.',false); let response=await this.send({...request,headers:{...request.headers,Authorization:`Bearer ${this.accessToken}`}}); if(response.status===401){const session=await this.refreshOnce();response=await this.send({...request,headers:{...request.headers,Authorization:`Bearer ${session.access_token}`}});} if(response.status<200||response.status>=300)throw apiError(response.status,response.body); }
 
-  private async refreshOnce(): Promise<Session> {
+  private async authenticatedResponse(request: HttpRequest): Promise<HttpResponse> {
+    const generation = this.sessionGeneration;
+    if (!this.accessToken) throw new ApiError(401, 'NOT_AUTHENTICATED', '로그인이 필요합니다.', false);
+    let response = await this.sessionResponse({ ...request, headers: { ...request.headers, Authorization: `Bearer ${this.accessToken}` } }, generation);
+    if (response.status === 401) {
+      const session = await this.refreshOnce(generation);
+      response = await this.sessionResponse({ ...request, headers: { ...request.headers, Authorization: `Bearer ${session.access_token}` } }, generation);
+    }
+    this.assertSession(generation);
+    return response;
+  }
+  private async authedVoid(request: HttpRequest): Promise<void> {
+    const response = await this.authenticatedResponse(request);
+    if (response.status < 200 || response.status >= 300) throw apiError(response.status, response.body);
+  }
+
+  private async refreshOnce(generation: number): Promise<Session> {
+    this.assertSession(generation);
     if (!this.refreshInFlight) {
-      this.refreshInFlight = this.platform.tokenStore.load().then((token) => {
+      const pending = this.tokenWriteQueue.then(() => {
+        this.assertSession(generation);
+        return this.platform.tokenStore.load();
+      }).then((token) => {
+        this.assertSession(generation);
         if (!token) throw new ApiError(401, 'SESSION_EXPIRED', '세션이 만료되었습니다.', false);
-        return this.refresh(token);
-      }).finally(() => { this.refreshInFlight = null; });
+        return this.refresh(token, generation);
+      }).finally(() => { if (this.refreshInFlight === pending) this.refreshInFlight = null; });
+      this.refreshInFlight = pending;
     }
     return this.refreshInFlight;
   }
 
-  private async refresh(refreshToken: string): Promise<Session> {
+  private async refresh(refreshToken: string, generation: number): Promise<Session> {
     try {
-      const response = await this.send({ method: 'POST', path: '/auth/refresh', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ refresh_token: refreshToken }) });
+      const response = await this.sessionResponse({ method: 'POST', path: '/auth/refresh', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ refresh_token: refreshToken }) }, generation);
       const session = this.parse(sessionSchema, response);
-      await this.applySession(session);
+      await this.applySession(session, generation);
       return session;
     } catch (error) {
+      this.assertSession(generation);
       this.accessToken = null;
       // 서버가 토큰을 거절한 경우(401/403)에만 저장된 토큰을 지운다. 429·5xx·네트워크 오류는 일시적이다.
       const status = error instanceof ApiError ? error.status : 0;
-      if (status === 401 || status === 403) await this.platform.tokenStore.clear();
+      if (status === 401 || status === 403) await this.persistToken(generation, null);
       throw error;
     }
   }
 
-  private async applySession(session: Session): Promise<void> {
+  private async applySession(session: Session, generation: number): Promise<void> {
+    this.assertSession(generation);
+    await this.persistToken(generation, session.refresh_token);
+    this.assertSession(generation);
     this.accessToken = session.access_token;
-    if (session.refresh_token) await this.platform.tokenStore.save(session.refresh_token);
+  }
+
+  private beginSessionChange(): number {
+    this.sessionGeneration++;
+    this.accessToken = null;
+    this.refreshInFlight = null;
+    this.platformAdmin = null;
+    return this.sessionGeneration;
+  }
+
+  private assertSession(generation: number): void {
+    if (generation !== this.sessionGeneration) throw new ApiError(0, 'SESSION_CHANGED', '로그인 상태가 변경되어 이전 요청을 취소했습니다.', false);
+  }
+
+  private persistToken(generation: number, token: string | null): Promise<void> {
+    const pending = this.tokenWriteQueue.then(async () => {
+      this.assertSession(generation);
+      try {
+        if (token) await this.platform.tokenStore.save(token);
+        else await this.platform.tokenStore.clear();
+      } finally { this.assertSession(generation); }
+    });
+    // A failed write must not prevent a subsequent logout clear or new-account save.
+    this.tokenWriteQueue = pending.catch(() => undefined);
+    return pending;
+  }
+
+  private async sessionResponse(request: HttpRequest, generation: number): Promise<HttpResponse> {
+    this.assertSession(generation);
+    try {
+      const response = await this.send(request);
+      this.assertSession(generation);
+      return response;
+    } catch (error) { this.assertSession(generation); throw error; }
   }
 
   private async send(request: HttpRequest): Promise<HttpResponse> {

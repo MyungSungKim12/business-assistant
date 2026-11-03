@@ -1,5 +1,5 @@
 import type { ApiClient } from '../../api/client';
-import { memberRefSchema, membersSchema, type Member, type Role } from './memberRules';
+import { businessPermissionsResultSchema, businessPermissionsSchema, memberRefSchema, membersSchema, type BusinessPermissions, type Member, type Role } from './memberRules';
 
 /** 구성원 API가 쓰는 ApiClient의 부분. 테스트에서는 이 메서드만 가진 가짜를 넣는다. */
 export type MembersApiClient = Pick<ApiClient, 'call' | 'callVoid'>;
@@ -12,4 +12,6 @@ export const membersApi = {
   add: (api: MembersApiClient, organizationId: string, email: string, role: Role) => api.call('POST', base(organizationId), memberRefSchema, { email, role }),
   setRole: (api: MembersApiClient, organizationId: string, userId: string, role: Role) => api.call('PATCH', `${base(organizationId)}/${userId}`, memberRefSchema, { role }),
   remove: (api: MembersApiClient, organizationId: string, userId: string): Promise<void> => api.callVoid('DELETE', `${base(organizationId)}/${userId}`),
+  permissions: (api:MembersApiClient,organizationId:string,userId:string):Promise<BusinessPermissions>=>api.call('GET',`${base(organizationId)}/${userId}/permissions`,businessPermissionsSchema),
+  setPermissions: (api:MembersApiClient,organizationId:string,userId:string,permissions:BusinessPermissions)=>api.call('PUT',`${base(organizationId)}/${userId}/permissions`,businessPermissionsResultSchema,permissions),
 };

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { CatalogProduct, StockMovement } from './schemas';
-import { DEFAULT_LOW_STOCK, buildStocktakePlan, emptyMovementFilter, filterMovements, isLowStock, kstDate, lowStockLimit, parseLowStockInput } from './stock';
+import { DEFAULT_LOW_STOCK, buildLowStockPurchaseDraft, buildStocktakePlan, emptyMovementFilter, filterMovements, isLowStock, kstDate, lowStockLimit, parseLowStockInput } from './stock';
 import { product } from './testServer';
 
 const item = (over: Record<string, unknown> = {}) => product(over) as CatalogProduct;
@@ -50,6 +50,23 @@ describe('실사 계획', () => {
     expect(plan.entries).toHaveLength(1);
     expect(plan.entries[0]).toMatchObject({ counted: 0, difference: -10 });
     expect(plan.invalid.map((entry) => entry.product.id)).toEqual(['b', 'c']);
+  });
+});
+
+describe('안전재고 발주 제안',()=>{
+  it('부족 수량을 매입 단위로 올림하고, 비활성·회원권·기준 충족 상품은 제안하지 않는다',()=>{
+    const products=[
+      item({id:'box',name:'박스상품',stock_quantity:3,low_stock_threshold:10,units_per_purchase_unit:12}),
+      item({id:'default',stock_quantity:2,low_stock_threshold:null,units_per_purchase_unit:1}),
+      item({id:'zero',stock_quantity:0,low_stock_threshold:0}),
+      item({id:'enough',stock_quantity:10,low_stock_threshold:10}),
+      item({id:'inactive',stock_quantity:0,low_stock_threshold:8,is_active:false}),
+      item({id:'wallet',kind:'membership',stock_quantity:0,low_stock_threshold:8}),
+    ];
+    expect(buildLowStockPurchaseDraft(products)).toEqual([
+      {product_id:'box',quantity_ordered:1,shortage_quantity:7,projected_stock_quantity:15},
+      {product_id:'default',quantity_ordered:3,shortage_quantity:3,projected_stock_quantity:5},
+    ]);
   });
 });
 

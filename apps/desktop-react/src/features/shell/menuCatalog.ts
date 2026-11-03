@@ -31,6 +31,8 @@ export const moreGroups: MenuGroup[] = [
   {
     title: '매장 운영',
     entries: [
+      { id: 'phone-inbox', label: '전화 수신함', description: '동의한 수신 기록과 담당자·콜백 관리', mark: '전' },
+      { id: 'marketing', label: '고객 소통', description: '안내 템플릿·동의 확인·발송 대기열', mark: '소' },
       { id: 'services', label: '서비스', description: '서비스별 소요 시간·여유 시간과 필수 공간·장비', mark: '서' },
       { id: 'staff', label: '직원', description: '예약 담당자와 근무시간·휴무 관리', mark: '직' },
       { id: 'memberships', label: '회원권', description: '고객 지갑 잔액·횟수·만료 조회', mark: '권' },

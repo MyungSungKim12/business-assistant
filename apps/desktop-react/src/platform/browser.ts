@@ -15,7 +15,7 @@ export function createBrowserPlatform(apiBase = '/api/v1'): Platform {
   return {
     kind: 'browser', apiBase, tokenStore: browserTokenStore,
     async request(request) {
-      monitor.publish('checking');
+      if (!(request.method === 'GET' && /^\/organizations\/[^/]+\/mobile\/incoming-calls(?:\?|$)/.test(request.path))) monitor.publish('checking');
       try { const response = await transport(request); monitor.publish('online'); return response; }
       catch (error) { monitor.publish('offline'); throw error; }
     },

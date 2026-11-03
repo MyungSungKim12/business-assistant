@@ -12,6 +12,11 @@ export type UpdateCheckResult =
   | { configured: true; currentVersion: string; available: true; version: string; notes?: string; date?: string };
 
 export interface UpdateProgress { downloaded: number; total?: number | null }
+export interface CallerSummary {
+  notes?: string; allergies?: string; tags?: string[]; lastVisit?: string; treatment?: string;
+  nextAppointment?: string; photo?: string; photoCaption?: string; errors?: string[]; loading?: boolean;
+}
+export interface CallPopup { id: string; title: string; phone: string; expiresAt: number; customers?: { id: string; name: string }[]; summary?: CallerSummary }
 
 export interface RefreshTokenStore {
   load(): Promise<string | null>;
@@ -53,6 +58,10 @@ export interface Platform {
   requestOsNotificationPermission?: () => Promise<boolean>;
   /** 개인정보를 포함하지 않는 OS 알림을 보낸다(데스크톱 전용). */
   sendOsNotification?: (title: string, body: string) => Promise<void>;
+  /** Independent native call window, with no session credentials or business API access. */
+  showIncomingCalls?: (calls: CallPopup[]) => Promise<void>;
+  completeIncomingCallAction?: (eventId: string) => Promise<void>;
+  subscribeIncomingCallAction?: (handler: (eventId: string, action?: 'customer' | 'retry', customerId?: string) => void) => Promise<() => void>;
   log?: (level: 'INFO' | 'WARN' | 'ERROR', message: string) => void;
 }
 

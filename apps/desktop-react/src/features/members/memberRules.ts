@@ -3,6 +3,17 @@ import { z } from 'zod';
 export const ROLES = ['owner', 'admin', 'member'] as const;
 export type Role = (typeof ROLES)[number];
 export const ROLE_LABELS: Record<Role, string> = { owner: '소유자', admin: '관리자', member: '구성원' };
+export const BUSINESS_PERMISSION_LABELS = {
+  'customer.read':'고객 조회','customer.manage':'고객 등록·수정',
+  'appointment.read':'예약 조회','appointment.manage':'예약 등록·변경',
+  'treatment.read':'시술 기록 조회','treatment.manage':'시술 기록 작성·수정',
+  'payment.read':'수납 내역 조회','payment.collect':'수납·정산 처리',
+  'refund.approve':'환불 승인','data.export':'고객 정보 내보내기',
+} as const;
+export type BusinessPermissionCode=keyof typeof BUSINESS_PERMISSION_LABELS;
+export type BusinessPermissions=Record<BusinessPermissionCode,boolean>;
+export const businessPermissionsSchema=z.object(Object.fromEntries(Object.keys(BUSINESS_PERMISSION_LABELS).map(code=>[code,z.boolean()])) as unknown as Record<BusinessPermissionCode,z.ZodType<boolean>>).strict();
+export const businessPermissionsResultSchema=z.object({user_id:z.uuid(),permissions:businessPermissionsSchema});
 
 export const memberSchema = z.object({
   user_id: z.uuid(),
@@ -56,6 +67,7 @@ export function memberErrorMessage(reason: unknown, fallback: string): string {
     case 'last_owner': return '마지막 소유자는 강등하거나 제거할 수 없습니다.';
     case 'self_change': return '본인의 역할은 바꾸거나 제거할 수 없습니다.';
     case 'invalid_email': return '이메일 형식을 확인해 주세요.';
+    case 'role_permission_limit': return '현재 역할의 데이터 권한 범위를 벗어나는 항목은 허용할 수 없습니다.';
     default: break;
   }
   if (failure?.status === 403) return '이 작업을 할 권한이 없습니다.';

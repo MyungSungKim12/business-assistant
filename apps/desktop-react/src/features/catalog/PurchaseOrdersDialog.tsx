@@ -15,7 +15,7 @@ const emptyLine = (): DraftLine => ({ product_id: '', quantity_ordered: '1', uni
 const receiptRequest = z.object({ order_id: z.uuid(), line_id: z.uuid(), quantity: z.number().int().positive(), operation_id: z.uuid(), expires_on: z.iso.date().nullable(), lot_code: z.string().max(120) });
 const orderRequest = z.object({ supplier_id: z.uuid(), operation_id: z.uuid(), note: z.string(), lines: z.array(z.object({ product_id: z.uuid(), quantity_ordered: z.number().int().positive(), unit_cost: z.string(), note: z.string() })).min(1) });
 
-export function PurchaseOrdersDialog({ api, organizationId, products, readOnly, onClose }: { api: ApiClient; organizationId: string; products: CatalogProduct[]; readOnly: boolean; onClose: () => void }) {
+export function PurchaseOrdersDialog({ api, organizationId, products, readOnly, initialLines, onClose }: { api: ApiClient; organizationId: string; products: CatalogProduct[]; readOnly: boolean; initialLines?: DraftLine[]; onClose: () => void }) {
   const [suppliers, setSuppliers] = useState<z.infer<typeof suppliersSchema>>([]);
   const [orders, setOrders] = useState<z.infer<typeof purchaseOrdersSchema>>([]);
   const [supplierName, setSupplierName] = useState('');
@@ -24,7 +24,7 @@ export function PurchaseOrdersDialog({ api, organizationId, products, readOnly, 
   const [supplierEmail, setSupplierEmail] = useState('');
   const [supplierNote, setSupplierNote] = useState('');
   const [supplierId, setSupplierId] = useState('');
-  const [lines, setLines] = useState<DraftLine[]>([emptyLine()]);
+  const [lines, setLines] = useState<DraftLine[]>(() => initialLines?.length ? initialLines.map(line=>({...line})) : [emptyLine()]);
   const [working, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [receiving, setReceiving] = useState<{ row: Order; line: Order['lines'][number] } | null>(null);
@@ -109,6 +109,7 @@ export function PurchaseOrdersDialog({ api, organizationId, products, readOnly, 
   const supplierNameOf = (id: string) => suppliers.find((x) => x.id === id)?.name ?? '공급처 정보 없음';
   const productOptions = [{ value: '', label: '상품 선택' }, ...products.filter((x) => x.kind === 'product' && x.is_active).map((x) => ({ value: x.id, label: x.name }))];
   return <Modal title="공급처 · 발주 · 입고" size="lg" onClose={() => void close()}><section className="purchase-dialog">
+    {Boolean(initialLines?.length)&&<p className="muted" role="status">안전재고 보충 제안입니다. 계산에는 현재 재고와 안전재고만 반영했고, 기존 미입고 발주량은 차감하지 않았습니다. 공급처·수량·확인된 매입 단가를 검토한 뒤 발주 초안을 저장하세요.</p>}
     {(receipt.message || creation.message) && <p role="alert" className="form-error">{receipt.message || creation.message}</p>}
     {(receipt.invalid || creation.invalid) && <p role="alert">복구 정보 형식이 올바르지 않습니다. 새 요청을 보내지 말고 관리자에게 확인하세요.</p>}
     {receipt.pending && <p>미확인 입고 {receipt.pending.quantity}개 {receipt.pending.expires_on ? `· 유통기한 ${receipt.pending.expires_on}` : ''} <button type="button" disabled={busy || readOnly} onClick={receipt.retry}>입고 결과 다시 확인</button></p>}

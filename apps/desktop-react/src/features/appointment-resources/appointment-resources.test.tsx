@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { describe, expect, it, vi } from 'vitest';
 import { NoticeHost } from '@business-assistant/react-ui';
 import { BranchManagerDialog, ResourceManagerDialog, ResourcePicker, StaffAvailabilityDialog, autoSelectResources, kstIso, missingRequirements, createOperationTracker } from './index';
+import type{AppointmentResource}from'./index';
 import { apiFailure, fakeApi, type FakeCall } from './testApi';
 
 const ORG = 'a9cc39fd-8e8c-4df8-a623-1f23a3a936bd';
@@ -261,7 +262,7 @@ describe('StaffAvailabilityDialog', () => {
 });
 
 describe('ResourcePicker', () => {
-  function Harness({ api, serviceId, initial = [], autoSelect }: { api: ReturnType<typeof server>['api']; serviceId: string | null; initial?: string[]; autoSelect?: boolean }) {
+  function Harness({ api, serviceId, initial = [], autoSelect, resourceOptions }: { api: ReturnType<typeof server>['api']; serviceId: string | null; initial?: string[]; autoSelect?: boolean; resourceOptions?: AppointmentResource[] }) {
     const [ids, setIds] = useState<string[]>(initial);
     const [current, setCurrent] = useState(serviceId);
     return (
@@ -269,7 +270,7 @@ describe('ResourcePicker', () => {
         <button onClick={() => setCurrent('s2')}>서비스2</button>
         <button onClick={() => setCurrent('s1')}>서비스1</button>
         <output data-testid="ids">{ids.join(',')}</output>
-        <ResourcePicker api={api} organizationId={ORG} serviceId={current} value={ids} onChange={setIds} autoSelect={autoSelect} />
+        <ResourcePicker api={api} organizationId={ORG} serviceId={current} value={ids} onChange={setIds} autoSelect={autoSelect} resourceOptions={resourceOptions} />
       </>
     );
   }
@@ -317,6 +318,14 @@ describe('ResourcePicker', () => {
     expect(calls.some((call) => call.path.includes('resource-requirements'))).toBe(false);
     const grid = within(screen.getByRole('group', { name: '공간·장비' }));
     expect(grid.getAllByRole('checkbox')).toHaveLength(2);
+  });
+
+  it('예약 묶음에서 전달한 지점 자원 목록을 재사용해 자원 목록 API를 반복 호출하지 않는다',async()=>{
+    const {api,calls}=server();render(<Harness api={api} serviceId="s1" resourceOptions={[room as AppointmentResource]}/>);
+    expect(await screen.findByText('공간 · 관리실 1')).toBeInTheDocument();
+    expect(calls.some(call=>call.path.endsWith('/appointment-resources'))).toBe(false);
+    expect(screen.getByTestId('ids')).toHaveTextContent('r1');
+    expect(screen.getByRole('alert')).toHaveTextContent('장비 1개를 더 선택하세요.');
   });
 });
 

@@ -10,6 +10,7 @@ import { formatSize } from './fileValidation';
 import type { FileAsset, FileStorageUsage } from './schemas';
 import { UploadList } from './UploadList';
 import { useFileUploads } from './useFileUploads';
+import { useDraftProtection } from '../../app/DraftBoundary';
 import './documents.css';
 
 export interface FilePageProps { api: ApiClient; organizationId: string; readOnly: boolean }
@@ -24,6 +25,8 @@ export function FilePage({ api, organizationId, readOnly }: FilePageProps) {
   const [folderId,setFolderId]=useState('');
   const [folderName,setFolderName]=useState('');
   const [tagEdits,setTagEdits]=useState<Record<string,string>>({});
+  const [mutations,setMutations]=useState(0);
+  const quotaEdited=useRef(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [error, setError] = useState('');
@@ -39,7 +42,7 @@ export function FilePage({ api, organizationId, readOnly }: FilePageProps) {
     setLoading(true);
     try {
       const [nextFiles,nextFolders,usage]=await Promise.all([fileApi.list(api, organizationId, includeArchived),fileApi.folders(api,organizationId),fileApi.storageUsage(api,organizationId)]);
-      setFiles(nextFiles);setFolders(nextFolders);setStorageUsage(usage);setQuotaGiB((usage.organization_quota_bytes/1024**3).toString());
+      setFiles(nextFiles);setFolders(nextFolders);setStorageUsage(usage);if(!quotaEdited.current)setQuotaGiB((usage.organization_quota_bytes/1024**3).toString());
       setLoadError('');
     } catch (e) { setLoadError(messageFor(e, { 403: '파일 접근 권한이 없습니다.' }, '파일을 불러오지 못했습니다.')); }
     finally { setLoading(false); }
@@ -55,6 +58,16 @@ export function FilePage({ api, organizationId, readOnly }: FilePageProps) {
     onError: setError,
     onCancelled: (name) => notify.info(`${name} 업로드를 취소했습니다.`),
   });
+
+  const normalizeTags=(text:string)=>JSON.stringify([...new Set(text.split(',').map(tag=>tag.trim()).filter(Boolean))]);
+  const tagsDirty=files.some(file=>tagEdits[file.id]!==undefined&&normalizeTags(tagEdits[file.id]!)!==JSON.stringify(file.tags));
+  const quotaDirty=storageUsage!==null&&Number(quotaGiB)!==storageUsage.organization_quota_bytes/1024**3;
+  quotaEdited.current=quotaDirty;
+  useDraftProtection(!readOnly&&(folderName.length>0||tagsDirty||quotaDirty),uploads.busy||mutations>0||quotaBusy||working!=='');
+  async function mutate<T>(operation:()=>Promise<T>):Promise<T>{
+    setMutations(count=>count+1);
+    try{return await operation();}finally{setMutations(count=>count-1);}
+  }
 
   const upload = async (sources: Parameters<typeof uploads.start>[0]) => {
     setError('');
@@ -114,9 +127,12 @@ export function FilePage({ api, organizationId, readOnly }: FilePageProps) {
   };
 
   const closePreview = useCallback(() => setPreviewId(''), []);
-  async function saveFolder(){const name=folderName.trim();if(!name)return;try{const created=await fileApi.createFolder(api,organizationId,name);setFolders(old=>[...old,created].sort((a,b)=>a.name.localeCompare(b.name)));setFolderName('');notify.success('폴더를 만들었습니다.')}catch{setError('폴더를 만들지 못했습니다. 이름 중복 여부와 권한을 확인하세요.')}}
-  async function deleteFolder(folder:{id:string;name:string}){const count=files.filter(file=>file.folder_id===folder.id).length;if(!(await confirm({title:'폴더 삭제',message:`${folder.name} 폴더를 삭제할까요? 포함된 파일 ${count}개는 미분류로 이동합니다. 파일 자체는 삭제되지 않습니다.`,confirmLabel:'폴더 삭제',tone:'danger'})))return;try{await fileApi.deleteFolder(api,organizationId,folder.id);setFolders(old=>old.filter(item=>item.id!==folder.id));if(folderId===folder.id)setFolderId('');setFiles(old=>old.map(file=>file.folder_id===folder.id?{...file,folder_id:null}:file));notify.success('폴더를 삭제하고 파일을 미분류로 옮겼습니다.')}catch{setError('폴더를 삭제하지 못했습니다. 권한이나 최신 폴더 상태를 확인하세요.')}}
-  async function saveMetadata(file:FileAsset){const tags=(tagEdits[file.id]??file.tags.join(',')).split(',').map(x=>x.trim()).filter(Boolean);try{const saved=await fileApi.updateMetadata(api,organizationId,file.id,{folder_id:file.folder_id,tags:[...new Set(tags)]});setFiles(old=>old.map(row=>row.id===saved.id?saved:row));setTagEdits(old=>({...old,[file.id]:saved.tags.join(', ')}));notify.success('파일 분류를 저장했습니다.')}catch{setError('파일 분류를 저장하지 못했습니다. 태그는 최대 10개입니다.')}}
+  async function saveFolderRequest(){const name=folderName.trim();if(!name)return;try{const created=await fileApi.createFolder(api,organizationId,name);setFolders(old=>[...old,created].sort((a,b)=>a.name.localeCompare(b.name)));setFolderName(current=>current.trim()===name?'':current);notify.success('폴더를 만들었습니다.')}catch{setError('폴더를 만들지 못했습니다. 이름 중복 여부와 권한을 확인하세요.')}}
+  async function deleteFolderRequest(folder:{id:string;name:string}){const count=files.filter(file=>file.folder_id===folder.id).length;if(!(await confirm({title:'폴더 삭제',message:`${folder.name} 폴더를 삭제할까요? 포함된 파일 ${count}개는 미분류로 이동합니다. 파일 자체는 삭제되지 않습니다.`,confirmLabel:'폴더 삭제',tone:'danger'})))return;try{await fileApi.deleteFolder(api,organizationId,folder.id);setFolders(old=>old.filter(item=>item.id!==folder.id));if(folderId===folder.id)setFolderId('');setFiles(old=>old.map(file=>file.folder_id===folder.id?{...file,folder_id:null}:file));notify.success('폴더를 삭제하고 파일을 미분류로 옮겼습니다.')}catch{setError('폴더를 삭제하지 못했습니다. 권한이나 최신 폴더 상태를 확인하세요.')}}
+  async function saveMetadataRequest(file:FileAsset){const submitted=tagEdits[file.id];const tags=(submitted??file.tags.join(',')).split(',').map(x=>x.trim()).filter(Boolean);try{const saved=await fileApi.updateMetadata(api,organizationId,file.id,{folder_id:file.folder_id,tags:[...new Set(tags)]});setFiles(old=>old.map(row=>row.id===saved.id?saved:row));setTagEdits(old=>old[file.id]===submitted?({...old,[file.id]:saved.tags.join(', ')}):old);notify.success('파일 분류를 저장했습니다.')}catch{setError('파일 분류를 저장하지 못했습니다. 태그는 최대 10개입니다.')}}
+  const saveFolder=()=>mutate(saveFolderRequest);
+  const deleteFolder=(folder:{id:string;name:string})=>mutate(()=>deleteFolderRequest(folder));
+  const saveMetadata=(file:FileAsset)=>mutate(()=>saveMetadataRequest(file));
   const rows = files.filter((row) => (!folderId||row.folder_id===folderId)&&row.original_name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())&&(!tagQuery.trim()||row.tags.some(tag=>tag.toLocaleLowerCase().includes(tagQuery.trim().toLocaleLowerCase()))));
   const previewable = rows.filter(isPreviewable);
   const uploading = uploads.items.find((item) => item.status === 'uploading')?.name ?? '';
@@ -128,7 +144,7 @@ export function FilePage({ api, organizationId, readOnly }: FilePageProps) {
           <input aria-label="파일 검색" placeholder="파일명 검색" value={query} onChange={(e) => setQuery(e.target.value)} />
           <input aria-label="태그 검색" placeholder="태그 검색" value={tagQuery} onChange={e=>setTagQuery(e.currentTarget.value)} />
           <select aria-label="폴더 필터" value={folderId} onChange={e=>setFolderId(e.currentTarget.value)}><option value="">모든 폴더</option>{folders.map(folder=><option key={folder.id} value={folder.id}>{folder.name}</option>)}</select>
-          {!readOnly&&<><input aria-label="새 폴더 이름" placeholder="새 폴더 이름" maxLength={80} value={folderName} onChange={e=>setFolderName(e.currentTarget.value)}/><button type="button" disabled={!folderName.trim()} onClick={()=>void saveFolder()}>폴더 추가</button><div aria-label="폴더 관리">{folders.map(folder=><button key={folder.id} type="button" disabled={working!==""} aria-label={`${folder.name} 폴더 삭제`} onClick={()=>void deleteFolder(folder)}>{folder.name} 삭제</button>)}</div></>}
+          {!readOnly&&<><input aria-label="새 폴더 이름" placeholder="새 폴더 이름" maxLength={80} value={folderName} onChange={e=>setFolderName(e.currentTarget.value)}/><button type="button" disabled={mutations>0||!folderName.trim()} onClick={()=>void saveFolder()}>폴더 추가</button><div aria-label="폴더 관리">{folders.map(folder=><button key={folder.id} type="button" disabled={working!==""} aria-label={`${folder.name} 폴더 삭제`} onClick={()=>void deleteFolder(folder)}>{folder.name} 삭제</button>)}</div></>}
           <label className="doc-check"><input type="checkbox" checked={includeArchived} onChange={(e) => setIncludeArchived(e.target.checked)} />보관 파일 포함</label>
           <button type="button" onClick={() => void load()}>새로고침</button>
           {!readOnly && <button type="button" className="primary-button" disabled={uploads.busy} onClick={() => void choose()}>{uploading ? `${uploading} 업로드 중…` : uploads.busy ? '업로드 대기 중…' : '파일 올리기'}</button>}
@@ -143,7 +159,7 @@ export function FilePage({ api, organizationId, readOnly }: FilePageProps) {
         {loading ? <p className="muted">파일을 불러오는 중…</p> : <table aria-label="파일 목록">
           <thead><tr><th>파일명</th><th>폴더 · 태그</th><th>형식</th><th>크기</th><th>등록일</th><th>작업</th></tr></thead>
           <tbody>{rows.map((file) => <tr key={file.id}>
-            <td>{file.original_name}{file.is_archived && <span className="doc-badge">보관됨</span>}</td><td><select aria-label={`${file.original_name} 폴더`} disabled={readOnly||file.is_archived} value={file.folder_id??''} onChange={async e=>{const folder_id=e.currentTarget.value||null;try{const saved=await fileApi.updateMetadata(api,organizationId,file.id,{folder_id,tags:file.tags});setFiles(old=>old.map(row=>row.id===saved.id?saved:row))}catch{setError('폴더를 변경하지 못했습니다.')}}}><option value="">미분류</option>{folders.map(folder=><option key={folder.id} value={folder.id}>{folder.name}</option>)}</select><input aria-label={`${file.original_name} 태그`} placeholder="태그, 쉼표로 구분" disabled={readOnly||file.is_archived} value={tagEdits[file.id]??file.tags.join(', ')} onChange={e=>{const value=e.currentTarget.value;setTagEdits(old=>({...old,[file.id]:value}))}}/>{!readOnly&&<button type="button" disabled={file.is_archived} onClick={()=>void saveMetadata(file)}>태그 저장</button>}</td><td>{file.content_type}</td><td>{formatSize(file.size_bytes)}</td><td>{formatTime(file.created_at)}</td>
+            <td>{file.original_name}{file.is_archived && <span className="doc-badge">보관됨</span>}</td><td><select aria-label={`${file.original_name} 폴더`} disabled={readOnly||file.is_archived} value={file.folder_id??''} onChange={async e=>{const folder_id=e.currentTarget.value||null;await mutate(async()=>{try{const saved=await fileApi.updateMetadata(api,organizationId,file.id,{folder_id,tags:file.tags});setFiles(old=>old.map(row=>row.id===saved.id?saved:row))}catch{setError('폴더를 변경하지 못했습니다.')}})}}><option value="">미분류</option>{folders.map(folder=><option key={folder.id} value={folder.id}>{folder.name}</option>)}</select><input aria-label={`${file.original_name} 태그`} placeholder="태그, 쉼표로 구분" disabled={readOnly||file.is_archived} value={tagEdits[file.id]??file.tags.join(', ')} onChange={e=>{const value=e.currentTarget.value;setTagEdits(old=>({...old,[file.id]:value}))}}/>{!readOnly&&<button type="button" disabled={mutations>0||file.is_archived} onClick={()=>void saveMetadata(file)}>태그 저장</button>}</td><td>{file.content_type}</td><td>{formatSize(file.size_bytes)}</td><td>{formatTime(file.created_at)}</td>
             <td className="row-actions">
               {isPreviewable(file) && <button type="button" aria-label={`${file.original_name} 미리보기`} disabled={working === file.id} onClick={() => setPreviewId(file.id)}>미리보기</button>}
               <button type="button" aria-label={`${file.original_name} 버전 이력`} disabled={file.is_archived||working===file.id} onClick={()=>setVersionFileId(file.id)}>버전 {file.version_number}</button>
