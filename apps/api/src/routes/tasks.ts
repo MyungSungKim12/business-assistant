@@ -27,7 +27,7 @@ const taskPatch = z.object({
   labels: fields.labels.optional(), checklist: fields.checklist.optional(), recurrence: fields.recurrence.optional(), customer_id: fields.customer_id.optional(), appointment_id: fields.appointment_id.optional(), assignee_id: fields.assignee_id.optional(), status: z.enum(['open', 'in_progress', 'done', 'canceled']).optional(),
 }).strict().refine((value) => Object.keys(value).length > 0);
 
-export function registerTaskRoutes(app: FastifyInstance, organizations: Pick<{ requireAccess(token: string, id: string, feature: string, write?: boolean): Promise<string> }, 'requireAccess'> | undefined, tasks?: TaskGateway): void {
+export function registerTaskRoutes(app: FastifyInstance, organizations: Pick<{ requireAccess(token: string, id: string, feature: string, write?: boolean, permissionCode?:string): Promise<string> }, 'requireAccess'> | undefined, tasks?: TaskGateway): void {
   function service(request: FastifyRequest) {
     const token = bearerToken(request);
     const params = z.object({ organizationId: z.uuid() }).safeParse(request.params);
@@ -37,19 +37,19 @@ export function registerTaskRoutes(app: FastifyInstance, organizations: Pick<{ r
   }
   app.get('/api/v1/organizations/:organizationId/tasks', async (request) => {
     const current = service(request);
-    await organizations!.requireAccess(current.token, current.organizationId, 'task.basic');
+    await organizations!.requireAccess(current.token, current.organizationId, 'task.basic',false,'');
     return tasks!.list(current.token, current.organizationId);
   });
   app.get('/api/v1/organizations/:organizationId/task-people', async (request) => {
     const current = service(request);
-    await organizations!.requireAccess(current.token, current.organizationId, 'task.basic');
+    await organizations!.requireAccess(current.token, current.organizationId, 'task.basic',false,'');
     return tasks!.people(current.token, current.organizationId);
   });
   app.post('/api/v1/organizations/:organizationId/tasks', async (request) => {
     const current = service(request);
     const input = taskInput.safeParse(request.body);
     if (!input.success) throw new ApiFailure(422, 'Invalid task input');
-    await organizations!.requireAccess(current.token, current.organizationId, 'task.basic');
+    await organizations!.requireAccess(current.token, current.organizationId, 'task.basic',false,'');
     return tasks!.create(current.token, current.organizationId, input.data);
   });
   app.patch('/api/v1/organizations/:organizationId/tasks/:taskId', async (request) => {
@@ -57,7 +57,7 @@ export function registerTaskRoutes(app: FastifyInstance, organizations: Pick<{ r
     const params = z.object({ taskId: z.uuid() }).safeParse(request.params);
     const input = taskPatch.safeParse(request.body);
     if (!params.success || !input.success) throw new ApiFailure(422, 'Invalid task input');
-    await organizations!.requireAccess(current.token, current.organizationId, 'task.basic');
+    await organizations!.requireAccess(current.token, current.organizationId, 'task.basic',false,'');
     const saved = await tasks!.update(current.token, current.organizationId, params.data.taskId, input.data);
     if (!saved) throw new ApiFailure(404, 'Task not found');
     return saved;
@@ -66,7 +66,7 @@ export function registerTaskRoutes(app: FastifyInstance, organizations: Pick<{ r
     const current = service(request);
     const params = z.object({ taskId: z.uuid() }).safeParse(request.params);
     if (!params.success) throw new ApiFailure(422, 'Invalid task ID');
-    await organizations!.requireAccess(current.token, current.organizationId, 'task.basic');
+    await organizations!.requireAccess(current.token, current.organizationId, 'task.basic',false,'');
     if (!await tasks!.remove(current.token, current.organizationId, params.data.taskId)) throw new ApiFailure(404, 'Task not found');
     return reply.code(204).send();
   });

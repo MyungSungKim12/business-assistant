@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { createApp } from '../app.js';
-import { createCustomerGateway, customerSearchFilter, LEGACY_LIST_LIMIT, parseContentRangeTotal } from '../supabase/customers.js';
+import { createCustomerGateway, customerSearchFilter, parseContentRangeTotal } from '../supabase/customers.js';
 import { decodeCursor, encodeCursor } from './customers.js';
+import { ApiFailure } from '../errors.js';
 
 const organizationId = 'a9cc39fd-8e8c-4df8-a623-1f23a3a936bd';
 const customerId = 'c9cc39fd-8e8c-4df8-a623-1f23a3a936bd';
@@ -26,12 +27,13 @@ function fixture() {
   const accessCalls: boolean[] = [];
   const access = { requireAccess: async (token: string, id: string, feature: string, write = false) => {
     expect(token).toBe('access');
-    expect(id).toBe(organizationId);
+    if (id !== organizationId) throw new ApiFailure(403, 'Denied');
     expect(feature).toBe('crm.basic');
     accessCalls.push(write);
     return 'owner';
   } };
   const customers = {
+    get: async (_token: string, _organizationId: string, id: string) => id === customerId ? customer : null,
     list: async () => [customer],
     create: async (_token: string, _organizationId: string, input: { name: string }) => ({ ...customer, ...input }),
     update: async (_token: string, _organizationId: string, id: string, patch: { name?: string }) => id === customerId ? { ...customer, ...patch } : null,
@@ -40,6 +42,28 @@ function fixture() {
 }
 
 describe('customer HTTP flow', () => {
+  it('authorizes a direct customer link and returns 404/401/403 for missing or inaccessible records', async () => {
+    const { app } = fixture();
+    const url = `/api/v1/organizations/${organizationId}/customers/${customerId}`;
+    const headers = { authorization: 'Bearer access' };
+    expect((await app.inject({ url, headers })).json()).toEqual(customer);
+    expect((await app.inject({ url: url.replace(`/customers/${customerId}`, `/customers/${organizationId}`), headers })).statusCode).toBe(404);
+    expect((await app.inject({ url })).statusCode).toBe(401);
+    expect((await app.inject({ url: url.replace(organizationId, customerId), headers })).statusCode).toBe(403);
+    await app.close();
+  });
+  it('reads one customer with both organization and ID filters and denies wrong scope', async () => {
+    const calls: URL[] = [];
+    let row = customer;
+    const gateway = createCustomerGateway({ APP_SUPABASE_URL: 'https://example.supabase.co', APP_SUPABASE_ANON_KEY: 'anon' } as never, (async (url: string | URL | Request) => {
+      calls.push(new URL(String(url))); return new Response(JSON.stringify([row]), { status: 200 });
+    }) as typeof fetch);
+    expect(await gateway.get('access', organizationId, customerId)).toEqual(customer);
+    expect(calls[0]!.searchParams.get('organization_id')).toBe(`eq.${organizationId}`);
+    expect(calls[0]!.searchParams.get('id')).toBe(`eq.${customerId}`);
+    row = { ...customer, organization_id: customerId };
+    await expect(gateway.get('access', organizationId, customerId)).rejects.toMatchObject({ status: 503 });
+  });
   it('lists customers only after checking the CRM feature for the requested organization', async () => {
     const { app, accessCalls } = fixture();
     const result = await app.inject({ url: `/api/v1/organizations/${organizationId}/customers`, headers: { authorization: 'Bearer access' } });
@@ -219,11 +243,11 @@ describe('customer gateway search', () => {
     expect(seen[0]!.headers.Prefer).toBe('count=exact');
   });
 
-  it('caps the legacy full list at the server limit', async () => {
+  it('requests exact counts for the legacy complete list', async () => {
     let limit = '';
-    const fetcher = (async (input: URL) => { limit = input.searchParams.get('limit') ?? ''; return new Response('[]', { status: 200 }); }) as never;
+    const fetcher = (async (input: URL) => { limit = input.searchParams.get('limit') ?? ''; return new Response('[]', { status: 200, headers: {'content-range':'*/0'} }); }) as never;
     await createCustomerGateway(config, fetcher).list('t', organizationId);
-    expect(limit).toBe(String(LEGACY_LIST_LIMIT));
+    expect(limit).toBe('250');
   });
 
   it('neutralizes characters that would break the or() filter', () => {
@@ -296,4 +320,24 @@ describe('customer retention controls (CRM-014)', () => {
     expect((await app.inject({ method: 'PUT', url: `${apiBase}/customers/${customerId}/legal-hold`, headers: auth, payload: { active: false, reason: ' ' } })).statusCode).toBe(422);
     await app.close();
   });
+});
+
+describe('picker archive filtering', () => {
+ it('passes explicit exclusion and rejects ambiguous boolean query values', async () => {
+ const {app,calls}=toolsFixture();
+ expect((await app.inject({url:apiBase+'/customers/search?status=all&exclude_archived=true',headers:auth})).statusCode).toBe(200);
+ expect(calls[0]!.args[0]).toMatchObject({status:'all',exclude_archived:true});
+ expect((await app.inject({url:apiBase+'/customers/search?exclude_archived=1',headers:auth})).statusCode).toBe(422);
+ await app.close();
+ });
+ it('filters archives before pagination/count while all retains its original meaning',async()=>{
+ const seen:URL[]=[];
+ const gateway=createCustomerGateway({APP_SUPABASE_URL:'https://example.supabase.co',APP_SUPABASE_PUBLISHABLE_KEY:'pk'} as never,(async(input:URL)=>{seen.push(input);return new Response('[]',{headers:{'content-range':'*/0'}});}) as never);
+ const query={q:'',status:'all' as const,sort:'name' as const,direction:'asc' as const,limit:50,offset:0};
+ await gateway.search('t',organizationId,{...query,exclude_archived:true});
+ await gateway.search('t',organizationId,query);
+ expect(seen[0]!.searchParams.get('and')).toBe('(status.neq.archived)');
+ expect(seen[0]!.searchParams.get('limit')).toBe('50');
+ expect(seen[1]!.searchParams.has('and')).toBe(false);
+ });
 });

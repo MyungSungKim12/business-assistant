@@ -63,6 +63,10 @@ export function createAuthGuard(settings: AuthLimitSettings, options: AuthGuardO
   }
 
   return {
+    attemptAccountEmail(ip:string,email:string):void {
+      const checks=[{key:`email:ip:${ip}`,rule:settings.signup},{key:`email:pair:${ip}|${hash(email)}`,rule:settings.signup},{key:`email:email:${hash(email)}`,rule:settings.signup}];
+      enforce(checks);record(checks);
+    },
     beforeLogin(ip: string, email: string): void { enforce(loginKeys(ip, email)); },
     loginFailed(ip: string, email: string): void { record(loginKeys(ip, email)); },
     loginSucceeded(ip: string, email: string): void { limiter.reset(`login:pair:${ip}|${hash(email)}`); },

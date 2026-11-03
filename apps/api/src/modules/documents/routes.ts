@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
+import { createHash, randomBytes } from 'node:crypto';
 import { ApiFailure } from '../../errors.js';
 import { bearerToken } from '../../routes/organizations.js';
 import { type DocumentGateway } from './gateway.js';
@@ -81,7 +82,7 @@ const folderCreate=z.object({name:z.string().trim().min(1).max(80)}).strict();
 const fileMetadata=z.object({folder_id:z.uuid().nullable(),tags:z.array(z.string().trim().min(1).max(32)).max(10)}).strict().superRefine((value,ctx)=>{if(new Set(value.tags.map(x=>x.toLocaleLowerCase())).size!==value.tags.length)ctx.addIssue({code:'custom',message:'Duplicate tags'});});
 const archivedFlag = z.string().transform((value) => value.toLowerCase()).pipe(z.enum(['1', 'true', 't', 'yes', 'y', 'on', '0', 'false', 'f', 'no', 'n', 'off', ''])).transform((value) => ['1', 'true', 't', 'yes', 'y', 'on'].includes(value));
 
-export function registerDocumentRoutes(app: FastifyInstance, organizations: OrgAccess | undefined, documents: DocumentGateway | undefined): void {
+export function registerDocumentRoutes(app: FastifyInstance, organizations: OrgAccess | undefined, documents: DocumentGateway | undefined, signingOrigin?: string): void {
   function context(request: FastifyRequest) {
     const token = bearerToken(request);
     if (!organizations || !documents) throw new ApiFailure(503, 'Document service unavailable');
@@ -178,6 +179,25 @@ export function registerDocumentRoutes(app: FastifyInstance, organizations: OrgA
     const c = context(request), p = params(request, issuedParams), input = parse(consentRequest, request.body, 'Invalid document consent request');
     await requireTreatmentAccess(c, p.organizationId, true);
     return reply.code(201).send(await c.documents.recordConsentEvent(c.token, scopeOf(p), p.documentId, input));
+  });
+
+  app.post(`${treatmentDocuments}/:documentId/signature-links`, async (request, reply) => {
+    const c = context(request), p = params(request, issuedParams);
+    await requireTreatmentAccess(c, p.organizationId, true);
+    if (!signingOrigin) throw new ApiFailure(503, 'Customer signing origin is not configured');
+    const token = randomBytes(32).toString('base64url');
+    const tokenHash = createHash('sha256').update(token, 'utf8').digest('hex');
+    const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
+    const link = await c.documents.createCustomerSignatureLink(c.token, scopeOf(p), p.documentId, tokenHash, expiresAt);
+    return reply.code(201).send({ id: link.id, url: `${signingOrigin}/api/v1/public/document-signatures#${token}`, expires_at: link.expires_at });
+  });
+  app.delete(`${base}/document-signature-links/:linkId`, async (request) => {
+    const c = context(request), p = params(request, orgParams.extend({ linkId: z.uuid() }));
+    await c.organizations.requireAccess(c.token, p.organizationId, CRM_FEATURE);
+    await c.organizations.requireAccess(c.token, p.organizationId, DOCUMENT_FEATURE, true);
+    const revoked = await c.documents.revokeCustomerSignatureLink(c.token, p.organizationId, p.linkId);
+    if (!revoked) throw new ApiFailure(404, 'Signature link not found or already used');
+    return { revoked: true };
   });
 
   // 증빙 해시를 지금 이벤트 행으로 다시 계산해 저장값과 일치하는지 알려 준다(읽기 전용).

@@ -8,7 +8,7 @@ import { treatmentMessages } from './gateway.js';
 import { visitLinkRequest } from './visit-link.js';
 import { id, mutationRequest, photoPatch, photoRequest, saleCreateRequest, salePreviewRequest, treatmentRequest, treatmentUpdateRequest, type TreatmentMutation } from './schemas.js';
 
-export type OrgAccess = Pick<{ requireAccess(token: string, id: string, feature: string, write?: boolean): Promise<string> }, 'requireAccess'>;
+export type OrgAccess = Pick<{ requireAccess(token: string, id: string, feature: string, write?: boolean, permissionCode?: string): Promise<string> }, 'requireAccess'>;
 
 const base = '/api/v1/organizations/:organizationId';
 const customerBase = `${base}/customers/:customerId`;
@@ -37,7 +37,7 @@ export function registerTreatmentRoutes(app: FastifyInstance, organizations: Org
   app.get(`${customerBase}/treatment-context-options`, async (request) => {
     const { token, organizations: org } = access(request);
     const params = parse(customerParams, request.params, 'Invalid treatment context');
-    await org.requireAccess(token, params.organizationId, 'crm.basic');
+    await org.requireAccess(token, params.organizationId, 'crm.basic', false, 'treatment.read')
     return gateway.contextOptions(token, params.organizationId, params.customerId);
   });
 
@@ -45,14 +45,14 @@ export function registerTreatmentRoutes(app: FastifyInstance, organizations: Org
     const { token, organizations: org } = access(request);
     const params = parse(treatmentParams, request.params, 'Invalid treatment context');
     const input = parse(visitLinkRequest, request.body, 'Invalid treatment context');
-    await org.requireAccess(token, params.organizationId, 'crm.basic', true);
+    await org.requireAccess(token, params.organizationId, 'crm.basic', true, 'treatment.manage');
     return gateway.linkVisit(token, params.organizationId, params.customerId, params.treatmentId, input);
   });
 
   app.get(`${customerBase}/treatments`, async (request) => {
     const { token, organizations: org } = access(request);
     const params = parse(customerParams, request.params, 'Invalid treatment request');
-    await org.requireAccess(token, params.organizationId, 'crm.basic');
+    await org.requireAccess(token, params.organizationId, 'crm.basic', false, 'treatment.read')
     return gateway.list(token, params.organizationId, params.customerId);
   });
 
@@ -60,7 +60,7 @@ export function registerTreatmentRoutes(app: FastifyInstance, organizations: Org
     const { token, organizations: org } = access(request);
     const params = parse(customerParams, request.params, 'Invalid treatment request');
     const values = parse(treatmentRequest, request.body, 'Invalid treatment values');
-    await org.requireAccess(token, params.organizationId, 'crm.basic', true);
+    await org.requireAccess(token, params.organizationId, 'crm.basic', true, 'treatment.manage');
     reply.code(201);
     return gateway.create(token, params.organizationId, params.customerId, values);
   });
@@ -70,7 +70,7 @@ export function registerTreatmentRoutes(app: FastifyInstance, organizations: Org
     const { token, organizations: org } = access(request);
     const params = parse(treatmentParams, request.params, 'Invalid treatment request');
     const { expected_version, operation_id, ...values } = parse(treatmentUpdateRequest, request.body, 'Invalid treatment values');
-    await org.requireAccess(token, params.organizationId, 'crm.basic', true);
+    await org.requireAccess(token, params.organizationId, 'crm.basic', true, 'treatment.manage');
     if (expected_version === undefined) throw new ApiFailure(409, 'Refresh record and provide expected_version');
     const mutation: TreatmentMutation = { action: 'edit', expected_version, operation_id: operation_id ?? crypto.randomUUID(), reason: '', values };
     return gateway.mutate(token, params.organizationId, params.customerId, params.treatmentId, mutation);
@@ -80,7 +80,7 @@ export function registerTreatmentRoutes(app: FastifyInstance, organizations: Org
     const { token, organizations: org } = access(request);
     const params = parse(treatmentParams, request.params, 'Invalid treatment request');
     const mutation = parse(mutationRequest, request.body, 'Invalid treatment values');
-    await org.requireAccess(token, params.organizationId, 'crm.basic', true);
+    await org.requireAccess(token, params.organizationId, 'crm.basic', true, 'treatment.manage');
     return gateway.mutate(token, params.organizationId, params.customerId, params.treatmentId, mutation);
   });
 
@@ -88,14 +88,14 @@ export function registerTreatmentRoutes(app: FastifyInstance, organizations: Org
     const { token, organizations: org } = access(request);
     const params = parse(treatmentParams, request.params, 'Invalid treatment request');
     const body = parse(serviceLinkRequest, request.body, 'Invalid treatment service');
-    await org.requireAccess(token, params.organizationId, 'crm.basic', true);
+    await org.requireAccess(token, params.organizationId, 'crm.basic', true, 'treatment.manage');
     return gateway.setService(token, params.organizationId, params.customerId, params.treatmentId, body.service_id, body.expected_version, body.operation_id);
   });
 
   app.get(`${scoped}/events`, async (request) => {
     const { token, organizations: org } = access(request);
     const params = parse(treatmentParams, request.params, 'Invalid treatment request');
-    await org.requireAccess(token, params.organizationId, 'crm.basic');
+    await org.requireAccess(token, params.organizationId, 'crm.basic', false, 'treatment.read')
     return gateway.events(token, params.organizationId, params.customerId, params.treatmentId);
   });
 
@@ -103,7 +103,7 @@ export function registerTreatmentRoutes(app: FastifyInstance, organizations: Org
     const { token, organizations: org } = access(request);
     const params = parse(customerParams, request.params, 'Invalid treatment request');
     const query = parse(z.object({ treatment_id: id.optional() }), request.query, 'Invalid treatment request');
-    await org.requireAccess(token, params.organizationId, 'crm.basic');
+    await org.requireAccess(token, params.organizationId, 'crm.basic', false, 'treatment.read')
     return gateway.listPhotos(token, params.organizationId, params.customerId, query.treatment_id);
   });
 
@@ -111,7 +111,7 @@ export function registerTreatmentRoutes(app: FastifyInstance, organizations: Org
     const { token, organizations: org } = access(request);
     const params = parse(customerParams, request.params, 'Invalid treatment request');
     const values = parse(photoRequest, request.body, 'Invalid treatment values');
-    await org.requireAccess(token, params.organizationId, 'crm.basic', true);
+    await org.requireAccess(token, params.organizationId, 'crm.basic', true, 'treatment.manage');
     // 다른 조직의 저장 경로를 연결하지 못하게 한다(저장 경로는 항상 조직 ID로 시작한다).
     if (!values.storage_path.startsWith(`${params.organizationId}/`)) throw new ApiFailure(422, 'Invalid treatment values');
     reply.code(201);
@@ -122,7 +122,7 @@ export function registerTreatmentRoutes(app: FastifyInstance, organizations: Org
     const { token, organizations: org } = access(request);
     const params = parse(photoParams, request.params, 'Invalid treatment request');
     const patch = parse(photoPatch, request.body, 'Invalid treatment values');
-    await org.requireAccess(token, params.organizationId, 'crm.basic', true);
+    await org.requireAccess(token, params.organizationId, 'crm.basic', true, 'treatment.manage');
     const photo = await gateway.updatePhoto(token, params.organizationId, params.customerId, params.photoId, patch);
     if (!photo) throw new ApiFailure(404, 'Treatment photo not found');
     return photo;
@@ -131,7 +131,7 @@ export function registerTreatmentRoutes(app: FastifyInstance, organizations: Org
   app.delete(`${customerBase}/treatment-photos/:photoId`, async (request, reply) => {
     const { token, organizations: org } = access(request);
     const params = parse(photoParams, request.params, 'Invalid treatment request');
-    await org.requireAccess(token, params.organizationId, 'crm.basic', true);
+    await org.requireAccess(token, params.organizationId, 'crm.basic', true, 'treatment.manage');
     if (!await gateway.deletePhoto(token, params.organizationId, params.customerId, params.photoId)) throw new ApiFailure(404, 'Treatment photo not found');
     return reply.code(204).send();
   });

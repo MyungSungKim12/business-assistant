@@ -6,6 +6,7 @@ import { memberDetail, memberRef, memberRuleFailure, type MemberRole } from './o
 
 const organization = z.object({id:z.uuid(),name:z.string(),slug:z.string()});
 const membership = z.object({role:z.enum(['owner','admin','member']),organizations:organization.nullable().optional()});
+const permissionMap = z.record(z.string(), z.boolean());
 const subscription = z.object({
   status:z.string(), ends_at:z.iso.datetime({offset:true}).nullable(),
   plans:z.object({code:z.string(),plan_features:z.array(z.object({feature_code:z.string()}))}),
@@ -122,6 +123,16 @@ export function createOrganizationGateway(config: ServerConfig, fetcher: typeof 
       accessCache.invalidateOrganization(id);
       return changed;
     },
+    async memberPermissions(token:string,id:string,userId?:string) {
+      const name=userId?'get_organization_business_permissions_for_user':'get_organization_business_permissions';
+      const args=userId?{p_organization_id:id,p_user_id:userId}:{p_organization_id:id};
+      return parse(permissionMap,await memberRpc(token,name,args));
+    },
+    async setMemberPermissions(token:string,id:string,userId:string,permissions:Record<string,boolean>) {
+      const result=parse(z.object({user_id:z.uuid(),permissions:permissionMap}),await memberRpc(token,'set_organization_member_permissions',{p_organization_id:id,p_user_id:userId,p_permissions:permissions}));
+      accessCache.invalidateOrganization(id);
+      return result;
+    },
     async removeMember(token:string,id:string,userId:string) {
       await memberRpc(token,'remove_organization_member',{p_org:id,p_user:userId});
       accessCache.invalidateOrganization(id);
@@ -134,15 +145,24 @@ export function createOrganizationGateway(config: ServerConfig, fetcher: typeof 
       if (!sub) throw new ApiFailure(404,'Active subscription not found');
       return sub;
     },
-    async requireAccess(token:string,id:string,feature:string,write=false) {
-      const cacheKey = {token,organizationId:id,feature,write};
+    async requireAccess(token:string,id:string,feature:string,write=false,permissionCode?:string) {
+      const defaultPermission = permissionCode === '' ? undefined : permissionCode ?? ({
+        'crm.basic': write ? 'customer.manage' : 'customer.read',
+        'task.basic': write ? 'appointment.manage' : 'appointment.read',
+        'finance.basic': write ? 'payment.collect' : 'payment.read',
+      } as Record<string,string>)[feature];
+      const cacheKey = {token,organizationId:id,feature,write,permissionCode:defaultPermission};
       const cached = accessCache.get(cacheKey);
-      if (cached !== undefined) return cached;
-      const role = await requireMembership(token,id);
-      if (write && role !== 'owner' && role !== 'admin') throw new ApiFailure(403,'Organization management permission required');
-      const sub = await activeSubscription(token,id);
-      if (!sub?.features.includes(feature)) throw new ApiFailure(403,'Feature not available',{feature_code:feature});
-      accessCache.set(cacheKey,role);
+      const role = cached ?? await requireMembership(token,id);
+      if (cached === undefined) {
+        const sub = await activeSubscription(token,id);
+        if (!sub?.features.includes(feature)) throw new ApiFailure(403,'Feature not available',{feature_code:feature});
+      }
+      if (defaultPermission) {
+        const allowed=parse(z.boolean(),await memberRpc(token,'has_organization_business_permission',{p_organization_id:id,p_permission_code:defaultPermission}));
+        if (!allowed) throw new ApiFailure(403,'Business permission required',{permission_code:defaultPermission});
+      }
+      if (cached === undefined) accessCache.set(cacheKey,role);
       return role;
     },
   };

@@ -42,6 +42,12 @@ describe('parseServerConfig', () => {
     expect(() => parseServerConfig({ ...base, APP_TRUST_PROXY: 'not an ip!' })).toThrow(/APP_TRUST_PROXY/);
     expect(() => parseServerConfig({ ...base, APP_LOG_LEVEL: 'loud' })).toThrow(/APP_LOG_LEVEL/);
   });
+
+  it('고객 서명 공개 주소는 origin만 허용하고 운영 환경에서 HTTPS를 요구한다', () => {
+    expect(parseServerConfig({ ...base, APP_PUBLIC_DOCUMENT_SIGNING_ORIGIN: 'https://api.example.test/' }).APP_PUBLIC_DOCUMENT_SIGNING_ORIGIN).toBe('https://api.example.test');
+    expect(() => parseServerConfig({ ...base, APP_PUBLIC_DOCUMENT_SIGNING_ORIGIN: 'https://api.example.test/path' })).toThrow(/APP_PUBLIC_DOCUMENT_SIGNING_ORIGIN/);
+    expect(() => parseServerConfig({ ...base, APP_ENVIRONMENT: 'production', APP_PUBLIC_DOCUMENT_SIGNING_ORIGIN: 'http://localhost:8000' })).toThrow(/HTTPS/);
+  });
 });
 
 describe('parseTrustProxy', () => {

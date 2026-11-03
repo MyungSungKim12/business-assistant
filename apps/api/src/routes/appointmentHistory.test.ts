@@ -28,7 +28,7 @@ it('사유 없는 신규 노쇼 거절은 DB에서 판정해 이전 성공 요�
  try{const r=await app.inject({method:'POST',url:url.replace('/status-events','/transitions'),headers,payload:{target_status:'no_show',reason:null,expected_version:1,operation_id:id}});expect(r.statusCode).toBe(422);expect(fetcher).toHaveBeenCalledOnce();}finally{await app.close();}
 });
 it('사유 없는 이전 노쇼 성공 스냅샷도 API에서 복구할 수 있다',async()=>{
- const legacy={id:apt,organization_id:org,customer_id:id,staff_id:id,service_id:id,service_name_snapshot:'시술',duration_minutes:60,buffer_minutes:0,start_at:'2026-10-19T01:00:00Z',end_at:'2026-10-19T02:00:00Z',status:'no_show',source:'phone',cancellation_reason:null,version:2};
+ const legacy={id:apt,organization_id:org,customer_id:id,staff_id:id,service_id:id,service_name_snapshot:'시술',duration_minutes:60,buffer_minutes:0,start_at:'2026-10-19T01:00:00Z',end_at:'2026-10-19T02:00:00Z',status:'no_show',source:'phone',cancellation_reason:null,version:2,visit_group_id:'44444444-4444-4444-8444-444444444444',visit_order:2,visit_group_version:3,is_current:true};
  const app=createApp({appointments:createAppointmentGateway(config,async()=>new Response(JSON.stringify(legacy))),organizations:{requireAccess:async()=> 'member'} as never});
  try{const r=await app.inject({method:'POST',url:url.replace('/status-events','/transitions'),headers,payload:{target_status:'no_show',reason:null,expected_version:1,operation_id:id}});expect(r.statusCode).toBe(200);expect(r.json()).toMatchObject(legacy);}finally{await app.close();}
 });

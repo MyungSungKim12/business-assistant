@@ -21,7 +21,7 @@ export type Call = { method: string; url: URL; headers: Record<string, string>; 
 export type Reply = { status?: number; body?: unknown; headers?: Record<string, string> };
 export type Responder = (call: Call) => Reply | undefined;
 
-export function build(options: { role?: 'owner' | 'admin' | 'member'; features?: string[]; respond?: Responder } = {}) {
+export function build(options: { role?: 'owner' | 'admin' | 'member'; features?: string[]; respond?: Responder; signingOrigin?: string } = {}) {
   const role = options.role ?? 'owner';
   const features = options.features ?? ['crm.basic', 'document.template', 'files.basic'];
   const calls: Call[] = [];
@@ -50,7 +50,7 @@ export function build(options: { role?: 'owner' | 'admin' | 'member'; features?:
     const status = error instanceof ApiFailure ? error.status : 500;
     return reply.code(status).send({ detail: error instanceof ApiFailure ? error.detail : 'Internal server error' });
   });
-  registerDocumentModule(app, organizations, config, fetcher);
+  registerDocumentModule(app, organizations, { ...config, APP_PUBLIC_DOCUMENT_SIGNING_ORIGIN: options.signingOrigin }, fetcher);
   return { app, calls, access };
 }
 

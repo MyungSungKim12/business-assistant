@@ -14,16 +14,16 @@ const customer = z.object({
 });
 export const customerVisitFactSchema=z.object({organization_id:z.uuid(),customer_id:z.uuid(),last_actual_visit_date:z.iso.date().nullable(),next_appointment_at:z.iso.datetime({offset:true}).nullable(),recommended_return_date:z.iso.date().nullable(),as_of:z.iso.datetime({offset:true})});
 
+export const customerDashboardSchema=z.object({organization_id:z.uuid(),active_count:z.number().int().nonnegative(),upcoming_count:z.number().int().nonnegative(),recent:z.array(customer).max(5),upcoming:z.array(customer).max(10)});
+
 export type CustomerInput = z.infer<typeof customer>;
 type EditableCustomer = Omit<CustomerInput, 'id' | 'organization_id'>;
-
-/** GET /customers(기존 경로)가 한 번에 돌려주는 최대 행 수. 더 많으면 /customers/search를 쓴다. */
-export const LEGACY_LIST_LIMIT = 5000;
 
 export const customerStatuses = ['active', 'archived', 'inactive', 'vip', 'blocked'] as const;
 export const customerSorts = ['name', 'created_at', 'last_visit_date'] as const;
 
 export type CustomerSearchQuery = {
+  exclude_archived?: boolean;
   q: string;
   status: (typeof customerStatuses)[number] | 'all';
   sort: (typeof customerSorts)[number];
@@ -148,15 +148,23 @@ export function createCustomerGateway(config: ServerConfig, fetcher: typeof fetc
       rpc(token, 'set_customer_relationship_end', organizationId, { p_customer_id: customerId, p_ended_at: endedAt, p_reason: reason }, z.string().nullable()),
     setLegalHold: (token: string, organizationId: string, customerId: string, active: boolean, reason: string) =>
       rpc(token, 'set_customer_legal_hold', organizationId, { p_customer_id: customerId, p_active: active, p_reason: reason }, z.uuid()),
+    async dashboard(token:string,organizationId:string,today:string){
+      const result=await rpc(token,'get_customer_dashboard',organizationId,{p_today:today},customerDashboardSchema);
+      if(result.organization_id!==organizationId)throw new ApiFailure(503,'Customer dashboard unavailable');
+      assertOwnRows([...result.recent,...result.upcoming],organizationId);
+      return result;
+    },
     async visitFacts(token:string,organizationId:string,customerIds:string[]){
       const result=await rpc(token,'get_customer_visit_facts',organizationId,{p_customer_ids:customerIds},z.array(customerVisitFactSchema));
       assertOwnRows(result,organizationId);
       if(result.length!==customerIds.length||new Set(result.map(row=>row.customer_id)).size!==result.length||result.some(row=>!customerIds.includes(row.customer_id)))throw new ApiFailure(503,'Customer visit facts unavailable');
       return result;
     },
-    /** 기존 전체 목록. 서버 상한(LEGACY_LIST_LIMIT)까지만 돌려주므로 더 많은 조직은 /customers/search를 쓴다. */
+    /** 기존 배열 계약은 완전 조회에 성공한 경우만 반환한다. 새 선택 UI는 search를 사용한다. */
     async list(token: string, organizationId: string) {
-      return rows(await request(token, 'GET', { select, organization_id: `eq.${organizationId}`, order: 'name.asc', limit: String(LEGACY_LIST_LIMIT) }));
+      const result = await rest.selectAll(token, 'customers', { select, organization_id: `eq.${organizationId}`, order: 'name.asc,id.asc' }, customer);
+      assertOwnRows(result, organizationId);
+      return result;
     },
     /** 이름·연락처·이메일·태그 검색, 상태·정렬, 페이지(offset)와 전체 건수를 한 번에 읽는다. */
     async search(token: string, organizationId: string, query: CustomerSearchQuery): Promise<CustomerSearchResult> {
@@ -165,6 +173,7 @@ export function createCustomerGateway(config: ServerConfig, fetcher: typeof fetc
         limit: String(query.limit), offset: String(query.offset),
       };
       if (query.status !== 'all') params.status = `eq.${query.status}`;
+      if (query.exclude_archived) params.and = '(status.neq.archived)';
       const filter = customerSearchFilter(query.q);
       if (filter) params.or = filter;
       const { data, range } = await send(token, 'GET', params, undefined, { Prefer: 'count=exact' });
@@ -172,6 +181,12 @@ export function createCustomerGateway(config: ServerConfig, fetcher: typeof fetc
       assertOwnRows(items, organizationId);
       const total = parseContentRangeTotal(range);
       return { items, total: total ?? query.offset + items.length };
+    },
+    async get(token: string, organizationId: string, customerId: string): Promise<CustomerInput | null> {
+      const result = rows(await request(token, 'GET', { id: `eq.${customerId}`, organization_id: `eq.${organizationId}`, limit: '1', select }));
+      assertOwnRows(result, organizationId);
+      if (result[0] && result[0].id !== customerId) throw new ApiFailure(503, 'Customer service unavailable');
+      return result[0] ?? null;
     },
     async create(token: string, organizationId: string, input: EditableCustomer) {
       const result = rows(await request(token, 'POST', {}, { ...input, organization_id: organizationId }));
@@ -204,7 +219,7 @@ export function createCustomerGateway(config: ServerConfig, fetcher: typeof fetc
   };
 }
 
-export type CustomerToolsGateway = Pick<ReturnType<typeof createCustomerGateway>, 'search' | 'listTags' | 'renameTag' | 'mergeTags' | 'deleteTag' | 'duplicateGroups' | 'merge' | 'visitFacts' | 'getRetentionPolicy' | 'saveRetentionPolicy' | 'retentionStatus' | 'setRelationshipEnd' | 'setLegalHold'>;
+export type CustomerToolsGateway = Pick<ReturnType<typeof createCustomerGateway>, 'dashboard' | 'search' | 'listTags' | 'renameTag' | 'mergeTags' | 'deleteTag' | 'duplicateGroups' | 'merge' | 'visitFacts' | 'getRetentionPolicy' | 'saveRetentionPolicy' | 'retentionStatus' | 'setRelationshipEnd' | 'setLegalHold'>;
 
 type CoreCustomerGateway = {
   list(token: string, organizationId: string): Promise<CustomerInput[]>;
@@ -213,4 +228,4 @@ type CoreCustomerGateway = {
 };
 
 /** 검색·태그·병합 메서드는 선택 항목이다(기존 테스트용 가짜 게이트웨이와 호환). 없으면 해당 라우트는 503을 돌려준다. */
-export type CustomerGateway = CoreCustomerGateway & Partial<CustomerToolsGateway>;
+export type CustomerGateway = CoreCustomerGateway & Partial<CustomerToolsGateway> & { get?: ReturnType<typeof createCustomerGateway>['get'] };

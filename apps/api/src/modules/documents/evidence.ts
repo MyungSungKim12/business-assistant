@@ -16,7 +16,7 @@ export type EvidenceInput = {
   /** 서명 획 데이터·교부·철회 값 전체. */
   values: Record<string, unknown>;
   /** 서명자(기록자) 계정 ID. */
-  actor_id: string;
+  actor_id: string | null;
   /** DB 서버가 정한 기록 시각(클라이언트가 보낸 값이 아니다). */
   occurred_at: string;
 };

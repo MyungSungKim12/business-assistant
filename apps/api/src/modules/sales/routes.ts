@@ -9,7 +9,7 @@ import {
   updateLineRequest, versionedRequest, visitsFilter,
 } from './schemas.js';
 
-export type OrgAccess = Pick<{ requireAccess(token: string, id: string, feature: string, write?: boolean): Promise<string> }, 'requireAccess'>;
+export type OrgAccess = Pick<{ requireAccess(token: string, id: string, feature: string, write?: boolean, permissionCode?: string): Promise<string> }, 'requireAccess'>;
 
 const base = '/api/v1/organizations/:organizationId';
 const orgParams = z.object({ organizationId: z.uuid() });
@@ -32,8 +32,10 @@ export function registerSalesRoutes(app: FastifyInstance, organizations: OrgAcce
     if (!result.success) throw invalid(message);
     return result.data;
   }
-  async function authorize(token: string, organizationId: string, features: string[], write = false): Promise<void> {
-    for (const feature of features) await organizations!.requireAccess(token, organizationId, feature, write);
+  async function authorize(token: string, organizationId: string, features: string[], write = false, permissionCode?: string): Promise<void> {
+    for (const feature of features) await organizations!.requireAccess(token, organizationId, feature, write,
+      feature==='crm.basic'?(permissionCode==='treatment.manage'?'treatment.manage':'customer.read'):
+      feature==='finance.basic'&&permissionCode==='refund.approve'?'refund.approve':permissionCode);
   }
 
   /* ---------- 방문 장바구니 ---------- */
@@ -131,7 +133,7 @@ export function registerSalesRoutes(app: FastifyInstance, organizations: OrgAcce
     const token = start(request);
     const params = parse(visitParams, request.params, 'Invalid visit ID');
     const body = parse(refundRequest, request.body, 'Invalid refund request');
-    await authorize(token, params.organizationId, CART_FEATURES, true);
+    await authorize(token, params.organizationId, CART_FEATURES, true, 'refund.approve');
     return gateway.refundPayment(token, params.organizationId, params.visitId, body.source_id, body.amount, body.reason, body.expected_version, body.operation_id, body.confirmed);
   });
   app.post(`${base}/visits/:visitId/payments/product-returns`, async (request) => {

@@ -181,6 +181,7 @@ const HOUR_ROW = { id: '7b9c39fd-8e8c-4df8-a623-1f23a3a936bd', organization_id: 
 const table = (call: FakeCall) => call.url.pathname.split('/').pop() ?? '';
 const reply = (overrides: Record<string, unknown> = {}) => (call: FakeCall): FakeReply => {
   const rows: Record<string, unknown> = {
+    get_organization_booking_policy:{organization_id:ORG,version:0,enabled:false,timezone_name:'Asia/Seoul',minimum_notice_minutes:0,same_day_cutoff_time:null,hours:[],blocks:[]},
     appointment_services: [SERVICE_ROW], appointment_staff: [STAFF_ROW], appointment_resources: [], appointment_service_resource_requirements: [],
     appointment_staff_working_hours: [HOUR_ROW], appointment_staff_time_off: [], appointments: [], ...overrides,
   };
@@ -225,7 +226,7 @@ describe('GET appointment-availability', () => {
     expect(body.staff).toEqual([{ id: STAFF_A, name: '가담당' }]);
     expect(body.advisory).toContain('최종 기준');
     expect(availableTimes(body.slots)[0]).toBe('09:00');
-    expect(calls.every((call) => call.method === 'GET')).toBe(true);
+    expect(calls.every((call) => call.method === 'GET'||(call.method==='POST'&&table(call)==='get_organization_booking_policy'))).toBe(true);
     expect(calls.every((call) => call.headers.Authorization === 'Bearer user-token')).toBe(true);
     expect(organizations.calls).toEqual([{ feature: 'task.basic', write: false }]);
   });
@@ -266,7 +267,7 @@ describe('GET appointment-availability-search',()=>{
   expect(result.json().recommendations[0]).toMatchObject({date:DATE,start:'09:00',available_staff_count:1,duration_minutes:60,reason:expect.stringContaining('근무·휴무·예약')});
   expect(result.json().recommendations[0].reason).toContain('가장 이른');
   expect(result.json().recommendations[1].reason).toContain('이후');
-  expect(calls.every(call=>call.method==='GET')).toBe(true);
+  expect(calls.every(call=>call.method==='GET'||(call.method==='POST'&&table(call)==='get_organization_booking_policy'))).toBe(true);
   expect(organizations.calls).toEqual([{feature:'task.basic',write:false}]);
  });
  it('탐색 기간은 최대 14일이고 구성원과 기능 권한을 확인한다',async()=>{

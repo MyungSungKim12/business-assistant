@@ -1,9 +1,11 @@
 import { type FastifyInstance } from 'fastify';
+import {registerRecoveryPage} from './routes/recovery-page.js';
 import { registerAuthRoutes, type AuthGateway } from './routes/auth.js';
 import { registerOrganizationRoutes } from './routes/organizations.js';
 import { registerCustomerRoutes } from './routes/customers.js';
 import { registerCustomerActivityRoutes } from './routes/customer-activities.js';
 import { registerPhoneRoutes } from './modules/phone/routes.js';
+import {createPhoneGateway, type PhoneGateway} from './modules/phone/gateway.js';
 import { registerCustomerPhotoRoutes, type CustomerPhotoGateway } from './routes/customer-photos.js';
 import { registerAppointmentRoutes, type AppointmentGateway } from './routes/appointments.js';
 import { registerOperationRoutes, type OperationsGateway } from './routes/operations.js';
@@ -23,12 +25,15 @@ import { registerDocumentModule } from './modules/documents/index.js';
 import { registerCatalogModule } from './modules/catalog/index.js';
 import { registerManagementModule } from './modules/management/index.js';
 import { registerAppointmentResourceModule } from './modules/appointment-resources/index.js';
+import { registerMarketingModule } from './modules/marketing/index.js';
+import { registerAppointmentVisitGroupModule } from './modules/appointment-visit-groups/index.js';
 
 type AppDependencies = {
   auth?: AuthGateway; organizations?: OrganizationGateway; customers?: CustomerGateway; activities?: CustomerActivityGateway; photos?: CustomerPhotoGateway;
   appointments?: AppointmentGateway; operations?: OperationsGateway; tasks?: TaskGateway; config?: ServerConfig; fetcher?: typeof fetch;
   /** 감사 기록기. 설정(config)이 있으면 기본 기록기를 만든다. */
   audit?: AuditRecorder;
+  phone?: PhoneGateway;
   /** 로그인 시도 제한. 없으면 설정(또는 기본값)으로 만든다. 테스트에서 시간을 주입할 때 쓴다. */
   authGuard?: AuthGuard;
 };
@@ -38,6 +43,13 @@ type AppDependencies = {
  */
 export function createApp(dependencies: AppDependencies = {}): FastifyInstance {
   const app = createFastifyApp(dependencies.config);
+  registerRecoveryPage(app);
+  if(dependencies.auth?.assertSession) app.addHook('preHandler',async request=>{
+    const path=request.url.split('?')[0];
+    if(!path?.startsWith('/api/v1/') || ['/api/v1/health','/api/v1/health/ready','/api/v1/auth/login','/api/v1/auth/signup','/api/v1/auth/refresh','/api/v1/auth/email'].includes(path) || path.startsWith('/api/v1/public/document-signatures'))return;
+    const {bearerToken}=await import('./routes/organizations.js');
+    await dependencies.auth!.assertSession!(bearerToken(request));
+  });
   const guard = dependencies.authGuard ?? createAuthGuard(authLimitSettings(dependencies.config));
   app.addHook('onClose', async () => { guard.close(); });
   const audit = dependencies.audit ?? (dependencies.config ? createAuditRecorder(dependencies.config, dependencies.fetcher, app.log) : undefined);
@@ -49,7 +61,7 @@ export function createApp(dependencies: AppDependencies = {}): FastifyInstance {
   registerOrganizationRoutes(app, dependencies.organizations);
   registerCustomerRoutes(app, dependencies.organizations, dependencies.customers, audit);
   registerCustomerActivityRoutes(app, dependencies.organizations, dependencies.activities);
-  registerPhoneRoutes(app, dependencies.organizations, dependencies.customers, dependencies.activities);
+  registerPhoneRoutes(app, dependencies.organizations, dependencies.customers, dependencies.activities, dependencies.auth, dependencies.phone ?? (dependencies.config ? createPhoneGateway(dependencies.config, dependencies.fetcher) : undefined));
   registerCustomerPhotoRoutes(app, dependencies.organizations, dependencies.photos);
   registerAppointmentRoutes(app, dependencies.organizations, dependencies.appointments);
   registerOperationRoutes(app, dependencies.organizations, dependencies.operations);
@@ -63,6 +75,8 @@ export function createApp(dependencies: AppDependencies = {}): FastifyInstance {
     registerCatalogModule(app, dependencies.organizations, config, fetcher);
     registerManagementModule(app, dependencies.organizations, config, fetcher);
     registerAppointmentResourceModule(app, dependencies.organizations, config, fetcher);
+    registerAppointmentVisitGroupModule(app, dependencies.organizations, config, fetcher);
+    registerMarketingModule(app, dependencies.organizations, config, fetcher);
     registerAuditModule(app, dependencies.organizations, config, fetcher);
   }
   return app;

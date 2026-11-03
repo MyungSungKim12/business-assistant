@@ -21,6 +21,7 @@ export const SEARCH_MAX_LIMIT = 200;
 const SEARCH_MAX_OFFSET = 100_000;
 const searchQuery = z.object({
   q: z.string().trim().max(100).default(''),
+  exclude_archived: z.enum(['true', 'false']).transform(value => value === 'true').optional(),
   status: z.enum([...customerStatuses, 'all']).default('active'),
   sort: z.enum(customerSorts).default('name'),
   dir: z.enum(['asc', 'desc']).optional(),
@@ -69,10 +70,31 @@ export function registerCustomerRoutes(app: FastifyInstance, organizations: Pick
     if (!params.success) throw new ApiFailure(422, 'Invalid organization ID');
     return { token, organizationId: params.data.organizationId, organizations, customers };
   }
+  app.get('/api/v1/organizations/:organizationId/customer-dashboard', async (request,reply) => {
+    const current=service(request);
+    const parsed=z.object({today:z.iso.date()}).strict().safeParse(request.query);
+    if(!parsed.success)throw new ApiFailure(422,'Invalid dashboard date');
+    await current.organizations.requireAccess(current.token,current.organizationId,'crm.basic');
+    if(!current.customers.dashboard)throw new ApiFailure(503,'Customer dashboard unavailable');
+    reply.header('Cache-Control','no-store');
+    return current.customers.dashboard(current.token,current.organizationId,parsed.data.today);
+  });
   app.get('/api/v1/organizations/:organizationId/customers', async request => {
     const current = service(request);
     await current.organizations.requireAccess(current.token, current.organizationId, 'crm.basic');
     return current.customers.list(current.token, current.organizationId);
+  });
+  app.get('/api/v1/organizations/:organizationId/customers/:customerId', async (request, reply) => {
+    const current = service(request);
+    const params = z.object({ customerId: z.uuid() }).safeParse(request.params);
+    if (!params.success) throw new ApiFailure(422, 'Invalid customer ID');
+    await current.organizations.requireAccess(current.token, current.organizationId, 'crm.basic');
+    if (!current.customers.get) throw new ApiFailure(503, 'Customer service unavailable');
+    const row = await current.customers.get(current.token, current.organizationId, params.data.customerId);
+    if (!row) throw new ApiFailure(404, 'Customer not found');
+    if (row.organization_id !== current.organizationId || row.id !== params.data.customerId) throw new ApiFailure(503, 'Customer service unavailable');
+    reply.header('Cache-Control', 'no-store');
+    return row;
   });
   app.post('/api/v1/organizations/:organizationId/customers/visit-facts',async request=>{
     const current=service(request);
@@ -137,7 +159,7 @@ export function registerCustomerRoutes(app: FastifyInstance, organizations: Pick
     if (!current.customers.search) throw new ApiFailure(503, 'Customer service unavailable');
     await current.organizations.requireAccess(current.token, current.organizationId, 'crm.basic');
     const query: CustomerSearchQuery = {
-      q: parsed.data.q, status: parsed.data.status, sort: parsed.data.sort, limit: parsed.data.limit, offset,
+      exclude_archived: parsed.data.exclude_archived, q: parsed.data.q, status: parsed.data.status, sort: parsed.data.sort, limit: parsed.data.limit, offset,
       direction: parsed.data.dir ?? (parsed.data.sort === 'name' ? 'asc' : 'desc'),
     };
     const { items, total } = await current.customers.search(current.token, current.organizationId, query);

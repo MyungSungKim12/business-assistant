@@ -1,0 +1,16 @@
+import type{FastifyInstance,FastifyRequest}from'fastify';
+import{z}from'zod';
+import{ApiFailure}from'../../errors.js';
+import{bearerToken}from'../../routes/organizations.js';
+import type{OrgAccess}from'../catalog/routes.js';
+import type{VisitGroupGateway}from'./gateway.js';
+import{cancelVisitGroupInput,createVisitGroupInput,replaceVisitGroupInput,transitionVisitGroupInput}from'./schemas.js';
+const org=z.object({organizationId:z.uuid()}),group=org.extend({visitGroupId:z.uuid()});
+export function registerAppointmentVisitGroupRoutes(app:FastifyInstance,organizations:OrgAccess|undefined,gateway:VisitGroupGateway){
+ const base='/api/v1/organizations/:organizationId/appointment-visit-groups';
+ function context(request:FastifyRequest,withGroup=false){const parsed=(withGroup?group:org).safeParse(request.params);if(!parsed.success)throw new ApiFailure(422,'Invalid visit group scope');if(!organizations)throw new ApiFailure(503,'Appointment service unavailable');return{token:bearerToken(request),organizationId:parsed.data.organizationId,groupId:withGroup?(parsed.data as z.infer<typeof group>).visitGroupId:null};}
+ app.post(base,async(request,reply)=>{const c=context(request),input=createVisitGroupInput.safeParse(request.body);if(!input.success)throw new ApiFailure(422,'Invalid visit group');await organizations!.requireAccess(c.token,c.organizationId,'task.basic',true);const result=await gateway.create(c.token,c.organizationId,input.data);if(result.organization_id!==c.organizationId)throw new ApiFailure(503,'Appointment service unavailable');return reply.code(201).send(result)});
+ app.put(base+'/:visitGroupId',async request=>{const c=context(request,true),input=replaceVisitGroupInput.safeParse(request.body);if(!input.success)throw new ApiFailure(422,'Invalid visit group replacement');await organizations!.requireAccess(c.token,c.organizationId,'task.basic',true);const result=await gateway.replace(c.token,c.organizationId,c.groupId!,input.data);if(result.organization_id!==c.organizationId||result.visit_group_id!==c.groupId)throw new ApiFailure(503,'Appointment service unavailable');return result});
+ app.post(base+'/:visitGroupId/cancel',async request=>{const c=context(request,true),input=cancelVisitGroupInput.safeParse(request.body);if(!input.success)throw new ApiFailure(422,'Invalid visit group cancellation');await organizations!.requireAccess(c.token,c.organizationId,'task.basic',true);const result=await gateway.cancel(c.token,c.organizationId,c.groupId!,input.data);if(result.organization_id!==c.organizationId||result.visit_group_id!==c.groupId)throw new ApiFailure(503,'Appointment service unavailable');return result});
+ app.post(base+'/:visitGroupId/transition',async request=>{const c=context(request,true),input=transitionVisitGroupInput.safeParse(request.body);if(!input.success)throw new ApiFailure(422,'Invalid visit group transition');await organizations!.requireAccess(c.token,c.organizationId,'task.basic',true);const result=await gateway.transition(c.token,c.organizationId,c.groupId!,input.data);if(result.organization_id!==c.organizationId||result.visit_group_id!==c.groupId)throw new ApiFailure(503,'Appointment service unavailable');return result});
+}

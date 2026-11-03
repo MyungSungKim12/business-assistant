@@ -3,7 +3,7 @@ import { createAccessCache, parseAccessCacheTtl } from './access-cache.js';
 
 const ORG_A = '11111111-1111-4111-8111-111111111111';
 const ORG_B = '22222222-2222-4222-8222-222222222222';
-const key = (token: string, extra: Partial<{ organizationId: string; feature: string; write: boolean }> = {}) =>
+const key = (token: string, extra: Partial<{ organizationId: string; feature: string; write: boolean; permissionCode?:string }> = {}) =>
   ({ token, organizationId: ORG_A, feature: 'crm.basic', write: false, ...extra });
 
 function setup(ttlSec = 30, maxEntries?: number) {
@@ -38,6 +38,11 @@ describe('조직 권한 캐시', () => {
     cache.set(key('t1', { write: true }), 'admin');
     expect(cache.get(key('t1', { write: true }))).toBe('admin');
     expect(cache.get(key('t1', { write: false }))).toBe('member');
+  });
+
+  it('같은 기능이라도 서로 다른 업무 권한은 캐시를 공유하지 않는다',()=>{
+    const {cache}=setup();cache.set(key('t1',{permissionCode:'customer.read'}),'owner');
+    expect(cache.get(key('t1',{permissionCode:'customer.manage'}))).toBeUndefined();
   });
 
   it('조직 무효화는 그 조직 항목만 지운다', () => {

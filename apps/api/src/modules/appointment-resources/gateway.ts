@@ -3,6 +3,7 @@ import type { ServerConfig } from '../../config.js';
 import { ApiFailure } from '../../errors.js';
 import { createRest, type Query } from '../../supabase/rest.js';
 import { withPgErrorMap } from '../catalog/pgErrors.js';
+import { createBookingPolicyGateway } from '../booking-policy/gateway.js';
 
 const UNAVAILABLE = 'Appointment service unavailable';
 
@@ -38,6 +39,7 @@ export const workingHoursResultSchema = z.object({ staff_id: z.uuid(), schedule_
 /** 자원 선택(resource_ids)이 포함된 예약 행. 기존 appointments 모듈의 스키마에는 resource_ids가 없다. */
 export const appointmentSchema = z.object({
   ...row, branch_id: z.uuid().optional(), customer_id: z.uuid(), staff_id: z.uuid(), service_id: z.uuid(), service_name_snapshot: z.string(),
+  visit_group_id: z.uuid().nullable().optional(), visit_order: z.number().int().min(1).max(8).nullable().optional(), visit_group_version:z.number().int().positive().nullable().optional(), is_current: z.boolean().optional(),
   duration_minutes: z.number().int(), buffer_minutes: z.number().int(), start_at: z.string(), end_at: z.string(),
   status: z.enum(['reserved', 'confirmed', 'checked_in', 'completed', 'canceled', 'no_show']),
   source: z.enum(['manual', 'phone', 'walk_in', 'online']), cancellation_reason: z.string().nullable(), no_show_reason: z.string().nullable().optional(),
@@ -91,6 +93,7 @@ export function createAppointmentResourceGateway(config: ServerConfig, fetcher: 
   }
 
   return {
+    ...createBookingPolicyGateway(config,fetcher),
     async listBranches(token: string, organizationId: string) {
       const result = await rpc(token, 'list_organization_branches', organizationId, {}, z.array(branchSchema));
       if (result.some(branch => branch.organization_id !== organizationId || !branch.is_active)) throw fail();
@@ -278,7 +281,7 @@ export function createAppointmentResourceGateway(config: ServerConfig, fetcher: 
       const today = kstToday(now());
       const start = `${filter.fromDate ?? addDays(today, -7)}T00:00:00+09:00`;
       const end = `${addDays(filter.toDate ?? addDays(today, 60), 1)}T00:00:00+09:00`;
-      const filters: Query = { and: `(start_at.gte.${start},start_at.lt.${end})` };
+      const filters: Query = { and: `(start_at.gte.${start},start_at.lt.${end})`, is_current: 'eq.true' };
       if (filter.customerId) filters.customer_id = `eq.${filter.customerId}`;
       if (filter.branchId) filters.branch_id = `eq.${filter.branchId}`;
       return listAll(token, 'appointments', organizationId, appointmentSchema, filters);

@@ -56,7 +56,7 @@ export function installSecurityHeaders(app: FastifyInstance): void {
     reply.header('X-Content-Type-Options', 'nosniff');
     reply.header('Referrer-Policy', 'no-referrer');
     reply.header('X-Frame-Options', 'DENY');
-    reply.header('Content-Security-Policy', "default-src 'none'; frame-ancestors 'none'");
+    if(!reply.hasHeader('Content-Security-Policy'))reply.header('Content-Security-Policy', "default-src 'none'; frame-ancestors 'none'");
     reply.header('Cross-Origin-Resource-Policy', 'same-origin');
     if (!reply.hasHeader('Cache-Control') && !request.url.startsWith('/api/v1/health')) {
       reply.header('Cache-Control', 'no-store');

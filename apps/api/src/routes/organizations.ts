@@ -26,6 +26,11 @@ export function registerOrganizationRoutes(app: FastifyInstance, gateway?: Organ
     const {token,gateway} = service(request);
     return gateway.list(token);
   });
+  app.get('/api/v1/organizations/:organizationId/permissions',async request=>{
+    const {token,gateway}=service(request),parsed=z.object({organizationId:z.uuid()}).safeParse(request.params);
+    if(!parsed.success)throw new ApiFailure(422,'Invalid organization ID');
+    return gateway.memberPermissions(token,parsed.data.organizationId);
+  });
   for (const route of ['entitlements','members','subscriptions/current'] as const) {
     app.get('/api/v1/organizations/:organizationId/'+route, async request => {
       const {token,gateway} = service(request);
@@ -74,5 +79,17 @@ function registerMemberRoutes(app: FastifyInstance, service: (request: FastifyRe
     if (!params.success) throw new ApiFailure(422,'Invalid member input');
     await gateway.removeMember(token,id,params.data.userId);
     return reply.code(204).send();
+  });
+  app.get(base+'/:userId/permissions', async request => {
+    const {token,gateway}=service(request),id=orgId(request),params=z.object({userId:z.uuid()}).safeParse(request.params);
+    if(!params.success)throw new ApiFailure(422,'Invalid member ID');
+    return gateway.memberPermissions(token,id,params.data.userId);
+  });
+  const permissionCodes=['customer.read','customer.manage','appointment.read','appointment.manage','treatment.read','treatment.manage','payment.read','payment.collect','refund.approve','data.export'] as const;
+  const permissionsSchema=z.object(Object.fromEntries(permissionCodes.map(code=>[code,z.boolean()])) as Record<string,z.ZodType<boolean>>).strict();
+  app.put(base+'/:userId/permissions', async request => {
+    const {token,gateway}=service(request),id=orgId(request),params=z.object({userId:z.uuid()}).safeParse(request.params),body=permissionsSchema.safeParse(request.body);
+    if(!params.success||!body.success)throw new ApiFailure(422,'Invalid member permissions');
+    return gateway.setMemberPermissions(token,id,params.data.userId,body.data);
   });
 }

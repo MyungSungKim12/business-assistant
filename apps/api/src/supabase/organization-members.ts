@@ -24,6 +24,9 @@ const RULES: Record<string, { status: number; detail: string; code: string }> = 
   self_change: { status: 409, detail: 'Own role cannot be changed', code: 'self_change' },
   invalid_role: { status: 422, detail: 'Invalid role', code: 'invalid_role' },
   invalid_email: { status: 422, detail: 'Invalid email', code: 'invalid_email' },
+  owner_permissions_locked: { status: 403, detail: 'Owner permissions cannot be changed', code: 'owner_permissions_locked' },
+  role_permission_limit: { status: 403, detail: 'This role cannot receive that business permission', code: 'role_permission_limit' },
+  invalid_permissions: { status: 422, detail: 'Invalid business permissions', code: 'invalid_permissions' },
 };
 
 /** RPC 오류 본문의 message 를 업무 규칙 응답으로 바꾼다. 알 수 없으면 null(호출자가 일반 오류로 처리). */

@@ -19,6 +19,7 @@ afterEach(async () => { await app?.close(); });
 
 function setup(audit: (call: FakeCall) => FakeReply = () => ({ status: 201, body: null })) {
   const { fetcher, calls } = fakeFetch((call) => {
+    if(call.url.pathname==='/rest/v1/rpc/assert_current_session')return {body:true};
     if (call.url.pathname === '/auth/v1/user') {
       const id = tokens[String(call.headers.Authorization).replace('Bearer ', '')];
       return id ? { body: { id } } : { status: 401, body: { message: 'bad jwt' } };

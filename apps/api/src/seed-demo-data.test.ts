@@ -3,7 +3,7 @@
 // 가짜 서버는 실제 Fastify 라우트(zod 검증 포함)를 쓰므로, 스크립트가 보내는 본문이 실제 API 형식과 어긋나면 여기서 실패한다.
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { createFakeBackend, ORG_ID, TEST_EMAIL, TEST_PASSWORD, TEST_REFRESH, TEST_TOKEN, type FakeOptions } from './seed-demo-data.testkit.js';
 
@@ -27,6 +27,19 @@ const base = ['--yes', '--delay-ms', '0'];
 const writes = (backend: Backend) => backend.requests.filter((r) => r.method !== 'GET' && !r.path.endsWith('/auth/login'));
 
 describe('seed-demo-data', () => {
+  it('preserves resource-less existing reservations instead of imposing incompatible requirements', async () => {
+    const { STEPS } = await load('steps.mjs');
+    const put = vi.fn();
+    const get = vi.fn(async (path: string) => {
+      if (path.endsWith('/resource-setup')) return { requirements: [], resource_version: 1 };
+      if (path.endsWith('/appointments')) return [{ service_id: 'service', status: 'confirmed', resource_ids: [] }];
+      if (path.endsWith('/appointment-resources')) return [];
+      throw new Error(path);
+    });
+    const existed = vi.fn();
+    await STEPS.requirements({ orgId: ORG_ID, client: { get, put }, plan: { today: '2026-10-23', services: [{ requirements: [{ kind: 'room', quantity: 1 }] }] }, state: { services: [{ id: 'service' }] }, uid: () => 'operation', created: () => {}, existed, out: () => {} });
+    expect(put).not.toHaveBeenCalled(); expect(existed).toHaveBeenCalled();
+  });
   it('dry-run은 요청을 한 건도 보내지 않고 영역별 예정 개수를 출력한다', async () => {
     const result = await run(['--dry-run'], {}, { fetch: () => { throw new Error('dry-run must not use the network'); } });
     expect(result.code).toBe(0);

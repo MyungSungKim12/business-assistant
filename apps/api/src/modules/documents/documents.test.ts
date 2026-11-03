@@ -4,6 +4,31 @@ import { auth, build, CUSTOMER, DOCUMENT, document, expectNoLeak, issued, ORG, o
 const post = (app: ReturnType<typeof build>['app'], url: string, payload: unknown, headers: Record<string, string> = auth) => app.inject({ method: 'POST', url, headers, payload: payload as never });
 
 describe('문서 목록·작성', () => {
+  it('owner가 발행본에만 48시간 모바일 서명 링크를 만들고 토큰 해시만 DB로 보낸다', async () => {
+    const { app, calls } = build({ signingOrigin: 'https://api.example.test', respond: (call) => call.url.pathname.endsWith('/create_customer_document_signature_link')
+      ? { body: [{ id: DOCUMENT, expires_at: '2030-01-01T00:00:00Z' }] } : { body: [] } });
+    const result = await post(app, treatmentPath(`documents/${DOCUMENT}/signature-links`), {});
+    expect(result.statusCode).toBe(201);
+    const payload = result.json() as { id: string; url: string; expires_at: string };
+    expect(payload.id).toBe(DOCUMENT);
+    expect(payload.url).toMatch(/^https:\/\/api\.example\.test\/api\/v1\/public\/document-signatures#[A-Za-z0-9_-]{43}$/);
+    expect(payload.url).not.toContain('?');
+    const rpc = calls.find((call) => call.url.pathname.endsWith('/create_customer_document_signature_link'))!;
+    const rpcBody = rpc.body as Record<string, unknown>;
+    expect(rpcBody).toMatchObject({ p_organization_id: ORG, p_customer_id: CUSTOMER, p_treatment_id: TREATMENT, p_document_id: DOCUMENT });
+    expect(String(rpcBody.p_token_hash)).toMatch(/^[0-9a-f]{64}$/);
+    expect(rpcBody.p_token_hash).not.toBe(payload.url.split('#')[1]);
+    await app.close();
+  });
+
+  it('고정 HTTPS 공개 origin 미설정과 읽기 전용 사용자는 링크 생성을 막는다', async () => {
+    const missing = build();
+    expect((await post(missing.app, treatmentPath(`documents/${DOCUMENT}/signature-links`), {})).statusCode).toBe(503);
+    const member = build({ role: 'member', signingOrigin: 'https://api.example.test' });
+    expect((await post(member.app, treatmentPath(`documents/${DOCUMENT}/signature-links`), {})).statusCode).toBe(403);
+    await missing.app.close(); await member.app.close();
+  });
+
   it('토큰·멤버십·기능이 없으면 거부한다', async () => {
     const { app } = build({ features: ['crm.basic'] });
     expect((await app.inject({ url: orgPath('documents') })).statusCode).toBe(401);

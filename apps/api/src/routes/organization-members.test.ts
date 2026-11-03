@@ -11,7 +11,7 @@ const headers = { authorization: 'Bearer access' };
 let app: FastifyInstance;
 afterEach(async () => { await app?.close(); });
 
-function setup(rpc: (call: FakeCall) => FakeReply = () => ({ body: [] }), role = 'owner', options: { accessCacheTtlSec?: number } = {}) {
+function setup(rpc: (call: FakeCall) => FakeReply = () => ({ body: [] }), role = 'owner', options: { accessCacheTtlSec?: number;permissionAllowed?:boolean } = {}) {
   let time = 0;
   const { fetcher, calls } = fakeFetch((call) => {
     const path = call.url.pathname;
@@ -19,6 +19,9 @@ function setup(rpc: (call: FakeCall) => FakeReply = () => ({ body: [] }), role =
     if (path.endsWith('organization_exists')) return { body: true };
     if (path === '/rest/v1/memberships') return { body: [{ role, user_id: USER }] };
     if (path === '/rest/v1/subscriptions') return { body: [{ status: 'active', ends_at: null, plans: { code: 'pro', plan_features: [{ feature_code: 'crm.basic' }] } }] };
+    if (path.endsWith('/has_organization_business_permission')) return { body: options.permissionAllowed ?? true };
+    if (path.endsWith('/get_organization_business_permissions') || path.endsWith('/get_organization_business_permissions_for_user')) return { body: { 'customer.read': true, 'customer.manage': false, 'appointment.read': true, 'appointment.manage': false, 'treatment.read': true, 'treatment.manage': false, 'payment.read': true, 'payment.collect': false, 'refund.approve': false, 'data.export': false } };
+    if (path.endsWith('/set_organization_member_permissions')) { const body=call.body as {p_user_id:string;p_permissions:Record<string,boolean>}; return { body: { user_id: body.p_user_id, permissions: body.p_permissions } }; }
     return rpc(call);
   });
   const gateway = createOrganizationGateway(testConfig, fetcher, { ...options, now: () => time });
@@ -97,6 +100,17 @@ describe('구성원 관리 라우트', () => {
     expect(rpcCalls(calls, 'remove_organization_member')[0].body).toEqual({ p_org: ORG, p_user: TARGET });
   });
 
+  it('구성원 업무 권한을 읽고 저장하며 owner 대상 변경 요청도 DB 오류로 거부된다', async () => {
+    const permissions={ 'customer.read':true,'customer.manage':false,'appointment.read':true,'appointment.manage':false,'treatment.read':true,'treatment.manage':false,'payment.read':true,'payment.collect':false,'refund.approve':false,'data.export':false };
+    const {calls}=setup();
+    const got=await app.inject({url:url(`/${TARGET}/permissions`),headers});
+    expect(got.statusCode).toBe(200);expect(got.json()).toEqual(permissions);
+    const saved=await app.inject({method:'PUT',url:url(`/${TARGET}/permissions`),headers,payload:permissions});
+    expect(saved.statusCode).toBe(200);expect(saved.json()).toEqual({user_id:TARGET,permissions});
+    expect(rpcCalls(calls,'set_organization_member_permissions')[0].body).toEqual({p_organization_id:ORG,p_user_id:TARGET,p_permissions:permissions});
+    expect((await app.inject({method:'PUT',url:url(`/${TARGET}/permissions`),headers,payload:{...permissions,'unknown.permission':true}})).statusCode).toBe(422);
+  });
+
   it('알 수 없는 RPC 오류 메시지는 원문을 노출하지 않고 503', async () => {
     setup(() => ({ status: 500, body: { message: 'secret internal detail' } }));
     const result = await app.inject({ method: 'DELETE', url: url(`/${TARGET}`), headers });
@@ -131,6 +145,11 @@ describe('권한 검사 캐시(requireAccess)', () => {
     await expect(gateway.requireAccess('t', ORG, 'unknown.feature')).rejects.toMatchObject({ status: 403 });
     await expect(gateway.requireAccess('t', ORG, 'unknown.feature')).rejects.toMatchObject({ status: 403 });
     expect(accessCalls(calls)).toBe(2);
+  });
+
+  it('업무 권한 RPC 거부를 API 권한 거부로 연결한다',async()=>{
+    const {gateway}=setup(undefined,'owner',{permissionAllowed:false});
+    await expect(gateway.requireAccess('t',ORG,'crm.basic')).rejects.toMatchObject({status:403,extra:{permission_code:'customer.read'}});
   });
 
   it('역할 변경·제거·추가 성공 뒤에는 캐시가 무효화된다', async () => {

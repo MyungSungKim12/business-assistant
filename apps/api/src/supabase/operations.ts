@@ -2,8 +2,10 @@ import { z } from 'zod';
 import type { ServerConfig } from '../config.js';
 import { ApiFailure } from '../errors.js';
 import type { OperationsGateway } from '../routes/operations.js';
+import { createRest } from './rest.js';
 
 export function createOperationsGateway(config: ServerConfig, fetcher: typeof fetch = fetch): OperationsGateway {
+  const rest = createRest(config, fetcher, 'Operation service unavailable');
   const headers = (token: string, write = false) => ({ apikey: config.APP_SUPABASE_PUBLISHABLE_KEY, Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...(write ? { Prefer: 'return=representation' } : {}) });
   async function userId(token: string) {
     try {
@@ -26,7 +28,10 @@ export function createOperationsGateway(config: ServerConfig, fetcher: typeof fe
   }
   const checked = (rows: Record<string,unknown>[], organizationId: string) => { if (rows.some((row) => row.organization_id !== organizationId)) throw new ApiFailure(503, 'Operation service unavailable'); return rows; };
   return {
-    async list(token, organizationId, table, order) { return checked(await call(token, 'GET', table, { select: '*', organization_id: `eq.${organizationId}`, order, limit: '500' }), organizationId); },
+    async list(token, organizationId, table, order) {
+      const stableOrder = /(^|,)id\.(asc|desc)$/.test(order) ? order : `${order},id.asc`;
+      return checked(await rest.selectAll(token, table, { select: '*', organization_id: `eq.${organizationId}`, order: stableOrder }, z.object({id:z.string(),organization_id:z.string()}).loose()), organizationId);
+    },
     async create(token, organizationId, table, values, createdBy) { const rows=checked(await call(token,'POST',table,{select:'*'},{...values,organization_id:organizationId,...(createdBy?{created_by:await userId(token)}:{})}),organizationId);if(!rows[0])throw new ApiFailure(503,'Operation service unavailable');return rows[0]; },
     async update(token, organizationId, table, id, values) { return checked(await call(token,'PATCH',table,{select:'*',id:`eq.${id}`,organization_id:`eq.${organizationId}`},values),organizationId)[0]??null; },
   };

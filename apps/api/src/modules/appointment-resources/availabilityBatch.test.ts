@@ -3,10 +3,11 @@ import { createAppointmentResourceGateway } from './gateway.js';
 import { loadAvailability,loadAvailabilitySearch } from './availabilityRoutes.js';
 import { ORG,OTHER_ORG,testConfig } from '../catalog/testkit.js';
 const id=(n:number)=>`11111111-1111-4111-8111-${String(n).padStart(12,'0')}`,service=id(9999),date='2026-12-14';
-function fixture(count:number,options:{foreign?:boolean;failed?:boolean;wrongStaff?:boolean;missingCount?:boolean;cap?:number;timeOff?:unknown[];zone?:string;appointments?:unknown[]}={}){
+function fixture(count:number,options:{policy?:unknown;foreign?:boolean;failed?:boolean;wrongStaff?:boolean;missingCount?:boolean;cap?:number;timeOff?:unknown[];zone?:string;appointments?:unknown[]}={}){
  const calls:URL[]=[],people=Array.from({length:count},(_,n)=>({id:id(n),organization_id:ORG,name:`담당${n}`,is_active:true,schedule_version:1}));
  const fetcher=(async(input:Parameters<typeof fetch>[0])=>{
   const url=new URL(String(input)),table=url.pathname.split('/').at(-1)!;calls.push(url);
+  if(table==='get_organization_booking_policy')return new Response(JSON.stringify(options.policy??{organization_id:ORG,version:0,enabled:false,timezone_name:'Asia/Seoul',minimum_notice_minutes:0,same_day_cutoff_time:null,hours:[],blocks:[]}));
   const selected=url.searchParams.get('staff_id')?.replace(/^in\.\(/,'').replace(/^eq\./,'').replace(/\)$/,'').split(',')??people.map(p=>p.id);
   if(options.failed&&table==='appointment_staff_working_hours')return new Response('{}',{status:503});
   const rows:Record<string,unknown[]>={appointment_services:[{id:service,organization_id:ORG,name:'관리',duration_minutes:60,buffer_minutes:0,is_active:true,resource_version:1}],appointment_staff:people,appointment_resources:[],appointment_service_staff:[],appointment_service_resource_requirements:[],appointments:options.appointments??[],appointment_staff_working_hours:selected.map(staff_id=>({id:id(10000+people.findIndex(p=>p.id===staff_id)),organization_id:options.foreign?OTHER_ORG:ORG,staff_id:options.wrongStaff?id(5555):staff_id,weekday:1,start_time:'09:00:00',end_time:'18:00:00',timezone_name:options.zone??'Asia/Seoul'})),appointment_staff_time_off:options.timeOff??[]};
@@ -19,14 +20,14 @@ it('직원 10명은 9회 조회로 계산하고 직원별 재조회를 하지 �
  const {gateway,calls}=fixture(10);
  const result=await loadAvailability(gateway,'token',ORG,{service_id:service,date},new Date('2026-10-19T01:00:00Z'));
  expect(result.staff).toHaveLength(10);expect(result.slots.find(slot=>slot.start==='09:00')?.staff_ids).toHaveLength(10);
- expect(calls).toHaveLength(9);
+ expect(calls).toHaveLength(10);
  expect(calls.filter(url=>url.pathname.endsWith('/appointment_staff'))).toHaveLength(1);
 });
 it('100명도 50명씩 묶고 선택한 담당자만 조회할 수 있다',async()=>{
  const {gateway,calls}=fixture(100);
  await loadAvailability(gateway,'token',ORG,{service_id:service,date});
  const hours=calls.filter(url=>url.pathname.endsWith('/appointment_staff_working_hours'));
- expect(calls).toHaveLength(11);
+ expect(calls).toHaveLength(12);
  expect(hours).toHaveLength(2);expect(hours.every(url=>url.searchParams.get('staff_id')!.split(',').length===50)).toBe(true);
  calls.length=0;
  await loadAvailability(gateway,'token',ORG,{service_id:service,date,staff_id:id(20)});
@@ -81,5 +82,22 @@ it('active 휴무 조회에 취소·다른 직원의 휴무가 섞이면 실패�
  for(const off of [{...base,status:'canceled'},{...base,staff_id:id(100)}]){
   const {gateway}=fixture(1,{timeOff:[off]});
   await expect(loadAvailability(gateway,'token',ORG,{service_id:service,date})).rejects.toMatchObject({status:503});
+ }
+});
+it('both readers use one mandatory policy snapshot and filter full occupancy against it',async()=>{
+ const policy={organization_id:ORG,version:1,enabled:true,timezone_name:'Asia/Seoul',minimum_notice_minutes:0,same_day_cutoff_time:null,hours:[{weekday:1,start_time:'10:00',end_time:'12:00'}],blocks:[]};
+ const {gateway,calls}=fixture(1,{policy});
+ const now=new Date('2026-10-19T01:00:00Z');
+ const day=await loadAvailability(gateway,'token',ORG,{service_id:service,date},now);
+ expect(day.slots.find(s=>s.start==='09:00')).toMatchObject({available:false,staff_ids:[],blocked:expect.arrayContaining([{code:'booking_policy_hours',staff_id:null}])});
+ expect(day.slots.find(s=>s.start==='10:00')?.available).toBe(true);
+ const search=await loadAvailabilitySearch(gateway,'token',ORG,{service_id:service,from_date:date,days:3},now);
+ expect(search.recommendations.map(r=>r.start)).toEqual(['10:00','10:30','11:00']);
+ expect(search.recommendations[0]!.reason).toContain('매장 정책');expect(search.advisory).toContain('매장 정책');
+ expect(calls.filter(u=>u.pathname.endsWith('/get_organization_booking_policy'))).toHaveLength(2);
+ for(const bad of [{}, {...policy,organization_id:OTHER_ORG}]){
+  const broken=fixture(1,{policy:bad});
+  await expect(loadAvailability(broken.gateway,'token',ORG,{service_id:service,date},now)).rejects.toMatchObject({status:503});
+  await expect(loadAvailabilitySearch(broken.gateway,'token',ORG,{service_id:service,from_date:date,days:3},now)).rejects.toMatchObject({status:503});
  }
 });

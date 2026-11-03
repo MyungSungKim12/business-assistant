@@ -8,7 +8,7 @@ export type AccessCacheOptions = {
   maxEntries?: number;
 };
 
-export type AccessKey = { token: string; organizationId: string; feature: string; write: boolean };
+export type AccessKey = { token: string; organizationId: string; feature: string; write: boolean; permissionCode?: string };
 type Entry = { role: string; expiresAt: number; organizationId: string };
 
 export const DEFAULT_ACCESS_CACHE_TTL_SEC = 30;
@@ -38,7 +38,7 @@ export function createAccessCache(options: AccessCacheOptions) {
 
   const keyOf = (key: AccessKey) => {
     const tokenHash = createHmac('sha256', pepper).update(key.token).digest('hex');
-    return `${tokenHash}|${key.organizationId}|${key.feature}|${key.write ? 'w' : 'r'}`;
+    return `${tokenHash}|${key.organizationId}|${key.feature}|${key.write ? 'w' : 'r'}|${key.permissionCode ?? ''}`;
   };
 
   function sweep(): void {

@@ -30,9 +30,23 @@ const positive = (fallback: number) => z.coerce.number().int().positive().defaul
 
 /** 일반 API와 관리자 API가 같이 쓰는 필드. 서비스 키는 여기에 없다. */
 const commonFields = {
+  APP_AUTH_RECOVERY_URL: z.url().optional(),
+  APP_AUTH_ALLOW_LOOPBACK_RECOVERY: flag(false),
   APP_SUPABASE_URL: z.url(),
   APP_SUPABASE_PUBLISHABLE_KEY: z.string().min(1),
   APP_FILE_BUCKET: z.string().min(1).default('business-files'),
+  APP_PUBLIC_DOCUMENT_SIGNING_ORIGIN: z.string().optional().transform((value, context) => {
+    if (!value?.trim()) return undefined;
+    try {
+      const parsed = new URL(value);
+      if (!['https:', 'http:'].includes(parsed.protocol) || parsed.username || parsed.password || parsed.pathname !== '/' || parsed.search || parsed.hash) throw new Error();
+      if (parsed.protocol !== 'https:' && !['localhost', '127.0.0.1'].includes(parsed.hostname)) throw new Error();
+      return parsed.origin;
+    } catch {
+      context.addIssue({ code: 'custom', message: 'invalid APP_PUBLIC_DOCUMENT_SIGNING_ORIGIN' });
+      return undefined;
+    }
+  }),
   APP_API_PORT: positive(8000),
   APP_API_HOST: z.string().trim().min(1).default('127.0.0.1'),
   APP_TRUST_PROXY: trustProxy,
@@ -70,7 +84,11 @@ function failure(error: z.ZodError): Error {
 
 export function parseServerConfig(environment: Record<string, string | undefined>): ResolvedServerConfig {
   const result = ServerConfigSchema.safeParse(withoutBlank(environment));
-  if (result.success) return result.data;
+  if (result.success) {
+    if(isProduction(environment)&&result.data.APP_AUTH_ALLOW_LOOPBACK_RECOVERY)throw new Error('운영 환경에서는 APP_AUTH_ALLOW_LOOPBACK_RECOVERY를 사용할 수 없습니다.');
+    if(isProduction(environment)&&result.data.APP_PUBLIC_DOCUMENT_SIGNING_ORIGIN&&!result.data.APP_PUBLIC_DOCUMENT_SIGNING_ORIGIN.startsWith('https://'))throw new Error('운영 환경의 고객 서명 공개 origin은 HTTPS여야 합니다.');
+    return result.data;
+  }
   throw failure(result.error);
 }
 

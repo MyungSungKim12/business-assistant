@@ -10,7 +10,7 @@
  *  - 다른 예약: 같은 담당자의 활성 예약(reserved·confirmed·checked_in)과 점유 구간이 겹치면 불가(기존 예약의 여유 시간 포함).
  *  - 자원: 자원은 하나당 동시에 한 예약만 쓴다(용량 1). 서비스 필수 자원은 종류별 수량만큼 빈 자원이 있어야 한다.
  */
-export type AvailabilityReasonCode = 'past' | 'outside_hours' | 'outside_default_window' | 'time_off' | 'staff_busy' | 'resource_unavailable';
+export type AvailabilityReasonCode = 'past' | 'outside_hours' | 'outside_default_window' | 'time_off' | 'staff_busy' | 'resource_unavailable' | import('../booking-policy/policy.js').BookingPolicyReason;
 
 export type WorkingHourInput = { weekday: number; start_time: string; end_time: string; timezone_name: string };
 export type TimeOffInput = { start_at: string; end_at: string };

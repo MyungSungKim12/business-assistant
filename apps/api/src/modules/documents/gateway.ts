@@ -31,7 +31,7 @@ export const issuedSchema = z.object({
 // proof 는 증빙 해시 테이블(043) 임베드이며, 응답에는 evidence 로 바꿔 싣는다(증빙이 없던 옛 이벤트는 null).
 const consentRowSchema = z.object({
   id: z.uuid(), organization_id: z.uuid(), document_id: z.uuid(), revision: z.number().int().min(1), action: z.enum(['sign', 'deliver', 'revoke']),
-  values: z.record(z.string(), z.unknown()), actor_id: z.uuid(), occurred_at: z.string(), content_hash: z.string(), proof: embeddedProofSchema,
+  values: z.record(z.string(), z.unknown()), actor_id: z.uuid().nullable(), signer_channel: z.enum(['staff','customer_link']).default('staff'), occurred_at: z.string(), content_hash: z.string(), proof: embeddedProofSchema,
 });
 export const consentEventSchema = consentRowSchema.transform(({ proof, ...event }) => ({ ...event, evidence: storedEvidenceOf(proof) }));
 const fileRowSchema = z.object({
@@ -77,6 +77,8 @@ export type DocumentGateway = {
   listConsentEvents(token: string, scope: TreatmentScope, documentId: string): Promise<ConsentEvent[]>;
   recordConsentEvent(token: string, scope: TreatmentScope, documentId: string, input: ConsentInput): Promise<ConsentEvent>;
   verifyConsentEvent(token: string, scope: TreatmentScope, documentId: string, eventId: string): Promise<EvidenceVerification>;
+  createCustomerSignatureLink(token: string, scope: TreatmentScope, documentId: string, tokenHash: string, expiresAt: string): Promise<{ id: string; expires_at: string }>;
+  revokeCustomerSignatureLink(token: string, organizationId: string, linkId: string): Promise<boolean>;
   listFiles(token: string, organizationId: string, includeArchived: boolean): Promise<FileAsset[]>;
   fileStorageUsage(token:string,organizationId:string):Promise<z.infer<typeof fileStorageUsageSchema>>;
   setFileStorageQuota(token:string,organizationId:string,quotaBytes:number):Promise<z.infer<typeof fileStorageUsageSchema>>;
@@ -272,7 +274,30 @@ export function createDocumentGateway(config: ServerConfig, fetcher: typeof fetc
       if (rows.length === 0) throw new ApiFailure(404, consentMessages.notFound ?? 'Not found');
       if (rows.length !== 1 || rows[0].id !== eventId || rows[0].document_id !== documentId) throw new ApiFailure(503, consentMessages.unavailable);
       const event = rows[0];
+      if (event.signer_channel === 'customer_link') {
+        const payload = await http.request(token, 'POST', '/rest/v1/rpc/verify_customer_document_signature_evidence', consentMessages, {
+          body: { p_organization_id: scope.organizationId, p_document_id: documentId, p_event_id: eventId }, mapCodes: true,
+        });
+        if (!Array.isArray(payload) || payload.length !== 1) throw new ApiFailure(503, consentMessages.unavailable);
+        const verified = payload[0] as Record<string, unknown>;
+        if (verified.event_id !== eventId || !['match','mismatch','no_proof','unknown_algorithm'].includes(String(verified.status))) throw new ApiFailure(503, consentMessages.unavailable);
+        return { event_id: eventId, revision: event.revision, occurred_at: event.occurred_at, status: verified.status, algorithm: verified.algorithm ?? null, stored_hash: verified.stored_hash ?? null, computed_hash: verified.computed_hash ?? null } as EvidenceVerification;
+      }
       return verifyEvidence(evidenceInputOf({ ...event, event_id: event.id }), event.evidence);
+    },
+    async createCustomerSignatureLink(token, scope, documentId, tokenHash, expiresAt) {
+      const payload = await http.request(token, 'POST', '/rest/v1/rpc/create_customer_document_signature_link', consentMessages, {
+        body: { p_organization_id: scope.organizationId, p_customer_id: scope.customerId, p_treatment_id: scope.treatmentId, p_document_id: documentId, p_token_hash: tokenHash, p_expires_at: expiresAt }, mapCodes: true,
+      });
+      const row = Array.isArray(payload) ? payload[0] : null;
+      if (!row || typeof row !== 'object' || !('id' in row) || !('expires_at' in row)) throw new ApiFailure(503, consentMessages.unavailable);
+      return { id: String(row.id), expires_at: String(row.expires_at) };
+    },
+    async revokeCustomerSignatureLink(token, organizationId, linkId) {
+      const payload = await http.request(token, 'POST', '/rest/v1/rpc/revoke_customer_document_signature_link', consentMessages, {
+        body: { p_organization_id: organizationId, p_link_id: linkId }, mapCodes: true,
+      });
+      return payload === true;
     },
     async listFiles(token, organizationId, includeArchived) {
       const query: Record<string, string> = { organization_id: eq(organizationId), order: 'created_at.desc,id.desc' };
