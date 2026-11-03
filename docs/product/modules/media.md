@@ -1,5 +1,9 @@
 # 사진·자료
 
+2026-11-03 N1030-06 / MED-002: SQL106 `20261102071744`를 Supabase에 적용했고 5분 cron의 실제 `succeeded` 실행을 확인했다. 격리 DB/API/React·빌드 및 독립 리뷰는 통과했지만 현재 pending/failed 사진이 없어 재선택 화면·실제 전송 복구는 인수하지 않았다. Storage 객체 23개는 그대로다. MED-002 전체는 썸네일·진행률 등 잔여가 있어 in-progress 유지. [변경·검증·운영 제한](../audits/2026-11-02-photo-upload-maintenance.md).
+
+2026-10-30 CRM-011 / MED-001·002: 사진 pending/ready/failed, 실제 객체 크기·MIME 완료 확인, 전송/응답 유실 복구와 130분 미완료 격리를 추가했다. 코드·격리 DB 검증 완료, SQL 100 원격 적용 완료(2026-10-30)으로 기능 상태는 in-progress를 유지한다. [검증·제한](../audits/2026-10-30-followup-hardening.md).
+
 2026-10-19: FILE-11/F12 파일·폴더 목록 완전성과 폴더 조회 오류·재시도를 보완했다. [검증·제한](../audits/2026-10-19-complete-large-lists.md). 전체 미디어 기능 상태를 일괄 변경하지 않는다.
 
 갱신일: 2026-09-18 · 상태: planned

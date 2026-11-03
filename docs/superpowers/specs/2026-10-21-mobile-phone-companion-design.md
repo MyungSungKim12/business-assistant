@@ -1,6 +1,6 @@
 # Android·iOS 전화 고객 연결 설계
 
-작성일: 2026-10-21 · 상태: 사용자 요청에 따라 구현 진행 · 기능 ID: INT-005, INT-006
+작성일: 2026-10-21 · 상태: INT-005 완료 범위, INT-006 Android APK 빌드·단위 검증 통과·기기 검증 대기 · 기능 ID: INT-005, INT-006
 
 ## 목적
 
@@ -13,6 +13,7 @@
 - API는 `crm.basic` 조직 권한을 확인한다. 구독 `plan_features` 기반 메뉴/기능 권한 기초가 있다.
 - 고객 검색은 현재 번호 검색을 지원하지만 휴대전화 네이티브 플러그인이 쓸 최소 정보 전화번호부 API는 없다.
 - Windows 빌드 환경에는 Android SDK/Java 및 Apple Xcode가 확인되지 않았다. iOS 타깃 생성·서명·실기기 검증은 macOS/Xcode가 필요하다.
+- Android 독립 앱 구현과 사용자의 물리 기기 테스트 안내는 [INT-006 감사](../../product/audits/2026-10-21-android-phone-companion.md) 및 [테스트 가이드](../../guides/android-phone-companion-test.md)를 따른다.
 
 ## 범위
 

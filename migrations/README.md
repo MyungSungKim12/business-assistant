@@ -1,4 +1,8 @@
+2026-11-02 추가: `104_durable_phone_inbox.sql`은 103 뒤 적용하는 INT-007 영속 전화 relay/선택 동의 수신함이다. 로컬 격리 검증 통과, 원격 적용은 주 에이전트 독립 검토 대기다. 새 API는 SQL104 적용 후 재시작한다. 기존 APK는 2분 전달만 복구하며 버전이 맞는 선택 동의 요청만 30일 보관한다. `private.cleanup_phone_inbox`는 owner-only 제한 정리 함수이며 scheduler는 후속이다. [검증·보유·권한·제한](../docs/product/audits/2026-11-02-durable-phone-inbox.md).
+
 # 인증·조직·구독 마이그레이션
+
+2026-11-03 최신 파일은 **112_customer_signature_link_audit.sql**입니다. 이어지는 SQL111 `20261103005458`/SQL112 `20261103005609`로 DOC-012 고객 모바일 서명 토큰·발행본 pinning·만료/일회 사용·철회/행위자 감사·증빙 확인을 추가했다. SQL110은 `20261103004028`로 적용 확인했다. 고객/시술/발행 문서 각각 19/14/3건이 유지되고 새 서명 링크는 0건이다. [DOC-012 검증 범위와 제한](../docs/product/audits/2026-11-03-customer-mobile-signature.md). 과거의 “적용 대기” 문구는 당시 이력이다.
 
 2026-10-21 원격 확인: 저장소 최신 migration은 **099**이며, Supabase `business-assistant` migration 이력에서 066~099 적용을 확인했습니다. 아래 번호별 적용 안내는 작성 당시의 기록을 보존한 것으로, “적용 대기” 문구는 현재 적용 상태를 나타내지 않습니다. 최신 보안 점검은 [감사 기록](../docs/product/audits/2026-10-21-supabase-migration-and-security.md)을 참고하세요.
 
@@ -390,3 +394,28 @@
 - 원격 적용은 2026-10-21 확인했다. owner 정상 멤버십은 `true`, 비회원이 실제 조직 UUID를 확인하면 `false`이며, 무JWT RPC/비회원 조직 RPC 거부는 롤백 트랜잭션으로 검사했다.
 
 현재 최신 순번: **099_scope_organization_existence_to_membership.sql** — 조직 접근 존재 조회를 멤버십 범위로 한정합니다.
+
+## 2026-11-02 원격 최신 적용 순서
+
+Supabase `business-assistant`에서 다음 migrations를 순서대로 적용했고 원격 migration history로 확인했다.
+
+| SQL | 원격 version | 목적 |
+| --- | --- | --- |
+| 100_customer_photo_upload_completion | `20261030071926` | 고객 사진 upload 완료/복구 |
+| 101_customer_dashboard_queries | `20261102004544` | 고객·홈 제한 조회/서버 집계 |
+| 102_organization_booking_policies | `20261102005828` | 매장 영업·휴무·예약 차단 정책 |
+| 103_account_recovery_sessions | `20261102055227` | 계정 복구·활성 세션 관리 |
+| 104_durable_phone_inbox | `20261102062807` | 동의 기반 영속 전화 수신함 |
+| 105_phone_directory_incremental | `20261102065323` | 전화번호부 변경 cursor/tombstone |
+| 106_customer_photo_maintenance | `20261102071744` | 고객 사진 상태 점검·복구 안내 cron |
+| 107_business_permissions | `20261102072810` | 구성원 업무 권한 override·감사 |
+| 108_business_permission_role_ceiling | `20261103000000` | 기존 도메인 역할 정책을 넘는 member 쓰기 권한 제한 |
+| 109_customer_messaging_outbox | `20261103001028` | 메시지 템플릿·대상 미리보기·동의 재검사·발송 전 outbox |
+| 110_appointment_visit_groups | `20261103004028` | APT-021 시술별 일정 구간을 갖는 방문 예약 묶음·원자 상태/취소/수정 |
+| 101_customer_dashboard_queries | `20261102004544` | 고객 서버 집계/조회 |
+| 102_organization_booking_policies | `20261102005828` | 조직 예약 시간·휴무·차단 정책 |
+| 103_account_recovery_sessions | `20261102055227` | 복구·세션 목록/폐기와 live-session 정책 |
+| 104_durable_phone_inbox | `20261102062807` | 동의 기반 전화 수신 이력/응대 RPC |
+| 105_phone_directory_incremental | `20261102065323` | 조직 revision 고객 번호부 snapshot/delta |
+
+105까지의 검증·권한 및 제한은 `docs/product/audits/2026-11-02-*` 감사 기록을 따른다. 적용 상태는 SQL 파일 이름만으로 추측하지 않고 Supabase 원격 version/name 기록으로 확인한다.

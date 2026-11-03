@@ -1,6 +1,6 @@
 # 설정·권한·구독
 
-갱신일: 2026-09-18 · 상태: planned
+갱신일: 2026-11-02 · 상태: in-progress
 
 ## 목적·진입점
 
@@ -10,10 +10,11 @@
 
 | ID | 우선 | 상태 | 범위 |
 | --- | --- | --- | --- |
-| SET-001 | P0 | planned | 사업장 시간대·영업시간·결제/할인 정책 |
-| SET-002 | P0 | planned | owner/admin/member 역할과 업무별 권한 매핑 |
-| SET-003 | P1 | planned | 계정·기기·세션·초대·퇴사 접근 차단 |
+| SET-001 | P0 | verified (범위 한정) | N1030-02 매장 예약 정책: SQL102/API/예약 추천·직접 저장/UI. 2026-11-02 집중 검증과 원격 적용 확인. DST offset 전환을 가로지르는 점유 구간은 보수적으로 거절하며 결제/할인 정책·실앱 인수는 별도. [감사 기록](../audits/2026-11-02-organization-booking-policies.md) |
+| SET-002 | P0 | verified (code/DB 범위 한정) | N1030-07: 구성원 업무 권한 조회·저장 UI, 서버 업무별 검사, owner 보호·변경 감사·권한 캐시 분리/무효화. SQL107/108 적용. member 역할은 현재 도메인 RLS가 허용하지 않는 쓰기 권한을 추가 부여할 수 없다. 권한이 없는 작업 버튼의 메뉴별 선제 숨김 확대와 owner/admin/member 실계정 인수는 후속. [감사 기록](../audits/2026-11-03-business-permissions.md) · [구현 메모](../../superpowers/plans/2026-11-02-product-task-07-brief.md) |
+| SET-003 | P1 | verified (범위 한정) | N1030-03: 이메일 확인/비밀번호 복구·재전송, 활성 세션 목록 및 선택/전체 해제, 폐기 세션의 보호 API/RLS 차단. 2026-11-02 집중 검증·SQL103 원격 적용·독립 보안 재검토 통과. SMTP 실발송/실계정·앱 인수 및 초대/퇴사 흐름은 별도 잔여. [감사 기록](../audits/2026-11-02-account-recovery-sessions.md) |
 | SET-004 | P1 | planned | 구독·사용량·권한 변경 이력과 데이터 접근 정책 |
+| SEC-14 | P1 | verified | R1030-01: PC 세션 generation·토큰 저장/삭제 직렬화로 늦은 응답/재시도 차단. 2026-10-30 집중 61 tests와 타입/빌드 통과. Native Keyring 실기기 인수·전체 기기/서버 세션 관리는 별도. 신규 ID 사유: 점검에서 재현된 토큰 재저장을 독립 추적 |
 
 ## 데이터 계약
 
